@@ -5,6 +5,7 @@ import path from 'path';
 import { initDatabase } from './utils/database';
 import authRoutes from './routes/auth';
 import toolsRoutes from './routes/tools';
+import stockPredictionsRoutes from './routes/stockPredictions';
 
 // Load environment variables
 dotenv.config();
@@ -25,6 +26,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tools', toolsRoutes);
+app.use('/api/stock-predictions', stockPredictionsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
