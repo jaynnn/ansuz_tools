@@ -72,7 +72,6 @@ if (process.env.NODE_ENV !== 'production') {
 export const logInfo = (action: string, details: Record<string, any> = {}) => {
   logger.info({
     action,
-    timestamp: new Date().toISOString(),
     ...details,
   });
 };
@@ -82,7 +81,6 @@ export const logError = (action: string, error: Error, details: Record<string, a
     action,
     error: error.message,
     stack: error.stack,
-    timestamp: new Date().toISOString(),
     ...details,
   });
 };
@@ -90,7 +88,6 @@ export const logError = (action: string, error: Error, details: Record<string, a
 export const logWarn = (action: string, details: Record<string, any> = {}) => {
   logger.warn({
     action,
-    timestamp: new Date().toISOString(),
     ...details,
   });
 };
@@ -98,7 +95,6 @@ export const logWarn = (action: string, details: Record<string, any> = {}) => {
 export const logDebug = (action: string, details: Record<string, any> = {}) => {
   logger.debug({
     action,
-    timestamp: new Date().toISOString(),
     ...details,
   });
 };
