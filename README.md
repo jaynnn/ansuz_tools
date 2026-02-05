@@ -38,6 +38,20 @@
 
 ## 快速开始
 
+### 方式一：使用 Docker Compose（推荐）
+
+这是最简单的方式，会自动启动所有服务：
+
+```bash
+docker-compose up
+```
+
+访问应用：
+- 前端: http://localhost:5173
+- 后端 API: http://localhost:5000
+
+### 方式二：手动安装运行
+
 ### 前置要求
 - Node.js (v16+)
 - MongoDB

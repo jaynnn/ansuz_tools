@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { toolsAPI } from '../services/api';
-import { Tool } from '../types';
+import type { Tool } from '../types';
 import ToolCard from '../components/ToolCard';
 import Header from '../components/Header';
 import AddToolModal from '../components/AddToolModal';

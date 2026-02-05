@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { AuthResponse, User, Tool } from '../types';
+import type { AuthResponse, User, Tool } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
