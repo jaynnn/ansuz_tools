@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Tool } from '../types/index';
 import '../styles/ToolCard.css';
 
@@ -8,9 +9,16 @@ interface ToolCardProps {
 }
 
 const ToolCard: React.FC<ToolCardProps> = ({ tool, onDelete }) => {
+  const navigate = useNavigate();
+  
   const handleClick = () => {
     if (tool.url) {
-      window.open(tool.url, '_blank');
+      // Check if URL is an internal route (starts with /)
+      if (tool.url.startsWith('/')) {
+        navigate(tool.url);
+      } else {
+        window.open(tool.url, '_blank');
+      }
     }
   };
 
