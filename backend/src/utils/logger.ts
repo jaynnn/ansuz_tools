@@ -16,11 +16,15 @@ const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.colorize(),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
+    // If message is an object, stringify it
+    const messageStr = typeof message === 'object' ? JSON.stringify(message) : message;
     let metaStr = '';
-    if (Object.keys(meta).length > 0) {
-      metaStr = '\n' + JSON.stringify(meta, null, 2);
+    // Only show additional meta if there are fields beyond timestamp
+    const { timestamp: _ts, ...restMeta } = meta;
+    if (Object.keys(restMeta).length > 0) {
+      metaStr = '\n' + JSON.stringify(restMeta, null, 2);
     }
-    return `${timestamp} [${level}]: ${message}${metaStr}`;
+    return `${timestamp} [${level}]: ${messageStr}${metaStr}`;
   })
 );
 
