@@ -122,19 +122,20 @@ const migrateStockPredictionsTable = async () => {
         await dbRun('ROLLBACK');
         throw error;
       }
-    } else if (!hasPredictionDate) {
+    } else {
       // Column doesn't exist at all, need to add it
       logInfo('stock_predictions_migration_start', { reason: 'add_prediction_date_column' });
       
+      await dbRun('BEGIN TRANSACTION');
+      
       try {
         await dbRun('ALTER TABLE stock_predictions ADD COLUMN prediction_date TEXT');
+        await dbRun('COMMIT');
         logInfo('stock_predictions_migration_success', { reason: 'added_prediction_date_column' });
       } catch (error) {
-        // If column already exists or other error, log and continue
-        logWarn('stock_predictions_migration_warning', { 
-          reason: 'failed_to_add_column',
-          error: (error as Error).message 
-        });
+        await dbRun('ROLLBACK');
+        logError('stock_predictions_migration_add_column_error', error as Error);
+        throw error;
       }
     }
   } catch (error) {
