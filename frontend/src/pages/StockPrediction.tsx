@@ -157,10 +157,13 @@ const StockPredictionPage: React.FC = () => {
     .filter(p => p.isComplete)
     .slice(-10) // Show last 10 predictions
     .map((p, index) => {
-      // Format date for display
-      const dateDisplay = p.predictionDate 
-        ? new Date(p.predictionDate).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
-        : `${index + 1}`;
+      // Format date for display, fallback to stock info or numbered prediction
+      let dateDisplay: string;
+      if (p.predictionDate) {
+        dateDisplay = new Date(p.predictionDate).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+      } else {
+        dateDisplay = p.stockInfo.substring(0, 10) || `预测${index + 1}`;
+      }
       
       return {
         name: dateDisplay,

@@ -86,7 +86,7 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       [
         req.userId,
         stockInfo || '',
-        predictionDate || '',
+        predictionDate || null,
         predictedChange,
         predictedPercent || 0,
         actualChange,
@@ -144,7 +144,7 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
        WHERE id = ? AND user_id = ?`,
       [
         stockInfo,
-        predictionDate,
+        predictionDate || null,
         predictedChange,
         predictedPercent || 0,
         actualChange,
@@ -229,7 +229,7 @@ router.post('/batch', authMiddleware, async (req: AuthRequest, res: Response) =>
           [
             req.userId,
             stockInfo || '',
-            predictionDate || '',
+            predictionDate || null,
             predictedChange,
             predictedPercent || 0,
             actualChange,
@@ -241,7 +241,7 @@ router.post('/batch', authMiddleware, async (req: AuthRequest, res: Response) =>
         batchResults.push({
           id: (result as any).lastID.toString(),
           stockInfo: stockInfo || '',
-          predictionDate: predictionDate || '',
+          predictionDate: predictionDate || undefined,
           predictedChange,
           predictedPercent: predictedPercent || 0,
           actualChange,
