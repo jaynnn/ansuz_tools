@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tool } from '../types';
+import type { Tool } from '../types/index';
 import '../styles/Modal.css';
 
 interface AddToolModalProps {

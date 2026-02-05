@@ -1,14 +1,36 @@
 import sqlite3 from 'sqlite3';
-import { promisify } from 'util';
 import path from 'path';
 
 const dbPath = process.env.DATABASE_PATH || './database.sqlite';
 const db = new sqlite3.Database(dbPath);
 
-// Promisify database methods
-const dbRun = promisify(db.run.bind(db));
-const dbGet = promisify(db.get.bind(db));
-const dbAll = promisify(db.all.bind(db));
+// Promisified database methods with proper typing
+export const dbRun = (sql: string, params: any[] = []): Promise<sqlite3.RunResult> => {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function(err) {
+      if (err) reject(err);
+      else resolve(this);
+    });
+  });
+};
+
+export const dbGet = (sql: string, params: any[] = []): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+};
+
+export const dbAll = (sql: string, params: any[] = []): Promise<any[]> => {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+};
 
 export const initDatabase = async () => {
   try {
@@ -44,4 +66,4 @@ export const initDatabase = async () => {
   }
 };
 
-export { db, dbRun, dbGet, dbAll };
+export { db };

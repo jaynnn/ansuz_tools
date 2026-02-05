@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tool } from '../types';
+import type { Tool } from '../types/index';
 import '../styles/ToolCard.css';
 
 interface ToolCardProps {

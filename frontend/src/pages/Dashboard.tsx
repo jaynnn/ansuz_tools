@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Tool } from '../types';
+import type { Tool } from '../types/index';
 import { toolsAPI } from '../api';
 import ToolCard from '../components/ToolCard';
 import AddToolModal from '../components/AddToolModal';
