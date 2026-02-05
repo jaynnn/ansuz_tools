@@ -32,6 +32,18 @@ export const dbAll = (sql: string, params: any[] = []): Promise<any[]> => {
   });
 };
 
+export const dbTransaction = async <T>(callback: () => Promise<T>): Promise<T> => {
+  await dbRun('BEGIN TRANSACTION');
+  try {
+    const result = await callback();
+    await dbRun('COMMIT');
+    return result;
+  } catch (error) {
+    await dbRun('ROLLBACK');
+    throw error;
+  }
+};
+
 export const initDatabase = async () => {
   try {
     // Create users table

@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { dbRun, dbGet, dbAll } from '../utils/database';
+import { dbRun, dbGet, dbAll, dbTransaction } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -72,8 +72,8 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       isComplete,
     } = req.body;
 
-    if (!stockInfo || !predictedChange || !actualChange) {
-      return res.status(400).json({ error: 'Stock info, predicted change, and actual change are required' });
+    if (!predictedChange || !actualChange) {
+      return res.status(400).json({ error: 'Predicted change and actual change are required' });
     }
 
     const result = await dbRun(
@@ -82,7 +82,7 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         req.userId,
-        stockInfo,
+        stockInfo || '',
         predictedChange,
         predictedPercent || 0,
         actualChange,
@@ -200,43 +200,47 @@ router.post('/batch', authMiddleware, async (req: AuthRequest, res: Response) =>
       return res.status(400).json({ error: 'Predictions must be an array' });
     }
 
-    const results = [];
-
-    for (const pred of predictions) {
-      const {
-        stockInfo,
-        predictedChange,
-        predictedPercent,
-        actualChange,
-        actualPercent,
-        isComplete,
-      } = pred;
-
-      const result = await dbRun(
-        `INSERT INTO stock_predictions 
-          (user_id, stock_info, predicted_change, predicted_percent, actual_change, actual_percent, is_complete) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          req.userId,
+    const results = await dbTransaction(async () => {
+      const batchResults = [];
+      
+      for (const pred of predictions) {
+        const {
           stockInfo,
           predictedChange,
-          predictedPercent || 0,
+          predictedPercent,
           actualChange,
-          actualPercent || 0,
-          isComplete ? 1 : 0,
-        ]
-      );
+          actualPercent,
+          isComplete,
+        } = pred;
 
-      results.push({
-        id: (result as any).lastID.toString(),
-        stockInfo,
-        predictedChange,
-        predictedPercent: predictedPercent || 0,
-        actualChange,
-        actualPercent: actualPercent || 0,
-        isComplete: isComplete || false,
-      });
-    }
+        const result = await dbRun(
+          `INSERT INTO stock_predictions 
+            (user_id, stock_info, predicted_change, predicted_percent, actual_change, actual_percent, is_complete) 
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            req.userId,
+            stockInfo || '',
+            predictedChange,
+            predictedPercent || 0,
+            actualChange,
+            actualPercent || 0,
+            isComplete ? 1 : 0,
+          ]
+        );
+
+        batchResults.push({
+          id: (result as any).lastID.toString(),
+          stockInfo: stockInfo || '',
+          predictedChange,
+          predictedPercent: predictedPercent || 0,
+          actualChange,
+          actualPercent: actualPercent || 0,
+          isComplete: isComplete || false,
+        });
+      }
+      
+      return batchResults;
+    });
 
     res.status(201).json({
       message: `${results.length} stock predictions created successfully`,

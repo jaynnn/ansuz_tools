@@ -22,7 +22,7 @@ const StockPredictionPage: React.FC = () => {
         
         // Check if there's data in localStorage that needs to be migrated
         const localData = localStorage.getItem('stockPredictions');
-        if (localData && response.predictions.length === 0) {
+        if (localData) {
           try {
             const localPredictions = JSON.parse(localData);
             if (Array.isArray(localPredictions) && localPredictions.length > 0) {
@@ -95,42 +95,33 @@ const StockPredictionPage: React.FC = () => {
   };
 
   const updatePrediction = async (id: string, field: keyof StockPrediction, value: string | number) => {
+    const prediction = predictions.find(p => p.id === id);
+    if (!prediction) return;
+    
+    const updated = { ...prediction, [field]: value };
+    updated.isComplete = 
+      updated.stockInfo.trim() !== '' &&
+      updated.predictedPercent !== 0 &&
+      updated.actualPercent !== 0;
+
     // Update locally first for immediate feedback
-    setPredictions(predictions.map(p => {
-      if (p.id === id) {
-        const updated = { ...p, [field]: value };
-        // Check if all fields are filled
-        updated.isComplete = 
-          updated.stockInfo.trim() !== '' &&
-          updated.predictedPercent !== 0 &&
-          updated.actualPercent !== 0;
-        return updated;
-      }
-      return p;
-    }));
+    setPredictions(predictions.map(p => p.id === id ? updated : p));
 
     // Then update on server
     try {
-      const prediction = predictions.find(p => p.id === id);
-      if (prediction) {
-        const updated = { ...prediction, [field]: value };
-        updated.isComplete = 
-          updated.stockInfo.trim() !== '' &&
-          updated.predictedPercent !== 0 &&
-          updated.actualPercent !== 0;
-        
-        await stockPredictionsAPI.update(id, {
-          stockInfo: updated.stockInfo,
-          predictedChange: updated.predictedChange,
-          predictedPercent: updated.predictedPercent,
-          actualChange: updated.actualChange,
-          actualPercent: updated.actualPercent,
-          isComplete: updated.isComplete,
-        });
-      }
+      await stockPredictionsAPI.update(id, {
+        stockInfo: updated.stockInfo,
+        predictedChange: updated.predictedChange,
+        predictedPercent: updated.predictedPercent,
+        actualChange: updated.actualChange,
+        actualPercent: updated.actualPercent,
+        isComplete: updated.isComplete,
+      });
     } catch (err: any) {
       console.error('Failed to update prediction:', err);
-      // Optionally show error to user
+      // Revert local state on error
+      setPredictions(predictions.map(p => p.id === id ? prediction : p));
+      alert('Failed to save changes: ' + (err.response?.data?.error || 'Unknown error'));
     }
   };
 
