@@ -380,9 +380,9 @@ const StockPredictionPage: React.FC = () => {
             </div>
           </>
         )}
-          </>
-        )}
       </div>
+        </>
+      )}
     </div>
   );
 };
