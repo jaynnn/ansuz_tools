@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Tool } from '../types/index';
+import type { StockPrediction } from '../types/stock';
 
 // Use relative URL in production (when served by backend)
 // Use absolute URL in development (when using Vite dev server)
@@ -67,6 +68,39 @@ export const toolsAPI = {
   
   delete: async (id: number) => {
     const response = await api.delete(`/tools/${id}`);
+    return response.data;
+  },
+};
+
+// Stock Predictions APIs
+export const stockPredictionsAPI = {
+  getAll: async () => {
+    const response = await api.get('/stock-predictions');
+    return response.data;
+  },
+  
+  getById: async (id: string) => {
+    const response = await api.get(`/stock-predictions/${id}`);
+    return response.data;
+  },
+  
+  create: async (prediction: Omit<StockPrediction, 'id'>) => {
+    const response = await api.post('/stock-predictions', prediction);
+    return response.data;
+  },
+  
+  update: async (id: string, prediction: Omit<StockPrediction, 'id'>) => {
+    const response = await api.put(`/stock-predictions/${id}`, prediction);
+    return response.data;
+  },
+  
+  delete: async (id: string) => {
+    const response = await api.delete(`/stock-predictions/${id}`);
+    return response.data;
+  },
+  
+  batchCreate: async (predictions: Omit<StockPrediction, 'id'>[]) => {
+    const response = await api.post('/stock-predictions/batch', { predictions });
     return response.data;
   },
 };

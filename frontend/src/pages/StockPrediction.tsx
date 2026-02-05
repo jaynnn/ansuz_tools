@@ -1,27 +1,54 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { StockPrediction, StockAnalysis } from '../types/stock';
+import { stockPredictionsAPI } from '../api';
 import '../styles/StockPrediction.css';
 
 const StockPredictionPage: React.FC = () => {
-  const [predictions, setPredictions] = useState<StockPrediction[]>(() => {
-    // Load from localStorage on initial render
-    const saved = localStorage.getItem('stockPredictions');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (error) {
-        console.error('Failed to load predictions:', error);
-        return [];
-      }
-    }
-    return [];
-  });
+  const [predictions, setPredictions] = useState<StockPrediction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Save to localStorage whenever predictions change
+  // Load predictions from server
   useEffect(() => {
-    localStorage.setItem('stockPredictions', JSON.stringify(predictions));
-  }, [predictions]);
+    const loadPredictions = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Try to load from server first
+        const response = await stockPredictionsAPI.getAll();
+        setPredictions(response.predictions || []);
+        
+        // Check if there's data in localStorage that needs to be migrated
+        const localData = localStorage.getItem('stockPredictions');
+        if (localData && response.predictions.length === 0) {
+          try {
+            const localPredictions = JSON.parse(localData);
+            if (Array.isArray(localPredictions) && localPredictions.length > 0) {
+              // Migrate data to server
+              await stockPredictionsAPI.batchCreate(localPredictions);
+              // Reload from server
+              const newResponse = await stockPredictionsAPI.getAll();
+              setPredictions(newResponse.predictions || []);
+              // Clear localStorage after successful migration
+              localStorage.removeItem('stockPredictions');
+              console.log('Successfully migrated stock predictions to server');
+            }
+          } catch (migrationError) {
+            console.error('Failed to migrate localStorage data:', migrationError);
+          }
+        }
+      } catch (err: any) {
+        console.error('Failed to load predictions:', err);
+        setError(err.response?.data?.error || 'Failed to load predictions');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadPredictions();
+  }, []);
 
   // Calculate analysis from predictions using useMemo
   const analysis = useMemo<StockAnalysis>(() => {
@@ -48,20 +75,27 @@ const StockPredictionPage: React.FC = () => {
     };
   }, [predictions]);
 
-  const addNewRow = () => {
-    const newPrediction: StockPrediction = {
-      id: Date.now().toString(),
-      stockInfo: '',
-      predictedChange: 'up',
-      predictedPercent: 0,
-      actualChange: 'up',
-      actualPercent: 0,
-      isComplete: false,
-    };
-    setPredictions([...predictions, newPrediction]);
+  const addNewRow = async () => {
+    try {
+      const newPrediction = {
+        stockInfo: '',
+        predictedChange: 'up' as const,
+        predictedPercent: 0,
+        actualChange: 'up' as const,
+        actualPercent: 0,
+        isComplete: false,
+      };
+      
+      const response = await stockPredictionsAPI.create(newPrediction);
+      setPredictions([...predictions, response.prediction]);
+    } catch (err: any) {
+      console.error('Failed to create prediction:', err);
+      alert('Failed to create prediction: ' + (err.response?.data?.error || 'Unknown error'));
+    }
   };
 
-  const updatePrediction = (id: string, field: keyof StockPrediction, value: string | number) => {
+  const updatePrediction = async (id: string, field: keyof StockPrediction, value: string | number) => {
+    // Update locally first for immediate feedback
     setPredictions(predictions.map(p => {
       if (p.id === id) {
         const updated = { ...p, [field]: value };
@@ -74,11 +108,41 @@ const StockPredictionPage: React.FC = () => {
       }
       return p;
     }));
+
+    // Then update on server
+    try {
+      const prediction = predictions.find(p => p.id === id);
+      if (prediction) {
+        const updated = { ...prediction, [field]: value };
+        updated.isComplete = 
+          updated.stockInfo.trim() !== '' &&
+          updated.predictedPercent !== 0 &&
+          updated.actualPercent !== 0;
+        
+        await stockPredictionsAPI.update(id, {
+          stockInfo: updated.stockInfo,
+          predictedChange: updated.predictedChange,
+          predictedPercent: updated.predictedPercent,
+          actualChange: updated.actualChange,
+          actualPercent: updated.actualPercent,
+          isComplete: updated.isComplete,
+        });
+      }
+    } catch (err: any) {
+      console.error('Failed to update prediction:', err);
+      // Optionally show error to user
+    }
   };
 
-  const deleteRow = (id: string) => {
+  const deleteRow = async (id: string) => {
     if (window.confirm('确定要删除这条记录吗？')) {
-      setPredictions(predictions.filter(p => p.id !== id));
+      try {
+        await stockPredictionsAPI.delete(id);
+        setPredictions(predictions.filter(p => p.id !== id));
+      } catch (err: any) {
+        console.error('Failed to delete prediction:', err);
+        alert('Failed to delete prediction: ' + (err.response?.data?.error || 'Unknown error'));
+      }
     }
   };
 
@@ -111,8 +175,14 @@ const StockPredictionPage: React.FC = () => {
         </button>
       </header>
 
-      {/* Data Source Section - 2/3 of screen */}
-      <div className="data-section">
+      {loading ? (
+        <div className="loading-message">加载中...</div>
+      ) : error ? (
+        <div className="error-message">错误: {error}</div>
+      ) : (
+        <>
+          {/* Data Source Section - 2/3 of screen */}
+          <div className="data-section">
         <div className="section-header">
           <h2>数据录入</h2>
           <button onClick={addNewRow} className="btn-add">
@@ -308,6 +378,8 @@ const StockPredictionPage: React.FC = () => {
                 </div>
               </div>
             </div>
+          </>
+        )}
           </>
         )}
       </div>
