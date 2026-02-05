@@ -5,6 +5,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import StockPrediction from './pages/StockPrediction';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token } = useAuth();
@@ -24,6 +25,14 @@ const App: React.FC = () => {
               element={
                 <PrivateRoute>
                   <Dashboard />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/stock-prediction"
+              element={
+                <PrivateRoute>
+                  <StockPrediction />
                 </PrivateRoute>
               }
             />
