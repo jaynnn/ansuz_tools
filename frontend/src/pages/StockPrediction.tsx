@@ -1,38 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { StockPrediction, StockAnalysis } from '../types/stock';
 import '../styles/StockPrediction.css';
 
 const StockPredictionPage: React.FC = () => {
-  const [predictions, setPredictions] = useState<StockPrediction[]>([]);
-  const [analysis, setAnalysis] = useState<StockAnalysis>({
-    totalPredictions: 0,
-    correctPredictions: 0,
-    wrongPredictions: 0,
-    accuracyRate: 0,
-    averagePredictedPercent: 0,
-    averageActualPercent: 0,
-  });
-
-  // Load from localStorage on mount
-  useEffect(() => {
+  const [predictions, setPredictions] = useState<StockPrediction[]>(() => {
+    // Load from localStorage on initial render
     const saved = localStorage.getItem('stockPredictions');
     if (saved) {
       try {
-        setPredictions(JSON.parse(saved));
+        return JSON.parse(saved);
       } catch (error) {
         console.error('Failed to load predictions:', error);
+        return [];
       }
     }
-  }, []);
+    return [];
+  });
 
-  // Save to localStorage and recalculate analysis whenever predictions change
+  // Save to localStorage whenever predictions change
   useEffect(() => {
     localStorage.setItem('stockPredictions', JSON.stringify(predictions));
-    calculateAnalysis();
   }, [predictions]);
 
-  const calculateAnalysis = () => {
+  // Calculate analysis from predictions using useMemo
+  const analysis = useMemo<StockAnalysis>(() => {
     const completePredictions = predictions.filter(p => p.isComplete);
     const correct = completePredictions.filter(
       p => p.predictedChange === p.actualChange
@@ -46,15 +38,15 @@ const StockPredictionPage: React.FC = () => {
       (sum, p) => sum + Math.abs(p.actualPercent), 0
     );
 
-    setAnalysis({
+    return {
       totalPredictions: completePredictions.length,
       correctPredictions: correct,
       wrongPredictions: wrong,
       accuracyRate: completePredictions.length > 0 ? (correct / completePredictions.length) * 100 : 0,
       averagePredictedPercent: completePredictions.length > 0 ? totalPredictedPercent / completePredictions.length : 0,
       averageActualPercent: completePredictions.length > 0 ? totalActualPercent / completePredictions.length : 0,
-    });
-  };
+    };
+  }, [predictions]);
 
   const addNewRow = () => {
     const newPrediction: StockPrediction = {
@@ -69,7 +61,7 @@ const StockPredictionPage: React.FC = () => {
     setPredictions([...predictions, newPrediction]);
   };
 
-  const updatePrediction = (id: string, field: keyof StockPrediction, value: any) => {
+  const updatePrediction = (id: string, field: keyof StockPrediction, value: string | number) => {
     setPredictions(predictions.map(p => {
       if (p.id === id) {
         const updated = { ...p, [field]: value };
