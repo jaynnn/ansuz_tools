@@ -12,7 +12,7 @@ if [ ! -f "ansuz.pid" ]; then
 fi
 
 PID=$(cat ansuz.pid)
-if ps -p $PID > /dev/null 2>&1; then
+if ps -p "$PID" > /dev/null 2>&1; then
     echo "正在停止 Ansuz Tools (PID: $PID)..."
     kill $PID
     rm ansuz.pid

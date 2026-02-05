@@ -9,7 +9,7 @@ cd "$SCRIPT_DIR/backend"
 # 检查是否已经在运行
 if [ -f "ansuz.pid" ]; then
     PID=$(cat ansuz.pid)
-    if ps -p $PID > /dev/null 2>&1; then
+    if ps -p "$PID" > /dev/null 2>&1; then
         echo "Ansuz Tools 已经在运行 (PID: $PID)"
         exit 1
     fi

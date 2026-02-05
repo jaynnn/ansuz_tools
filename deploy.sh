@@ -27,7 +27,7 @@ print_header() {
 
 # 检查命令是否存在
 check_command() {
-    if ! command -v $1 &> /dev/null; then
+    if ! command -v "$1" &> /dev/null; then
         print_message "错误: $1 未安装，请先安装 $1" "$RED"
         exit 1
     fi
@@ -153,7 +153,7 @@ cd "$SCRIPT_DIR/backend"
 # 检查是否已经在运行
 if [ -f "ansuz.pid" ]; then
     PID=$(cat ansuz.pid)
-    if ps -p $PID > /dev/null 2>&1; then
+    if ps -p "$PID" > /dev/null 2>&1; then
         echo "Ansuz Tools 已经在运行 (PID: $PID)"
         exit 1
     fi
@@ -188,7 +188,7 @@ if [ ! -f "ansuz.pid" ]; then
 fi
 
 PID=$(cat ansuz.pid)
-if ps -p $PID > /dev/null 2>&1; then
+if ps -p "$PID" > /dev/null 2>&1; then
     echo "正在停止 Ansuz Tools (PID: $PID)..."
     kill $PID
     rm ansuz.pid
