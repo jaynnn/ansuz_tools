@@ -104,9 +104,10 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd }) => {
           <div className="form-group">
             <label>URL</label>
             <input
-              type="url"
+              type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com 或 /internal-route"
             />
           </div>
           <div className="form-group">
