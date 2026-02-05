@@ -27,7 +27,7 @@ print_header() {
 
 # 检查命令是否存在
 check_command() {
-    if ! command -v "$1" &> /dev/null; then
+    if ! command -v "$1" >/dev/null 2>&1; then
         print_message "错误: $1 未安装，请先安装 $1" "$RED"
         exit 1
     fi
