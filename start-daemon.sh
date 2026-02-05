@@ -3,7 +3,7 @@
 # 以守护进程方式启动 Ansuz Tools
 
 # 获取脚本所在目录
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/backend"
 
 # 检查是否已经在运行
@@ -13,6 +13,18 @@ if [ -f "ansuz.pid" ]; then
         echo "Ansuz Tools 已经在运行 (PID: $PID)"
         exit 1
     fi
+fi
+
+# 检查并安装依赖
+if [ ! -d "node_modules" ]; then
+  echo "正在安装依赖..."
+  npm install
+fi
+
+# 构建后端代码
+if [ ! -d "dist" ]; then
+  echo "正在构建后端代码..."
+  npm run build
 fi
 
 # 启动后端服务（后台运行）

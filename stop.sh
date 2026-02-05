@@ -3,7 +3,7 @@
 # 停止 Ansuz Tools 服务
 
 # 获取脚本所在目录
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/backend"
 
 if [ ! -f "ansuz.pid" ]; then
