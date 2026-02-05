@@ -65,7 +65,7 @@ if [ ! -f "backend/.env" ]; then
     JWT_SECRET=$(openssl rand -base64 32)
     
     cat > backend/.env << EOF
-PORT=3000
+PORT=4000
 JWT_SECRET=$JWT_SECRET
 DATABASE_PATH=./database.sqlite
 EOF
@@ -227,14 +227,14 @@ if [ -z "$IP_ADDRESS" ]; then
 fi
 
 print_message "本地访问：" "$GREEN"
-echo "  http://localhost:3000"
+echo "  http://localhost:4000"
 echo ""
 print_message "局域网访问：" "$GREEN"
-echo "  http://${IP_ADDRESS}:3000"
+echo "  http://${IP_ADDRESS}:4000"
 echo ""
 print_message "公网访问：" "$GREEN"
-echo "  需要配置防火墙允许 3000 端口访问"
-echo "  http://<公网IP>:3000"
+echo "  需要配置防火墙允许 4000 端口访问"
+echo "  http://<公网IP>:4000"
 echo ""
 
 print_message "=== 生产环境建议 ===" "$YELLOW"

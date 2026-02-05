@@ -4,7 +4,7 @@ import type { Tool } from '../types/index';
 // Use relative URL in production (when served by backend)
 // Use absolute URL in development (when using Vite dev server)
 const API_BASE_URL = import.meta.env.DEV 
-  ? 'http://localhost:3000/api'
+  ? 'http://localhost:4000/api'
   : '/api';
 
 const api = axios.create({
