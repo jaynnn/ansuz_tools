@@ -107,15 +107,15 @@ cd ..
 print_header "步骤 6: 配置静态文件服务"
 
 # 检查 backend/src/index.ts 是否已配置静态文件服务
-if ! grep -q "express.static.*frontend.*dist" backend/src/index.ts 2>/dev/null; then
+if grep -q "express.static" backend/src/index.ts 2>/dev/null && grep -q "frontend.*dist" backend/src/index.ts 2>/dev/null; then
+    print_message "✓ 静态文件服务已配置" "$GREEN"
+else
     print_message "需要手动配置后端服务前端静态文件" "$YELLOW"
     print_message "请在 backend/src/index.ts 中添加以下代码：" "$YELLOW"
     echo ""
     echo "  app.use(express.static(path.join(__dirname, '../../frontend/dist')));"
     echo ""
     print_message "注意：这一步需要手动完成" "$RED"
-else
-    print_message "✓ 静态文件服务已配置" "$GREEN"
 fi
 
 # 步骤 7: 创建启动脚本

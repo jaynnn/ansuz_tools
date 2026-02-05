@@ -35,8 +35,8 @@ app.get('/api/health', (req, res) => {
 const frontendDistPath = path.join(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDistPath));
 
-// Fallback to index.html for client-side routing
-app.get('*', (req, res) => {
+// Fallback to index.html for client-side routing (must be last route)
+app.use((req, res, next) => {
   // Skip API routes
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API endpoint not found' });

@@ -143,3 +143,112 @@ ansuz_tools/
 - `PUT /api/tools/:id` - 更新工具
 - `DELETE /api/tools/:id` - 删除工具
 
+## 生产环境部署
+
+### Linux 一键部署
+
+我们提供了一键部署脚本，可以快速在 Linux 服务器上部署应用：
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/jaynnn/ansuz_tools.git
+cd ansuz_tools
+
+# 2. 运行部署脚本
+chmod +x deploy.sh
+./deploy.sh
+```
+
+部署脚本会自动完成以下操作：
+- 检查系统依赖（Node.js >= 16）
+- 生成安全的 JWT_SECRET 并创建 `.env` 文件
+- 安装前后端依赖
+- 构建前后端代码
+- 创建启动和停止脚本
+
+### 启动服务
+
+部署完成后，可以使用以下方式启动服务：
+
+**方式 1: 前台运行（推荐用于测试）**
+```bash
+./start.sh
+```
+
+**方式 2: 后台运行（推荐用于生产环境）**
+```bash
+./start-daemon.sh
+```
+
+**停止后台服务**
+```bash
+./stop.sh
+```
+
+### 访问应用
+
+- **本地访问**：http://localhost:3000
+- **局域网访问**：http://\<服务器IP\>:3000
+- **公网访问**：需要配置防火墙允许 3000 端口访问
+
+### 生产环境建议
+
+1. **进程管理**：使用 PM2 或 systemd 管理服务进程
+2. **反向代理**：配置 Nginx 作为反向代理
+3. **HTTPS**：启用 HTTPS（推荐使用 Let's Encrypt）
+4. **数据备份**：定期备份 `backend/database.sqlite` 数据库文件
+5. **安全性**：
+   - 确保 `backend/.env` 中的 JWT_SECRET 安全保密
+   - 配置防火墙规则
+   - 使用强密码
+6. **监控**：设置应用监控和日志收集
+
+### 使用 PM2 管理（可选）
+
+如果想使用 PM2 管理进程，可以按以下步骤操作：
+
+```bash
+# 安装 PM2
+npm install -g pm2
+
+# 启动应用
+cd backend
+pm2 start dist/index.js --name ansuz_tools
+
+# 设置开机自启
+pm2 startup
+pm2 save
+
+# 查看状态
+pm2 status
+
+# 查看日志
+pm2 logs ansuz_tools
+
+# 停止应用
+pm2 stop ansuz_tools
+```
+
+### 使用 Nginx 反向代理（可选）
+
+Nginx 配置示例：
+
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
