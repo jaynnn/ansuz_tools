@@ -51,7 +51,7 @@ cp .env.example .env
 
 编辑 `.env` 文件，设置一个安全的 JWT 密钥：
 ```
-PORT=3000
+PORT=4000
 JWT_SECRET=your-secure-random-string-here
 DATABASE_PATH=./database.sqlite
 ```
@@ -63,7 +63,7 @@ DATABASE_PATH=./database.sqlite
 npm run dev
 ```
 
-后端服务将在 http://localhost:3000 启动
+后端服务将在 http://localhost:4000 启动
 
 ### 前端设置
 
@@ -187,9 +187,9 @@ chmod +x deploy.sh
 
 ### 访问应用
 
-- **本地访问**：http://localhost:3000
-- **局域网访问**：http://\<服务器IP\>:3000
-- **公网访问**：需要配置防火墙允许 3000 端口访问
+- **本地访问**：http://localhost:4000
+- **局域网访问**：http://\<服务器IP\>:4000
+- **公网访问**：需要配置防火墙允许 4000 端口访问
 
 ### 生产环境建议
 
@@ -239,7 +239,7 @@ server {
     server_name yourdomain.com;
 
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:4000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
