@@ -28,9 +28,14 @@ export const register = async (req: Request, res: Response) => {
     await user.save();
 
     // Generate token
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET is not configured');
+    }
+
     const token = jwt.sign(
       { userId: user._id },
-      process.env.JWT_SECRET || 'default-secret',
+      jwtSecret,
       { expiresIn: '7d' }
     );
 
@@ -64,9 +69,14 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // Generate token
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET is not configured');
+    }
+
     const token = jwt.sign(
       { userId: user._id },
-      process.env.JWT_SECRET || 'default-secret',
+      jwtSecret,
       { expiresIn: '7d' }
     );
 
