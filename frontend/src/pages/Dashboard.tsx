@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import type { Tool } from '../types/index';
@@ -18,7 +17,6 @@ const Dashboard: React.FC = () => {
   const [newNickname, setNewNickname] = useState('');
   const { user, logout, updateNickname } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const navigate = useNavigate();
 
   useEffect(() => {
     fetchTools();
