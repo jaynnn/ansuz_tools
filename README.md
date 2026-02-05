@@ -1,7 +1,232 @@
 # ansuz_tools
 一个个性化工具库
 
-> **重要**: 开发人员在进行任何开发工作前，请先阅读 [开发规范.md](./开发规范.md) 文档，了解项目的开发约束和最佳实践。
+---
+
+## 开发规范
+
+> 本部分定义了 ansuz_tools 项目的开发规范和约束，所有开发者在对本项目执行任何指令前必须阅读并遵守以下规范。
+
+### 1. 工具代码隔离原则
+
+**要求**：新增任何工具时，都要保证工具代码之间清晰隔离。
+
+#### 实施细则：
+- 每个新增的工具模块应独立放置在单独的文件或目录中
+- 工具之间的依赖关系应通过明确的接口定义
+- 避免工具模块之间的循环依赖
+- 使用依赖注入模式降低模块间的耦合度
+- 后端工具放置在 `backend/src/utils/` 目录下，每个工具一个文件
+- 前端组件放置在 `frontend/src/components/` 目录下，遵循单一职责原则
+
+#### 示例：
+```
+✓ 正确：backend/src/utils/emailService.ts
+✓ 正确：backend/src/utils/fileUpload.ts
+✗ 错误：backend/src/utils/混合各种功能的utils.ts
+```
+
+### 2. 配置管理规范
+
+**要求**：所有模型参数、API密钥、第三方服务密钥必须通过配置文件或环境变量管理，严禁硬编码。
+
+#### 实施细则：
+- 所有敏感信息必须存储在 `.env` 文件中，不得提交到版本控制系统
+- 项目根目录和各子项目目录应提供 `.env.example` 文件作为配置模板
+- 配置信息通过 `process.env` 访问
+- 使用 `dotenv` 库加载环境变量
+- 所有第三方 API 密钥、数据库连接字符串、JWT 密钥等必须配置化
+
+#### 禁止的做法：
+```typescript
+// ✗ 错误 - 硬编码
+const API_KEY = "sk-1234567890abcdef";
+const JWT_SECRET = "my-secret-key";
+
+// ✓ 正确 - 使用环境变量
+const API_KEY = process.env.API_KEY;
+const JWT_SECRET = process.env.JWT_SECRET;
+```
+
+#### 必需的环境变量：
+- `JWT_SECRET`: JWT 令牌签名密钥
+- `PORT`: 服务端口
+- `DATABASE_PATH`: 数据库文件路径
+- 其他第三方服务的 API 密钥和配置参数
+
+### 3. 外部化配置和依赖管理
+
+**要求**：外部化配置，明确依赖关系。
+
+#### 实施细则：
+- 使用 `package.json` 明确声明所有项目依赖
+- 依赖版本应使用精确版本号或兼容版本号（避免使用 `*` 或 `latest`）
+- 配置文件应分层管理：开发环境、测试环境、生产环境
+- 数据库连接、服务端点等外部依赖应通过配置注入
+- 使用 TypeScript 接口定义配置对象的类型
+
+#### 依赖管理原则：
+- 定期审查和更新依赖包，修复已知安全漏洞
+- 避免引入功能重复的依赖包
+- 优先使用维护活跃、社区支持好的依赖包
+- 记录依赖变更的原因（通过 commit message）
+
+### 4. 最小权限原则和访问隔离
+
+**要求**：最小权限原则和访问隔离。
+
+#### 实施细则：
+- API 路由应实施适当的身份认证和授权检查
+- 用户只能访问和修改自己的数据
+- 使用中间件进行统一的权限检查
+- 数据库操作应使用参数化查询，防止 SQL 注入
+- 文件系统操作应限制在指定目录内
+- 敏感操作（如删除用户、修改配置）应有额外的权限验证
+
+#### 访问控制实现：
+```typescript
+// 使用认证中间件保护路由
+router.get('/api/tools', authenticateToken, getUserTools);
+router.delete('/api/tools/:id', authenticateToken, deleteUserTool);
+
+// 确保用户只能操作自己的数据
+const tool = await db.get('SELECT * FROM tools WHERE id = ? AND user_id = ?', [toolId, userId]);
+```
+
+### 5. 系统运行状态透明化和可追溯
+
+**要求**：系统运行状态透明化和可追溯。
+
+#### 实施细则：
+- 实现统一的日志记录机制
+- 日志应包含时间戳、日志级别、操作类型、用户标识等信息
+- 记录关键操作（登录、数据修改、错误等）
+- 使用结构化日志格式（JSON）便于分析
+- 错误应包含足够的上下文信息便于调试
+- 生产环境应配置日志轮转，避免日志文件过大
+
+#### 日志级别：
+- `ERROR`: 错误信息，需要立即关注
+- `WARN`: 警告信息，可能存在问题
+- `INFO`: 一般信息，记录关键操作
+- `DEBUG`: 调试信息，仅在开发环境使用
+
+#### 日志示例：
+```typescript
+logger.info({
+  action: 'user_login',
+  userId: user.id,
+  timestamp: new Date().toISOString(),
+  ip: req.ip
+});
+
+logger.error({
+  action: 'database_error',
+  error: error.message,
+  stack: error.stack,
+  timestamp: new Date().toISOString()
+});
+```
+
+### 6. 异步化和资源优化
+
+**要求**：异步化，避免阻塞，充分利用资源。
+
+#### 实施细则：
+- 所有 I/O 操作（数据库、文件系统、网络请求）必须使用异步方式
+- 使用 `async/await` 语法处理异步操作
+- 避免在请求处理中使用同步阻塞操作
+- 对于耗时操作，考虑使用后台任务队列
+- 数据库查询应使用连接池
+- 实现适当的超时机制，防止请求无限等待
+
+#### 异步编程最佳实践：
+```typescript
+// ✓ 正确 - 使用 async/await
+async function getTools(userId: number) {
+  const tools = await db.all('SELECT * FROM tools WHERE user_id = ?', [userId]);
+  return tools;
+}
+
+// ✗ 错误 - 使用同步操作
+function getToolsSync(userId: number) {
+  const data = fs.readFileSync('tools.json'); // 阻塞操作
+  return JSON.parse(data);
+}
+
+// ✓ 正确 - 并行执行多个异步操作
+const [tools, user, stats] = await Promise.all([
+  getTools(userId),
+  getUser(userId),
+  getStats(userId)
+]);
+```
+
+### 7. 测试和模拟环境支持
+
+**要求**：支持单元测试、集成测试和模拟环境。
+
+#### 实施细则：
+- 代码应编写为可测试的结构（依赖注入、接口抽象）
+- 每个功能模块应有对应的单元测试
+- 关键业务流程应有集成测试覆盖
+- 使用 Mock 对象模拟外部依赖（数据库、API、文件系统）
+- 测试环境应使用独立的配置和数据
+- 测试代码应放置在 `__tests__` 或 `*.test.ts` 文件中
+
+#### 测试框架建议：
+- 单元测试：Jest / Vitest
+- 集成测试：Supertest (API 测试)
+- E2E 测试：Playwright / Cypress
+
+#### 测试覆盖目标：
+- 核心业务逻辑：> 80%
+- 工具函数：> 90%
+- API 端点：主要流程 100%
+
+#### 测试结构示例：
+```typescript
+// tools.test.ts
+describe('Tool Management', () => {
+  beforeEach(async () => {
+    // 设置测试数据库
+    await setupTestDatabase();
+  });
+
+  afterEach(async () => {
+    // 清理测试数据
+    await cleanupTestDatabase();
+  });
+
+  it('should create a new tool', async () => {
+    const tool = await createTool(mockToolData);
+    expect(tool.id).toBeDefined();
+    expect(tool.name).toBe(mockToolData.name);
+  });
+
+  it('should reject unauthorized access', async () => {
+    const response = await request(app)
+      .get('/api/tools')
+      .expect(401);
+  });
+});
+```
+
+### 规范执行
+
+#### 代码审查检查清单：
+- [ ] 新增工具代码是否清晰隔离？
+- [ ] 是否存在硬编码的密钥或配置？
+- [ ] 依赖关系是否明确声明？
+- [ ] 是否实施了适当的权限检查？
+- [ ] 关键操作是否有日志记录？
+- [ ] I/O 操作是否使用异步方式？
+- [ ] 是否编写了相应的测试？
+
+#### 违规处理：
+违反本规范的代码提交应被拒绝，直到问题得到修复。团队成员应相互监督，确保规范得到严格执行。
+
+---
 
 ## 功能特性
 
