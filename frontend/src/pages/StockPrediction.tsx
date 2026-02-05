@@ -77,8 +77,12 @@ const StockPredictionPage: React.FC = () => {
 
   const addNewRow = async () => {
     try {
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date().toISOString().split('T')[0];
+      
       const newPrediction = {
         stockInfo: '',
+        predictionDate: today,
         predictedChange: 'up' as const,
         predictedPercent: 0,
         actualChange: 'up' as const,
@@ -111,6 +115,7 @@ const StockPredictionPage: React.FC = () => {
     try {
       await stockPredictionsAPI.update(id, {
         stockInfo: updated.stockInfo,
+        predictionDate: updated.predictionDate,
         predictedChange: updated.predictedChange,
         predictedPercent: updated.predictedPercent,
         actualChange: updated.actualChange,
@@ -151,11 +156,18 @@ const StockPredictionPage: React.FC = () => {
   const barData = predictions
     .filter(p => p.isComplete)
     .slice(-10) // Show last 10 predictions
-    .map((p, index) => ({
-      name: p.stockInfo.substring(0, 10) || `预测${index + 1}`,
-      预测变化: p.predictedChange === 'up' ? p.predictedPercent : -p.predictedPercent,
-      实际变化: p.actualChange === 'up' ? p.actualPercent : -p.actualPercent,
-    }));
+    .map((p, index) => {
+      // Format date for display
+      const dateDisplay = p.predictionDate 
+        ? new Date(p.predictionDate).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+        : `${index + 1}`;
+      
+      return {
+        name: dateDisplay,
+        预测变化: p.predictedChange === 'up' ? p.predictedPercent : -p.predictedPercent,
+        实际变化: p.actualChange === 'up' ? p.actualPercent : -p.actualPercent,
+      };
+    });
 
   return (
     <div className="stock-prediction-page">
@@ -185,6 +197,7 @@ const StockPredictionPage: React.FC = () => {
           <table className="predictions-table">
             <thead>
               <tr>
+                <th>日期</th>
                 <th>股票信息</th>
                 <th>预测变化</th>
                 <th>预测百分比(%)</th>
@@ -196,13 +209,21 @@ const StockPredictionPage: React.FC = () => {
             <tbody>
               {predictions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="empty-message">
+                  <td colSpan={7} className="empty-message">
                     暂无数据，点击"添加新记录"开始预测吧！
                   </td>
                 </tr>
               ) : (
                 predictions.map(prediction => (
                   <tr key={prediction.id} className={getRowClass(prediction)}>
+                    <td>
+                      <input
+                        type="date"
+                        value={prediction.predictionDate || ''}
+                        onChange={(e) => updatePrediction(prediction.id, 'predictionDate', e.target.value)}
+                        className="input-field date-field"
+                      />
+                    </td>
                     <td>
                       <input
                         type="text"
