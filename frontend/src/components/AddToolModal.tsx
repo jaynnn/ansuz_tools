@@ -23,7 +23,6 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd }) => {
   const [url, setUrl] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
-  const [showPredefined, setShowPredefined] = useState(true);
 
   const handleAddTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
@@ -41,7 +40,6 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd }) => {
     setDescription(predefinedTool.description);
     setUrl(predefinedTool.url);
     setTags(predefinedTool.tags);
-    setShowPredefined(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -57,7 +55,7 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd }) => {
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
         
-        {showPredefined && PREDEFINED_TOOLS.length > 0 && (
+        {PREDEFINED_TOOLS.length > 0 && (
           <div className="predefined-tools-section">
             <h3>快速添加内置工具</h3>
             <div className="predefined-tools-list">
