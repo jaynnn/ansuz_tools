@@ -1,5 +1,6 @@
 import sqlite3 from 'sqlite3';
 import path from 'path';
+import { logInfo, logError } from './logger';
 
 const dbPath = process.env.DATABASE_PATH || './database.sqlite';
 const db = new sqlite3.Database(dbPath);
@@ -46,6 +47,8 @@ export const dbTransaction = async <T>(callback: () => Promise<T>): Promise<T> =
 
 export const initDatabase = async () => {
   try {
+    logInfo('database_init_start', { dbPath });
+    
     // Create users table
     await dbRun(`
       CREATE TABLE IF NOT EXISTS users (
@@ -90,8 +93,10 @@ export const initDatabase = async () => {
     `);
 
     console.log('Database initialized successfully');
+    logInfo('database_init_success', { dbPath });
   } catch (error) {
     console.error('Error initializing database:', error);
+    logError('database_init_error', error as Error, { dbPath });
     throw error;
   }
 };

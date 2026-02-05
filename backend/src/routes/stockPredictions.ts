@@ -1,12 +1,15 @@
 import { Router, Response } from 'express';
 import { dbRun, dbGet, dbAll, dbTransaction } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { logInfo, logError, logWarn } from '../utils/logger';
 
 const router = Router();
 
 // Get all stock predictions for the current user
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
+    logInfo('get_stock_predictions', { userId: req.userId });
+    
     const predictions = await dbAll(
       'SELECT * FROM stock_predictions WHERE user_id = ? ORDER BY created_at DESC',
       [req.userId]
@@ -24,9 +27,13 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       isComplete: p.is_complete === 1,
     }));
 
+    logInfo('get_stock_predictions_success', { 
+      userId: req.userId, 
+      count: formattedPredictions.length 
+    });
     res.json({ predictions: formattedPredictions });
   } catch (error) {
-    console.error('Get stock predictions error:', error);
+    logError('get_stock_predictions_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -34,12 +41,18 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
 // Get a specific stock prediction
 router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
+    logInfo('get_stock_prediction', { userId: req.userId, predictionId: req.params.id });
+    
     const prediction: any = await dbGet(
       'SELECT * FROM stock_predictions WHERE id = ? AND user_id = ?',
       [req.params.id, req.userId]
     );
     
     if (!prediction) {
+      logWarn('get_stock_prediction_not_found', { 
+        userId: req.userId, 
+        predictionId: req.params.id 
+      });
       return res.status(404).json({ error: 'Stock prediction not found' });
     }
 
@@ -55,9 +68,16 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
       isComplete: prediction.is_complete === 1,
     };
 
+    logInfo('get_stock_prediction_success', { 
+      userId: req.userId, 
+      predictionId: req.params.id 
+    });
     res.json({ prediction: formattedPrediction });
   } catch (error) {
-    console.error('Get stock prediction error:', error);
+    logError('get_stock_prediction_error', error as Error, { 
+      userId: req.userId, 
+      predictionId: req.params.id 
+    });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -75,7 +95,19 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       isComplete,
     } = req.body;
 
+    logInfo('create_stock_prediction', { 
+      userId: req.userId,
+      requestBody: req.body
+    });
+
     if (!predictedChange || !actualChange) {
+      logWarn('create_stock_prediction_validation_failed', {
+        userId: req.userId,
+        missingFields: {
+          predictedChange: !predictedChange,
+          actualChange: !actualChange
+        }
+      });
       return res.status(400).json({ error: 'Predicted change and actual change are required' });
     }
 
@@ -95,21 +127,31 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       ]
     );
 
+    const createdPrediction = {
+      id: (result as any).lastID.toString(),
+      stockInfo,
+      predictionDate,
+      predictedChange,
+      predictedPercent: predictedPercent || 0,
+      actualChange,
+      actualPercent: actualPercent || 0,
+      isComplete: isComplete || false,
+    };
+
+    logInfo('create_stock_prediction_success', { 
+      userId: req.userId, 
+      predictionId: createdPrediction.id 
+    });
+
     res.status(201).json({
       message: 'Stock prediction created successfully',
-      prediction: {
-        id: (result as any).lastID.toString(),
-        stockInfo,
-        predictionDate,
-        predictedChange,
-        predictedPercent: predictedPercent || 0,
-        actualChange,
-        actualPercent: actualPercent || 0,
-        isComplete: isComplete || false,
-      }
+      prediction: createdPrediction
     });
   } catch (error) {
-    console.error('Create stock prediction error:', error);
+    logError('create_stock_prediction_error', error as Error, { 
+      userId: req.userId,
+      requestBody: req.body
+    });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -127,6 +169,25 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
       isComplete,
     } = req.body;
 
+    logInfo('update_stock_prediction', { 
+      userId: req.userId,
+      predictionId: req.params.id,
+      requestBody: req.body
+    });
+
+    // Validate required fields
+    if (!predictedChange || !actualChange) {
+      logWarn('update_stock_prediction_validation_failed', {
+        userId: req.userId,
+        predictionId: req.params.id,
+        missingFields: {
+          predictedChange: !predictedChange,
+          actualChange: !actualChange
+        }
+      });
+      return res.status(400).json({ error: 'Predicted change and actual change are required' });
+    }
+
     // Check if prediction exists and belongs to user
     const prediction = await dbGet(
       'SELECT * FROM stock_predictions WHERE id = ? AND user_id = ?',
@@ -134,6 +195,10 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
     );
     
     if (!prediction) {
+      logWarn('update_stock_prediction_not_found', { 
+        userId: req.userId, 
+        predictionId: req.params.id 
+      });
       return res.status(404).json({ error: 'Stock prediction not found' });
     }
 
@@ -143,33 +208,44 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
            actual_change = ?, actual_percent = ?, is_complete = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND user_id = ?`,
       [
-        stockInfo,
-        predictionDate || null,
+        stockInfo !== undefined ? stockInfo : prediction.stock_info,
+        predictionDate !== undefined ? (predictionDate || null) : prediction.prediction_date,
         predictedChange,
-        predictedPercent || 0,
+        predictedPercent !== undefined ? (predictedPercent || 0) : prediction.predicted_percent,
         actualChange,
-        actualPercent || 0,
-        isComplete ? 1 : 0,
+        actualPercent !== undefined ? (actualPercent || 0) : prediction.actual_percent,
+        isComplete !== undefined ? (isComplete ? 1 : 0) : prediction.is_complete,
         req.params.id,
         req.userId,
       ]
     );
 
+    const updatedPrediction = {
+      id: req.params.id,
+      stockInfo: stockInfo !== undefined ? stockInfo : prediction.stock_info,
+      predictionDate: predictionDate !== undefined ? predictionDate : prediction.prediction_date,
+      predictedChange,
+      predictedPercent: predictedPercent !== undefined ? (predictedPercent || 0) : prediction.predicted_percent,
+      actualChange,
+      actualPercent: actualPercent !== undefined ? (actualPercent || 0) : prediction.actual_percent,
+      isComplete: isComplete !== undefined ? (isComplete || false) : (prediction.is_complete === 1),
+    };
+
+    logInfo('update_stock_prediction_success', { 
+      userId: req.userId, 
+      predictionId: req.params.id 
+    });
+
     res.json({
       message: 'Stock prediction updated successfully',
-      prediction: {
-        id: req.params.id,
-        stockInfo,
-        predictionDate,
-        predictedChange,
-        predictedPercent: predictedPercent || 0,
-        actualChange,
-        actualPercent: actualPercent || 0,
-        isComplete: isComplete || false,
-      }
+      prediction: updatedPrediction
     });
   } catch (error) {
-    console.error('Update stock prediction error:', error);
+    logError('update_stock_prediction_error', error as Error, { 
+      userId: req.userId,
+      predictionId: req.params.id,
+      requestBody: req.body
+    });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -177,6 +253,11 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 // Delete a stock prediction
 router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
+    logInfo('delete_stock_prediction', { 
+      userId: req.userId, 
+      predictionId: req.params.id 
+    });
+
     // Check if prediction exists and belongs to user
     const prediction = await dbGet(
       'SELECT * FROM stock_predictions WHERE id = ? AND user_id = ?',
@@ -184,6 +265,10 @@ router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) =>
     );
     
     if (!prediction) {
+      logWarn('delete_stock_prediction_not_found', { 
+        userId: req.userId, 
+        predictionId: req.params.id 
+      });
       return res.status(404).json({ error: 'Stock prediction not found' });
     }
 
@@ -192,9 +277,17 @@ router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) =>
       [req.params.id, req.userId]
     );
 
+    logInfo('delete_stock_prediction_success', { 
+      userId: req.userId, 
+      predictionId: req.params.id 
+    });
+
     res.json({ message: 'Stock prediction deleted successfully' });
   } catch (error) {
-    console.error('Delete stock prediction error:', error);
+    logError('delete_stock_prediction_error', error as Error, { 
+      userId: req.userId, 
+      predictionId: req.params.id 
+    });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -204,7 +297,16 @@ router.post('/batch', authMiddleware, async (req: AuthRequest, res: Response) =>
   try {
     const { predictions } = req.body;
 
+    logInfo('batch_create_stock_predictions', { 
+      userId: req.userId,
+      count: Array.isArray(predictions) ? predictions.length : 0
+    });
+
     if (!Array.isArray(predictions)) {
+      logWarn('batch_create_validation_failed', {
+        userId: req.userId,
+        error: 'Predictions must be an array'
+      });
       return res.status(400).json({ error: 'Predictions must be an array' });
     }
 
@@ -253,12 +355,20 @@ router.post('/batch', authMiddleware, async (req: AuthRequest, res: Response) =>
       return batchResults;
     });
 
+    logInfo('batch_create_stock_predictions_success', { 
+      userId: req.userId,
+      count: results.length
+    });
+
     res.status(201).json({
       message: `${results.length} stock predictions created successfully`,
       predictions: results
     });
   } catch (error) {
-    console.error('Batch create stock predictions error:', error);
+    logError('batch_create_stock_predictions_error', error as Error, { 
+      userId: req.userId,
+      requestBody: req.body
+    });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
