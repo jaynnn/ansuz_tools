@@ -112,7 +112,9 @@
   background: var(--hover-bg);
 }
 
-/* Row coloring based on prediction accuracy */
+/* Row coloring based on prediction accuracy 
+   Note: Per requirements, correct predictions are RED, incorrect are GREEN
+   This is intentionally reversed from typical conventions */
 .predictions-table tbody tr.correct {
   background-color: rgba(255, 77, 79, 0.15);
 }
