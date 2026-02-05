@@ -77,6 +77,7 @@ export const initDatabase = async () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         stock_info TEXT NOT NULL,
+        prediction_date TEXT,
         predicted_change TEXT NOT NULL,
         predicted_percent REAL NOT NULL DEFAULT 0,
         actual_change TEXT NOT NULL,

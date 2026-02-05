@@ -1,6 +1,7 @@
 export interface StockPrediction {
   id: string;
   stockInfo: string;
+  predictionDate?: string;
   predictedChange: 'up' | 'down';
   predictedPercent: number;
   actualChange: 'up' | 'down';

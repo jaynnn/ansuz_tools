@@ -16,6 +16,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     const formattedPredictions = predictions.map((p: any) => ({
       id: p.id.toString(),
       stockInfo: p.stock_info,
+      predictionDate: p.prediction_date,
       predictedChange: p.predicted_change,
       predictedPercent: p.predicted_percent,
       actualChange: p.actual_change,
@@ -46,6 +47,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
     const formattedPrediction = {
       id: prediction.id.toString(),
       stockInfo: prediction.stock_info,
+      predictionDate: prediction.prediction_date,
       predictedChange: prediction.predicted_change,
       predictedPercent: prediction.predicted_percent,
       actualChange: prediction.actual_change,
@@ -65,6 +67,7 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const {
       stockInfo,
+      predictionDate,
       predictedChange,
       predictedPercent,
       actualChange,
@@ -78,11 +81,12 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
 
     const result = await dbRun(
       `INSERT INTO stock_predictions 
-        (user_id, stock_info, predicted_change, predicted_percent, actual_change, actual_percent, is_complete) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (user_id, stock_info, prediction_date, predicted_change, predicted_percent, actual_change, actual_percent, is_complete) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.userId,
         stockInfo || '',
+        predictionDate || null,
         predictedChange,
         predictedPercent || 0,
         actualChange,
@@ -96,6 +100,7 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       prediction: {
         id: (result as any).lastID.toString(),
         stockInfo,
+        predictionDate,
         predictedChange,
         predictedPercent: predictedPercent || 0,
         actualChange,
@@ -114,6 +119,7 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const {
       stockInfo,
+      predictionDate,
       predictedChange,
       predictedPercent,
       actualChange,
@@ -133,11 +139,12 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 
     await dbRun(
       `UPDATE stock_predictions 
-       SET stock_info = ?, predicted_change = ?, predicted_percent = ?, 
+       SET stock_info = ?, prediction_date = ?, predicted_change = ?, predicted_percent = ?, 
            actual_change = ?, actual_percent = ?, is_complete = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND user_id = ?`,
       [
         stockInfo,
+        predictionDate || null,
         predictedChange,
         predictedPercent || 0,
         actualChange,
@@ -153,6 +160,7 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
       prediction: {
         id: req.params.id,
         stockInfo,
+        predictionDate,
         predictedChange,
         predictedPercent: predictedPercent || 0,
         actualChange,
@@ -206,6 +214,7 @@ router.post('/batch', authMiddleware, async (req: AuthRequest, res: Response) =>
       for (const pred of predictions) {
         const {
           stockInfo,
+          predictionDate,
           predictedChange,
           predictedPercent,
           actualChange,
@@ -215,11 +224,12 @@ router.post('/batch', authMiddleware, async (req: AuthRequest, res: Response) =>
 
         const result = await dbRun(
           `INSERT INTO stock_predictions 
-            (user_id, stock_info, predicted_change, predicted_percent, actual_change, actual_percent, is_complete) 
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            (user_id, stock_info, prediction_date, predicted_change, predicted_percent, actual_change, actual_percent, is_complete) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             req.userId,
             stockInfo || '',
+            predictionDate || null,
             predictedChange,
             predictedPercent || 0,
             actualChange,
@@ -231,6 +241,7 @@ router.post('/batch', authMiddleware, async (req: AuthRequest, res: Response) =>
         batchResults.push({
           id: (result as any).lastID.toString(),
           stockInfo: stockInfo || '',
+          predictionDate: predictionDate || undefined,
           predictedChange,
           predictedPercent: predictedPercent || 0,
           actualChange,
