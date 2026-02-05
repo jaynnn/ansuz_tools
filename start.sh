@@ -9,13 +9,13 @@ cd "$SCRIPT_DIR/backend"
 # 检查并安装依赖
 if [ ! -d "node_modules" ]; then
   echo "正在安装依赖..."
-  npm install
+  npm install || exit 1
 fi
 
 # 构建后端代码
 if [ ! -d "dist" ]; then
   echo "正在构建后端代码..."
-  npm run build
+  npm run build || exit 1
 fi
 
 # 启动后端服务
