@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mbtiQuestions } from '../data/mbtiQuestions';
 import { mbtiAPI } from '../api';
+import MBTIAnalysisReport from '../components/MBTIAnalysisReport';
 import '../styles/MBTITest.css';
 
 const SLIDER_LABELS = ['非常不同意', '不同意', '略微不同意', '中立', '略微同意', '同意', '非常同意'];
@@ -402,9 +403,12 @@ const MBTITest: React.FC = () => {
               )}
 
               {aiResult && (
-                <div className="mbti-ai-result">
-                  {aiResult}
-                </div>
+                <MBTIAnalysisReport
+                  aiResult={aiResult}
+                  scores={displayScores}
+                  mbtiType={displayType}
+                  totalQuestions={mbtiQuestions.length}
+                />
               )}
 
               {aiError && (

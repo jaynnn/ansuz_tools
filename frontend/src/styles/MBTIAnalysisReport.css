@@ -1,0 +1,351 @@
+/* ===== MBTI Analysis Report ===== */
+
+.mbti-report {
+  animation: fadeIn 0.5s ease;
+}
+
+/* Report Header */
+.mbti-report-header {
+  text-align: center;
+  padding: 32px 24px 24px;
+  background: var(--card-bg);
+  border-radius: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.mbti-report-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #6366f1, #f59e0b, #10b981, #ef4444);
+}
+
+.mbti-report-type-badge {
+  display: inline-flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mbti-report-letter {
+  font-size: 2.8rem;
+  font-weight: 800;
+  letter-spacing: 2px;
+  transition: transform 0.3s ease;
+}
+
+.mbti-report-letter:hover {
+  transform: scale(1.15);
+}
+
+.mbti-report-subtitle {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Charts Grid */
+.mbti-report-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.mbti-report-chart-card {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 20px 12px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.mbti-report-chart-card h4 {
+  margin: 0 0 8px 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Dimension Summary Cards */
+.mbti-report-dimensions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.mbti-report-dim-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-left: 4px solid;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mbti-report-dim-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.mbti-report-dim-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.mbti-report-dim-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: white;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.mbti-report-dim-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.mbti-report-dim-axis {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: var(--background);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.mbti-report-dim-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mbti-report-dim-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mbti-report-dim-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.8s ease;
+}
+
+.mbti-report-dim-pct {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* AI Analysis Content */
+.mbti-report-content {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.mbti-report-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+}
+
+.mbti-report-section-icon {
+  font-size: 1.3rem;
+}
+
+/* Markdown Rendering */
+.mbti-report-markdown {
+  line-height: 1.8;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.mbti-report-markdown h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 24px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+}
+
+.mbti-report-markdown h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 24px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mbti-report-markdown h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin: 20px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mbti-report-markdown h3::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 1.1em;
+  background: var(--primary);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.mbti-report-markdown h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 16px 0 8px;
+}
+
+.mbti-report-markdown p {
+  margin: 0 0 12px;
+  color: var(--text-primary);
+}
+
+.mbti-report-markdown ul,
+.mbti-report-markdown ol {
+  padding-left: 20px;
+  margin: 0 0 14px;
+}
+
+.mbti-report-markdown li {
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.mbti-report-markdown li::marker {
+  color: var(--primary);
+}
+
+.mbti-report-markdown strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.mbti-report-markdown blockquote {
+  margin: 12px 0;
+  padding: 12px 16px;
+  border-left: 4px solid var(--primary);
+  background: var(--background);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+}
+
+.mbti-report-markdown blockquote p {
+  margin: 0;
+}
+
+.mbti-report-markdown code {
+  background: var(--background);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: var(--primary);
+}
+
+.mbti-report-markdown hr {
+  border: none;
+  height: 1px;
+  background: var(--border);
+  margin: 20px 0;
+}
+
+.mbti-report-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 0.9rem;
+}
+
+.mbti-report-markdown th,
+.mbti-report-markdown td {
+  padding: 10px 14px;
+  text-align: left;
+  border: 1px solid var(--border);
+}
+
+.mbti-report-markdown th {
+  background: var(--background);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mbti-report-markdown td {
+  color: var(--text-primary);
+}
+
+.mbti-report-markdown tr:hover td {
+  background: var(--hover-bg);
+}
+
+/* Responsive: Tablet */
+@media (max-width: 768px) {
+  .mbti-report-charts {
+    grid-template-columns: 1fr;
+  }
+
+  .mbti-report-dimensions {
+    grid-template-columns: 1fr;
+  }
+
+  .mbti-report-header {
+    padding: 24px 16px 20px;
+  }
+
+  .mbti-report-letter {
+    font-size: 2.2rem;
+  }
+
+  .mbti-report-content {
+    padding: 20px 16px;
+  }
+
+  .mbti-report-chart-card {
+    padding: 16px 8px 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mbti-report-letter {
+    font-size: 1.8rem;
+  }
+
+  .mbti-report-dim-card {
+    padding: 12px;
+  }
+}
