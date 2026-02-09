@@ -26,6 +26,25 @@ const mbtiRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
   next();
 };
 
+// General rate limiter for CRUD endpoints (more permissive)
+const generalRateLimitMap = new Map<number, number[]>();
+const GENERAL_RATE_LIMIT_MAX = 30; // max 30 requests per minute per user
+
+const generalRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const userId = req.userId!;
+  const now = Date.now();
+  const timestamps = (generalRateLimitMap.get(userId) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+
+  if (timestamps.length >= GENERAL_RATE_LIMIT_MAX) {
+    logWarn('mbti_general_rate_limit_exceeded', { userId });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
+  timestamps.push(now);
+  generalRateLimitMap.set(userId, timestamps);
+  next();
+};
+
 interface MBTIAnswer {
   questionId: number;
   dimension: string;
@@ -123,7 +142,7 @@ ${answersDescription}
 });
 
 // Save MBTI test result (score-only, without AI analysis)
-router.post('/save', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/save', authMiddleware, generalRateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const { mbtiType, scores, answers } = req.body as {
       mbtiType: string;
@@ -151,7 +170,7 @@ router.post('/save', authMiddleware, async (req: AuthRequest, res: Response) => 
 });
 
 // Get MBTI test history
-router.get('/history', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/history', authMiddleware, generalRateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const results = await dbAll(
       `SELECT id, mbti_type, scores, ai_analysis, model, created_at
@@ -173,7 +192,7 @@ router.get('/history', authMiddleware, async (req: AuthRequest, res: Response) =
 });
 
 // Get a specific MBTI test result
-router.get('/history/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/history/:id', authMiddleware, generalRateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const result = await dbGet(
       `SELECT id, mbti_type, scores, answers, ai_analysis, model, created_at
@@ -197,7 +216,7 @@ router.get('/history/:id', authMiddleware, async (req: AuthRequest, res: Respons
 });
 
 // Delete a specific MBTI test result
-router.delete('/history/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.delete('/history/:id', authMiddleware, generalRateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const result = await dbRun(
       `DELETE FROM mbti_results WHERE id = ? AND user_id = ?`,
