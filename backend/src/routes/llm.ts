@@ -1,10 +1,30 @@
-import { Router, Response } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { chatCompletion, getLLMConfig } from '../utils/llmService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { logInfo, logError } from '../utils/logger';
+import { logInfo, logError, logWarn } from '../utils/logger';
 import type { LLMMessage, LLMConfig } from '../utils/llmService';
 
 const router = Router();
+
+// Simple in-memory rate limiter for LLM endpoints
+const rateLimitMap = new Map<number, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // max 10 requests per minute per user
+
+const llmRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const userId = req.userId!;
+  const now = Date.now();
+  const timestamps = (rateLimitMap.get(userId) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+
+  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    logWarn('llm_rate_limit_exceeded', { userId });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
+  timestamps.push(now);
+  rateLimitMap.set(userId, timestamps);
+  next();
+};
 
 // Get LLM configuration status
 router.get('/config', authMiddleware, async (req: AuthRequest, res: Response) => {
@@ -19,7 +39,7 @@ router.get('/config', authMiddleware, async (req: AuthRequest, res: Response) =>
 });
 
 // Chat completion endpoint
-router.post('/chat', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/chat', authMiddleware, llmRateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const { messages, config } = req.body as { messages: LLMMessage[]; config?: LLMConfig };
 
