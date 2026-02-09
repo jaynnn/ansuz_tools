@@ -11,6 +11,7 @@ export interface LLMConfig {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  temperature?: number;
 }
 
 export interface LLMResponse {
@@ -27,6 +28,7 @@ const getDefaultConfig = (): Required<LLMConfig> => ({
   apiKey: process.env.LLM_API_KEY || '',
   baseUrl: process.env.LLM_API_BASE_URL || 'https://api.deepseek.com',
   model: process.env.LLM_MODEL || 'deepseek-chat',
+  temperature: 0.7,
 });
 
 export const chatCompletion = async (
@@ -46,7 +48,7 @@ export const chatCompletion = async (
   const requestBody = JSON.stringify({
     model: finalConfig.model,
     messages,
-    temperature: 0.7,
+    temperature: finalConfig.temperature,
   });
 
   logInfo('llm_request', {

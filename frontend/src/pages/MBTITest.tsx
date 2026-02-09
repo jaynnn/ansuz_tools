@@ -119,8 +119,8 @@ const MBTITest: React.FC = () => {
     rightLabel: string,
     score: number,
   ) => {
-    // maxScore: 32 questions per dimension * 3 max = 96
-    const maxScore = 96;
+    const questionsPerDimension = mbtiQuestions.filter(q => q.dimension === dim).length;
+    const maxScore = questionsPerDimension * 3;
     const pct = Math.min(Math.abs(score) / maxScore, 1) * 50;
     const isLeft = score < 0;
     const fillStyle = isLeft
@@ -203,7 +203,7 @@ const MBTITest: React.FC = () => {
                 {SLIDER_LABELS.map((label, i) => <span key={i}>{label}</span>)}
               </div>
               <div className="mbti-slider-value">
-                {SLIDER_LABELS[Math.min(Math.max(answers[currentIndex] + 3, 0), 6)]}
+                {SLIDER_LABELS[Math.min(Math.max(answers[currentIndex] + 3, 0), SLIDER_LABELS.length - 1)]}
               </div>
             </div>
           </div>

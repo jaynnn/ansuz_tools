@@ -39,7 +39,6 @@ export const mbtiQuestions: MBTIQuestion[] = [
   { id: 30, text: '我更喜欢使用经过验证的方法，而不是尝试全新的方式。', dimension: 'SN', direction: 'S' },
   { id: 31, text: '在与他人意见不一致时，我更在意维护关系和谐，而非证明自己正确。', dimension: 'TF', direction: 'F' },
   { id: 32, text: '我习惯列待办事项清单，并享受逐一勾选完成的过程。', dimension: 'JP', direction: 'J' },
-
   // ===== Block 2 (Q33-Q64): 8 per dimension =====
   { id: 33, text: '我喜欢同时认识很多人，而不是只维持少数几段深厚的友谊。', dimension: 'EI', direction: 'E' },
   { id: 34, text: '我对细节有很强的观察力，能注意到别人忽略的小变化。', dimension: 'SN', direction: 'S' },
@@ -73,7 +72,6 @@ export const mbtiQuestions: MBTIQuestion[] = [
   { id: 62, text: '我常常会突然冒出一些看似不相关但实际上有深层联系的想法。', dimension: 'SN', direction: 'N' },
   { id: 63, text: '在评估一个方案时，我首先考虑它会如何影响相关人员的感受。', dimension: 'TF', direction: 'F' },
   { id: 64, text: '我更喜欢有弹性的工作安排，而不是固定的朝九晚五。', dimension: 'JP', direction: 'P' },
-
   // ===== Block 3 (Q65-Q96): 8 per dimension =====
   { id: 65, text: '在会议中，我倾向于积极发言，表达自己的观点。', dimension: 'EI', direction: 'E' },
   { id: 66, text: '我更相信有据可查的信息，而不是模糊的直觉判断。', dimension: 'SN', direction: 'S' },
@@ -107,7 +105,6 @@ export const mbtiQuestions: MBTIQuestion[] = [
   { id: 94, text: '我相信灵感和直觉在创造性工作中比经验数据更重要。', dimension: 'SN', direction: 'N' },
   { id: 95, text: '当看到有人受到不公正对待时，我会感到强烈的情感冲击。', dimension: 'TF', direction: 'F' },
   { id: 96, text: '开始一个新项目时，我倾向于先制定详细的行动计划。', dimension: 'JP', direction: 'J' },
-
   // ===== Block 4 (Q97-Q128): 8 per dimension =====
   { id: 97, text: '我觉得在安静的环境中独自工作比在开放式办公室更能集中注意力。', dimension: 'EI', direction: 'I' },
   { id: 98, text: '我更关心方案的可操作性和实际效果，而非它的创新程度。', dimension: 'SN', direction: 'S' },
