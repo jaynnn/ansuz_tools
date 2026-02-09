@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import StockPrediction from './pages/StockPrediction';
+import MBTITest from './pages/MBTITest';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token } = useAuth();
@@ -33,6 +34,14 @@ const App: React.FC = () => {
               element={
                 <PrivateRoute>
                   <StockPrediction />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mbti-test"
+              element={
+                <PrivateRoute>
+                  <MBTITest />
                 </PrivateRoute>
               }
             />

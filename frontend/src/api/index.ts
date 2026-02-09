@@ -104,3 +104,29 @@ export const stockPredictionsAPI = {
     return response.data;
   },
 };
+
+// LLM APIs
+export const llmAPI = {
+  getConfig: async () => {
+    const response = await api.get('/llm/config');
+    return response.data;
+  },
+
+  chat: async (messages: Array<{ role: string; content: string }>, config?: Record<string, string>) => {
+    const response = await api.post('/llm/chat', { messages, config });
+    return response.data;
+  },
+};
+
+// MBTI APIs
+export const mbtiAPI = {
+  analyze: async (answers: Array<{
+    questionId: number;
+    dimension: string;
+    direction: string;
+    value: number;
+  }>, scores: { EI: number; SN: number; TF: number; JP: number }) => {
+    const response = await api.post('/mbti/analyze', { answers, scores });
+    return response.data;
+  },
+};
