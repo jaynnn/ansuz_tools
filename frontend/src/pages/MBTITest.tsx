@@ -57,15 +57,14 @@ const MBTITest: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [viewingHistory, setViewingHistory] = useState<HistoryDetail | null>(null);
-  const [, setSavingResult] = useState(false);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
       const data = await mbtiAPI.getHistory();
       setHistory(data);
-    } catch {
-      // Silently fail - history is a nice-to-have
+    } catch (err) {
+      console.error('Failed to load history:', err);
     } finally {
       setHistoryLoading(false);
     }
@@ -118,7 +117,6 @@ const MBTITest: React.FC = () => {
     setPhase('results');
     setViewingHistory(null);
     // Auto-save score result
-    setSavingResult(true);
     try {
       const payload = answers.map((value, index) => ({
         questionId: mbtiQuestions[index].id,
@@ -128,10 +126,8 @@ const MBTITest: React.FC = () => {
       }));
       await mbtiAPI.save({ mbtiType: mbtiType, scores, answers: payload });
       loadHistory();
-    } catch {
-      // Silently fail - save is best-effort
-    } finally {
-      setSavingResult(false);
+    } catch (err) {
+      console.error('Failed to save result:', err);
     }
   };
 
@@ -186,8 +182,8 @@ const MBTITest: React.FC = () => {
       setAiError('');
       setActiveTab(detail.ai_analysis ? 'ai' : 'score');
       setPhase('results');
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('Failed to load history detail:', err);
     }
   };
 
@@ -195,8 +191,8 @@ const MBTITest: React.FC = () => {
     try {
       await mbtiAPI.deleteResult(id);
       setHistory(prev => prev.filter(item => item.id !== id));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('Failed to delete history:', err);
     }
   };
 
