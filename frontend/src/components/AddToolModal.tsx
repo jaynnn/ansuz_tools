@@ -15,6 +15,12 @@ const PREDEFINED_TOOLS = [
     url: '/stock-prediction',
     tags: ['投资', '分析', '数据'],
   },
+  {
+    name: 'AI+MBTI性格测试',
+    description: 'AI驱动的MBTI人格类型测试，128道专业题目，支持滑动条评分，提供基于分值和AI双重分析',
+    url: '/mbti-test',
+    tags: ['AI', '心理', '测试', 'MBTI'],
+  },
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd }) => {
