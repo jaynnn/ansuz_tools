@@ -171,6 +171,7 @@ const Dashboard: React.FC = () => {
         <AddToolModal
           onClose={() => setShowAddModal(false)}
           onAdd={handleAddTool}
+          existingTools={tools}
         />
       )}
     </div>
