@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { chatCompletion } from '../utils/llmService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
+import { dbRun, dbAll, dbGet } from '../utils/database';
 
 const router = Router();
 
@@ -87,15 +88,131 @@ ${answersDescription}
 
     logInfo('mbti_analyze_success', { userId: req.userId, model: result.model });
 
+    // Auto-save analysis result to history
+    let savedId: number | null = null;
+    try {
+      const saveResult = await dbRun(
+        `INSERT INTO mbti_results (user_id, mbti_type, scores, answers, ai_analysis, model)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          req.userId,
+          scoreBasedType,
+          JSON.stringify(scores),
+          JSON.stringify(answers),
+          result.content,
+          result.model,
+        ]
+      );
+      savedId = saveResult.lastID ?? null;
+      logInfo('mbti_result_saved', { userId: req.userId, resultId: savedId });
+    } catch (saveError) {
+      logError('mbti_result_save_error', saveError as Error, { userId: req.userId });
+    }
+
     res.json({
       scoreBasedType,
       scores,
       llmAnalysis: result.content,
       model: result.model,
+      savedId,
     });
   } catch (error: any) {
     logError('mbti_analyze_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: error.message || 'MBTI analysis failed' });
+  }
+});
+
+// Save MBTI test result (score-only, without AI analysis)
+router.post('/save', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { mbtiType, scores, answers } = req.body as {
+      mbtiType: string;
+      scores: { EI: number; SN: number; TF: number; JP: number };
+      answers: MBTIAnswer[];
+    };
+
+    if (!mbtiType || !scores || !answers) {
+      return res.status(400).json({ error: 'mbtiType, scores and answers are required' });
+    }
+
+    const result = await dbRun(
+      `INSERT INTO mbti_results (user_id, mbti_type, scores, answers)
+       VALUES (?, ?, ?, ?)`,
+      [req.userId, mbtiType, JSON.stringify(scores), JSON.stringify(answers)]
+    );
+
+    logInfo('mbti_result_saved', { userId: req.userId, resultId: result.lastID });
+
+    res.json({ id: result.lastID, message: 'Result saved successfully' });
+  } catch (error: any) {
+    logError('mbti_save_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to save MBTI result' });
+  }
+});
+
+// Get MBTI test history
+router.get('/history', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const results = await dbAll(
+      `SELECT id, mbti_type, scores, ai_analysis, model, created_at
+       FROM mbti_results WHERE user_id = ? ORDER BY created_at DESC`,
+      [req.userId]
+    );
+
+    const parsed = results.map(r => ({
+      ...r,
+      scores: JSON.parse(r.scores),
+      hasAiAnalysis: !!r.ai_analysis,
+    }));
+
+    res.json(parsed);
+  } catch (error: any) {
+    logError('mbti_history_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to fetch MBTI history' });
+  }
+});
+
+// Get a specific MBTI test result
+router.get('/history/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await dbGet(
+      `SELECT id, mbti_type, scores, answers, ai_analysis, model, created_at
+       FROM mbti_results WHERE id = ? AND user_id = ?`,
+      [req.params.id, req.userId]
+    );
+
+    if (!result) {
+      return res.status(404).json({ error: 'Result not found' });
+    }
+
+    res.json({
+      ...result,
+      scores: JSON.parse(result.scores),
+      answers: JSON.parse(result.answers),
+    });
+  } catch (error: any) {
+    logError('mbti_history_detail_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to fetch MBTI result' });
+  }
+});
+
+// Delete a specific MBTI test result
+router.delete('/history/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await dbRun(
+      `DELETE FROM mbti_results WHERE id = ? AND user_id = ?`,
+      [req.params.id, req.userId]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Result not found' });
+    }
+
+    logInfo('mbti_result_deleted', { userId: req.userId, resultId: req.params.id });
+    res.json({ message: 'Result deleted successfully' });
+  } catch (error: any) {
+    logError('mbti_delete_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to delete MBTI result' });
   }
 });
 

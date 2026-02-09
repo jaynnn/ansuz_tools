@@ -543,6 +543,103 @@
   background: var(--secondary-hover);
 }
 
+/* History Section */
+.mbti-history {
+  margin-top: 32px;
+  text-align: left;
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+
+.mbti-history h3 {
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.mbti-history-loading {
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.mbti-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mbti-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--background);
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+
+.mbti-history-item:hover {
+  background: var(--hover-bg);
+}
+
+.mbti-history-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.mbti-history-type {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--primary);
+  letter-spacing: 2px;
+  flex-shrink: 0;
+}
+
+.mbti-history-name {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.mbti-history-ai-badge {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  background: var(--primary);
+  color: white;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.mbti-history-date {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.mbti-history-delete {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.mbti-history-delete:hover {
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.08);
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(12px); }
@@ -663,6 +760,16 @@
   .mbti-tabs button {
     padding: 12px 8px;
     font-size: 0.9rem;
+  }
+
+  .mbti-history-info {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .mbti-history-date {
+    width: 100%;
+    margin-left: 0;
   }
 }
 

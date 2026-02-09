@@ -12,11 +12,9 @@ if [ ! -d "node_modules" ]; then
   npm install || exit 1
 fi
 
-# 构建后端代码
-if [ ! -d "dist" ]; then
-  echo "正在构建后端代码..."
-  npm run build || exit 1
-fi
+# 构建后端代码（始终重新构建以确保代码最新）
+echo "正在构建后端代码..."
+npm run build || exit 1
 
 # 启动后端服务
 echo "正在启动 Ansuz Tools..."
