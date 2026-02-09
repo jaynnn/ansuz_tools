@@ -7,6 +7,8 @@ import logger, { logInfo, logError } from './utils/logger';
 import authRoutes from './routes/auth';
 import toolsRoutes from './routes/tools';
 import stockPredictionsRoutes from './routes/stockPredictions';
+import llmRoutes from './routes/llm';
+import mbtiRoutes from './routes/mbti';
 
 // Load environment variables
 dotenv.config();
@@ -48,6 +50,8 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/tools', toolsRoutes);
 app.use('/api/stock-predictions', stockPredictionsRoutes);
+app.use('/api/llm', llmRoutes);
+app.use('/api/mbti', mbtiRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
