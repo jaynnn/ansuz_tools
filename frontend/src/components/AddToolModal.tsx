@@ -5,6 +5,7 @@ import '../styles/Modal.css';
 interface AddToolModalProps {
   onClose: () => void;
   onAdd: (tool: Omit<Tool, 'id' | 'user_id' | 'created_at'>) => void;
+  existingTools?: Tool[];
 }
 
 // Predefined tools that users can quickly add
@@ -23,7 +24,7 @@ const PREDEFINED_TOOLS = [
   },
 ];
 
-const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd }) => {
+const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [] }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [url, setUrl] = useState('');
@@ -41,11 +42,18 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd }) => {
     setTags(tags.filter((t) => t !== tag));
   };
 
+  // Filter out predefined tools that the user has already added
+  const availablePredefinedTools = PREDEFINED_TOOLS.filter(
+    (pt) => !existingTools.some((et) => et.name === pt.name && et.url === pt.url)
+  );
+
   const handleSelectPredefined = (predefinedTool: typeof PREDEFINED_TOOLS[0]) => {
-    setName(predefinedTool.name);
-    setDescription(predefinedTool.description);
-    setUrl(predefinedTool.url);
-    setTags(predefinedTool.tags);
+    onAdd({
+      name: predefinedTool.name,
+      description: predefinedTool.description,
+      url: predefinedTool.url,
+      tags: predefinedTool.tags,
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -61,11 +69,11 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd }) => {
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
         
-        {PREDEFINED_TOOLS.length > 0 && (
+        {availablePredefinedTools.length > 0 && (
           <div className="predefined-tools-section">
             <h3>快速添加内置工具</h3>
             <div className="predefined-tools-list">
-              {PREDEFINED_TOOLS.map((tool, index) => (
+              {availablePredefinedTools.map((tool, index) => (
                 <div
                   key={index}
                   className="predefined-tool-item"
