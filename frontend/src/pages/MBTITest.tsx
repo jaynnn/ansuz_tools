@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mbtiQuestions } from '../data/mbtiQuestions';
 import { mbtiAPI } from '../api';
@@ -27,6 +27,24 @@ const MBTI_TYPES: Record<string, { name: string; description: string }> = {
 
 type Phase = 'welcome' | 'test' | 'results';
 
+interface HistoryItem {
+  id: number;
+  mbti_type: string;
+  scores: { EI: number; SN: number; TF: number; JP: number };
+  hasAiAnalysis: boolean;
+  created_at: string;
+}
+
+interface HistoryDetail {
+  id: number;
+  mbti_type: string;
+  scores: { EI: number; SN: number; TF: number; JP: number };
+  answers: Array<{ questionId: number; dimension: string; direction: string; value: number }>;
+  ai_analysis: string | null;
+  model: string | null;
+  created_at: string;
+}
+
 const MBTITest: React.FC = () => {
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>('welcome');
@@ -36,7 +54,25 @@ const MBTITest: React.FC = () => {
   const [aiResult, setAiResult] = useState<string>('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string>('');
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [viewingHistory, setViewingHistory] = useState<HistoryDetail | null>(null);
 
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await mbtiAPI.getHistory();
+      setHistory(data);
+    } catch (err) {
+      console.error('Failed to load history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
   const handleSliderChange = useCallback((value: number) => {
     setAnswers(prev => {
       const next = [...prev];
@@ -77,14 +113,10 @@ const MBTITest: React.FC = () => {
     if (currentIndex < mbtiQuestions.length - 1) setCurrentIndex(currentIndex + 1);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setPhase('results');
-  };
-
-  const handleAIAnalyze = async () => {
-    setAiLoading(true);
-    setAiError('');
-    setAiResult('');
+    setViewingHistory(null);
+    // Auto-save score result
     try {
       const payload = answers.map((value, index) => ({
         questionId: mbtiQuestions[index].id,
@@ -92,8 +124,37 @@ const MBTITest: React.FC = () => {
         direction: mbtiQuestions[index].direction,
         value,
       }));
-      const data = await mbtiAPI.analyze(payload, scores);
+      await mbtiAPI.save({ mbtiType: mbtiType, scores, answers: payload });
+      loadHistory();
+    } catch (err) {
+      console.error('Failed to save result:', err);
+    }
+  };
+
+  const handleAIAnalyze = async () => {
+    setAiLoading(true);
+    setAiError('');
+    setAiResult('');
+    try {
+      let payload: Array<{ questionId: number; dimension: string; direction: string; value: number }>;
+      let analyzeScores: { EI: number; SN: number; TF: number; JP: number };
+
+      if (viewingHistory) {
+        payload = viewingHistory.answers;
+        analyzeScores = viewingHistory.scores;
+      } else {
+        payload = answers.map((value, index) => ({
+          questionId: mbtiQuestions[index].id,
+          dimension: mbtiQuestions[index].dimension,
+          direction: mbtiQuestions[index].direction,
+          value,
+        }));
+        analyzeScores = scores;
+      }
+
+      const data = await mbtiAPI.analyze(payload, analyzeScores);
       setAiResult(data.llmAnalysis || data.analysis || data.result || '分析完成，但未返回结果内容。');
+      loadHistory();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '分析请求失败，请稍后重试';
       setAiError(message);
@@ -109,6 +170,30 @@ const MBTITest: React.FC = () => {
     setActiveTab('score');
     setAiResult('');
     setAiError('');
+    setViewingHistory(null);
+    loadHistory();
+  };
+
+  const handleViewHistory = async (id: number) => {
+    try {
+      const detail: HistoryDetail = await mbtiAPI.getById(id);
+      setViewingHistory(detail);
+      setAiResult(detail.ai_analysis || '');
+      setAiError('');
+      setActiveTab(detail.ai_analysis ? 'ai' : 'score');
+      setPhase('results');
+    } catch (err) {
+      console.error('Failed to load history detail:', err);
+    }
+  };
+
+  const handleDeleteHistory = async (id: number) => {
+    try {
+      await mbtiAPI.deleteResult(id);
+      setHistory(prev => prev.filter(item => item.id !== id));
+    } catch (err) {
+      console.error('Failed to delete history:', err);
+    }
   };
 
   const renderDimensionBar = (
@@ -148,6 +233,10 @@ const MBTITest: React.FC = () => {
     );
   };
 
+  // Use history data when viewing a saved result, otherwise use current test data
+  const displayScores = viewingHistory ? viewingHistory.scores : scores;
+  const displayType = viewingHistory ? viewingHistory.mbti_type : mbtiType;
+
   return (
     <div className="mbti-page">
       <div className="mbti-header">
@@ -162,6 +251,35 @@ const MBTITest: React.FC = () => {
           <p>测试完成后，你将获得基于分值的性格类型结果，并可选择使用 AI 进行深度分析。</p>
           <p>请根据你的真实感受作答，没有对错之分。</p>
           <button className="btn-start" onClick={() => setPhase('test')}>开始测试</button>
+
+          {history.length > 0 && (
+            <div className="mbti-history">
+              <h3>历史测试记录</h3>
+              {historyLoading ? (
+                <p className="mbti-history-loading">加载中...</p>
+              ) : (
+                <div className="mbti-history-list">
+                  {history.map(item => (
+                    <div className="mbti-history-item" key={item.id}>
+                      <div className="mbti-history-info" onClick={() => handleViewHistory(item.id)}>
+                        <span className="mbti-history-type">{item.mbti_type}</span>
+                        <span className="mbti-history-name">{MBTI_TYPES[item.mbti_type]?.name || ''}</span>
+                        {item.hasAiAnalysis && <span className="mbti-history-ai-badge">AI</span>}
+                        <span className="mbti-history-date">{new Date(item.created_at).toLocaleString()}</span>
+                      </div>
+                      <button
+                        className="mbti-history-delete"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteHistory(item.id); }}
+                        title="删除"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -245,17 +363,17 @@ const MBTITest: React.FC = () => {
           {activeTab === 'score' && (
             <>
               <div className="mbti-type-badge">
-                <div className="mbti-type-letters">{mbtiType}</div>
-                <div className="mbti-type-name">{MBTI_TYPES[mbtiType]?.name}</div>
-                <div className="mbti-type-description">{MBTI_TYPES[mbtiType]?.description}</div>
+                <div className="mbti-type-letters">{displayType}</div>
+                <div className="mbti-type-name">{MBTI_TYPES[displayType]?.name}</div>
+                <div className="mbti-type-description">{MBTI_TYPES[displayType]?.description}</div>
               </div>
 
               <div className="mbti-dimensions">
                 <h3>各维度得分</h3>
-                {renderDimensionBar('EI', 'I', '内向', 'E', '外向', scores.EI)}
-                {renderDimensionBar('SN', 'N', '直觉', 'S', '感觉', scores.SN)}
-                {renderDimensionBar('TF', 'F', '情感', 'T', '思考', scores.TF)}
-                {renderDimensionBar('JP', 'P', '感知', 'J', '判断', scores.JP)}
+                {renderDimensionBar('EI', 'I', '内向', 'E', '外向', displayScores.EI)}
+                {renderDimensionBar('SN', 'N', '直觉', 'S', '感觉', displayScores.SN)}
+                {renderDimensionBar('TF', 'F', '情感', 'T', '思考', displayScores.TF)}
+                {renderDimensionBar('JP', 'P', '感知', 'J', '判断', displayScores.JP)}
               </div>
             </>
           )}

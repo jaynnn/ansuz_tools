@@ -191,6 +191,21 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create mbti_results table
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS mbti_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        mbti_type TEXT NOT NULL,
+        scores TEXT NOT NULL,
+        answers TEXT NOT NULL,
+        ai_analysis TEXT,
+        model TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
 

@@ -129,4 +129,33 @@ export const mbtiAPI = {
     const response = await api.post('/mbti/analyze', { answers, scores });
     return response.data;
   },
+
+  save: async (data: {
+    mbtiType: string;
+    scores: { EI: number; SN: number; TF: number; JP: number };
+    answers: Array<{
+      questionId: number;
+      dimension: string;
+      direction: string;
+      value: number;
+    }>;
+  }) => {
+    const response = await api.post('/mbti/save', data);
+    return response.data;
+  },
+
+  getHistory: async () => {
+    const response = await api.get('/mbti/history');
+    return response.data;
+  },
+
+  getById: async (id: number) => {
+    const response = await api.get(`/mbti/history/${id}`);
+    return response.data;
+  },
+
+  deleteResult: async (id: number) => {
+    const response = await api.delete(`/mbti/history/${id}`);
+    return response.data;
+  },
 };
