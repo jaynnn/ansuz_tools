@@ -97,10 +97,11 @@ router.post('/login', async (req: Request, res: Response) => {
 // Get current user
 router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const user: any = await dbGet('SELECT id, username, nickname, created_at FROM users WHERE id = ?', [req.userId]);
+    const user: any = await dbGet('SELECT id, username, nickname, avatar, created_at FROM users WHERE id = ?', [req.userId]);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+    user.avatar = user.avatar || 'seal';
     res.json({ user });
   } catch (error) {
     console.error('Get user error:', error);
@@ -122,6 +123,29 @@ router.put('/nickname', authMiddleware, async (req: AuthRequest, res: Response) 
     res.json({ message: 'Nickname updated successfully', nickname });
   } catch (error) {
     console.error('Update nickname error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update avatar
+router.put('/avatar', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { avatar } = req.body;
+
+    const validAvatars = [
+      'seal', 'octopus', 'jellyfish', 'seahorse', 'pufferfish',
+      'turtle', 'whale', 'dolphin', 'clownfish', 'starfish'
+    ];
+
+    if (!avatar || !validAvatars.includes(avatar)) {
+      return res.status(400).json({ error: 'Invalid avatar selection' });
+    }
+
+    await dbRun('UPDATE users SET avatar = ? WHERE id = ?', [avatar, req.userId]);
+
+    res.json({ message: 'Avatar updated successfully', avatar });
+  } catch (error) {
+    console.error('Update avatar error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

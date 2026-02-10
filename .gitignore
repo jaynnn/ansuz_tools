@@ -1,2 +1,9 @@
 ansuz.log
 *.pid
+node_modules/
+dist/
+backend/dist/
+frontend/dist/
+.env
+*.sqlite
+database.sqlite

@@ -3,6 +3,7 @@ import { chatCompletion } from '../utils/llmService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbAll, dbGet } from '../utils/database';
+import { triggerImpressionUpdate, triggerUserMatching } from '../utils/impressionService';
 
 const router = Router();
 
@@ -156,6 +157,16 @@ ${answersDescription}
       model: result.model,
       savedId,
     });
+
+    // Async: trigger impression update with MBTI result
+    triggerImpressionUpdate(
+      req.userId!,
+      'MBTI测试完成',
+      `用户完成了MBTI测试，结果为${scoreBasedType}。各维度分值：E/I=${scores.EI}, S/N=${scores.SN}, T/F=${scores.TF}, J/P=${scores.JP}。`
+    );
+
+    // Async: trigger user matching (respects weekly cooldown)
+    triggerUserMatching(req.userId!);
   } catch (error: any) {
     logError('mbti_analyze_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: error.message || 'MBTI analysis failed' });
