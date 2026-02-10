@@ -5,6 +5,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Settings from './pages/Settings';
 import StockPrediction from './pages/StockPrediction';
 import MBTITest from './pages/MBTITest';
 import FriendMatch from './pages/FriendMatch';
@@ -31,6 +32,14 @@ const App: React.FC = () => {
                   element={
                     <PrivateRoute>
                       <Dashboard />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <PrivateRoute>
+                      <Settings />
                     </PrivateRoute>
                   }
                 />
