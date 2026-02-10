@@ -156,7 +156,8 @@ const FriendMatch: React.FC = () => {
     try {
       const data = await impressionAPI.getUserProfile(selectedUserId);
       setDetailedProfile(data.profile);
-    } catch {
+    } catch (error) {
+      console.error('Failed to fetch detailed profile:', error);
       setDetailedProfile('暂无法生成详细资料，请稍后再试');
     } finally {
       setLoadingProfile(false);

@@ -164,16 +164,23 @@ router.get('/user/:userId/profile', authMiddleware, rateLimit, async (req: AuthR
 
     const userMessage = `用户昵称：${userInfo.nickname}\n${parts.join('\n')}`;
 
-    const llmResponse = await chatCompletion([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ]);
+    let profile: string;
+    try {
+      const llmResponse = await chatCompletion([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ]);
+      profile = llmResponse.content.trim();
+    } catch (llmError) {
+      logError('user_profile_llm_error', llmError as Error, { targetUserId });
+      return res.status(500).json({ error: '无法生成详细资料，请稍后再试' });
+    }
 
     logInfo('user_profile_generated', { targetUserId, requestedBy: req.userId });
-    res.json({ profile: llmResponse.content.trim() });
+    res.json({ profile });
   } catch (error: any) {
     logError('get_user_profile_error', error as Error, { targetUserId: req.params.userId });
-    res.status(500).json({ error: error.message || 'Failed to generate profile' });
+    res.status(500).json({ error: 'Failed to generate profile' });
   }
 });
 
