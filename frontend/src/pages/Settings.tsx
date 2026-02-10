@@ -239,7 +239,7 @@ const Settings: React.FC = () => {
             className={`sidebar-item ${activeTab === 'donate' ? 'active' : ''}`}
             onClick={() => setActiveTab('donate')}
           >
-            ❤️ 捐赠
+            ❤️
           </button>
         </nav>
 

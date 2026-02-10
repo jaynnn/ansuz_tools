@@ -178,6 +178,23 @@ const migrateUserImpressionsTable = async () => {
   }
 };
 
+// Migration function to add duration column to announcements table
+const migrateAnnouncementsTable = async () => {
+  try {
+    const columns: any[] = await dbAll("PRAGMA table_info(announcements)");
+    const columnNames = columns.map((col: any) => col.name);
+
+    if (!columnNames.includes('duration')) {
+      logInfo('announcements_migration_start', { reason: 'add_duration_column' });
+      await dbRun('ALTER TABLE announcements ADD COLUMN duration INTEGER');
+      logInfo('announcements_migration_success', { reason: 'added_duration_column' });
+    }
+  } catch (error) {
+    logError('announcements_migration_error', error as Error);
+    throw error;
+  }
+};
+
 export const initDatabase = async () => {
   try {
     logInfo('database_init_start', { dbPath });
@@ -338,6 +355,7 @@ export const initDatabase = async () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         message TEXT NOT NULL,
         is_active INTEGER NOT NULL DEFAULT 1,
+        duration INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -346,6 +364,7 @@ export const initDatabase = async () => {
     await migrateStockPredictionsTable();
     await migrateUsersTable();
     await migrateUserImpressionsTable();
+    await migrateAnnouncementsTable();
 
     console.log('Database initialized successfully');
     logInfo('database_init_success', { dbPath });
