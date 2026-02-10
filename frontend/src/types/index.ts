@@ -38,10 +38,13 @@ export interface MatchedUser {
   avatar: string;
   score: number;
   overview: string | null;
+  matchReason: string | null;
   matchDimensions: {
     scores?: Record<string, number>;
     total?: number;
     summary?: string;
+    reason_a_to_b?: string;
+    reason_b_to_a?: string;
   };
   updatedAt: string;
 }
