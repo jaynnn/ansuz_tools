@@ -194,28 +194,63 @@
   color: var(--text-primary);
 }
 
-.user-detail-overview, .user-detail-contact {
+.user-detail-overview, .user-detail-contact, .user-detail-profile {
   margin: 1.5rem 0;
   text-align: left;
 }
 
-.user-detail-overview h3, .user-detail-contact h3 {
+.user-detail-overview h3, .user-detail-contact h3, .user-detail-profile h3 {
   color: var(--text-primary);
   font-size: 1rem;
   margin: 0 0 0.5rem 0;
 }
 
-.user-detail-overview p, .user-detail-contact p {
+.user-detail-overview p, .user-detail-contact p, .user-detail-profile p {
   color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
+}
+
+.contact-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.contact-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 3.5em;
+}
+
+.contact-value {
+  color: var(--text-secondary);
+}
+
+.user-detail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.detail-profile-btn {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 1rem;
 }
 
 .want-to-know-btn {
   width: 100%;
   padding: 0.75rem;
   font-size: 1rem;
-  margin-top: 1rem;
 }
 
 /* Notifications */
