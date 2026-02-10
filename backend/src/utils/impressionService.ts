@@ -155,15 +155,18 @@ export const generateImpressionOverview = async (
       } catch { /* ignore */ }
       try {
         const extra = JSON.parse(privateInfo.extra || '{}');
+        if (extra.gender) {
+          gender = extra.gender;
+          parts.push(`性别：${gender}`);
+        }
         if (extra.location) parts.push(`所在地：${extra.location}`);
         if (extra.hobbies) parts.push(`兴趣爱好：${extra.hobbies}`);
         if (Array.isArray(extra.items)) {
           for (const item of extra.items) {
             if (item.field && item.detail) {
               parts.push(`${item.field}：${item.detail}`);
-              if (item.field === '性别' || item.field === 'gender') {
+              if (!gender && (item.field === '性别' || item.field === 'gender')) {
                 gender = item.detail;
-                break;
               }
             }
           }
