@@ -163,6 +163,7 @@ export const generateImpressionOverview = async (
               parts.push(`${item.field}：${item.detail}`);
               if (item.field === '性别' || item.field === 'gender') {
                 gender = item.detail;
+                break;
               }
             }
           }
