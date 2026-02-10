@@ -24,7 +24,7 @@ const PREDEFINED_TOOLS = [
   },
   {
     name: '交友匹配',
-    description: '基于AI印象分析的交友匹配，查看匹配推荐、管理隐私信息、接收认识请求',
+    description: '基于AI印象分析的交友匹配，查看匹配推荐、管理个人信息、接收认识请求',
     url: '/friend-match',
     tags: ['社交', '交友', 'AI'],
   },

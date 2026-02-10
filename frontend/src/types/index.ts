@@ -101,6 +101,7 @@ export interface PrivateInfo {
 export interface StructuredPrivateInfo {
   appearance: PrivateInfoAppearance;
   contact: PrivateInfoContact;
+  gender: string;
   location: string;
   hobbies: string;
   extraItems: Array<{ field: string; detail: string }>;

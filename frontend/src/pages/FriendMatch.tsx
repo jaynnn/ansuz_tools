@@ -38,7 +38,7 @@ const FriendMatch: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [privateInfo, setPrivateInfo] = useState<StructuredPrivateInfo>({
-    appearance: {}, contact: {}, location: '', hobbies: '', extraItems: [],
+    appearance: {}, contact: {}, gender: '', location: '', hobbies: '', extraItems: [],
   });
   const [loading, setLoading] = useState(true);
   const [sendingRequest, setSendingRequest] = useState(false);
@@ -107,6 +107,7 @@ const FriendMatch: React.FC = () => {
   const parsePrivateInfo = (raw: PrivateInfo): StructuredPrivateInfo => {
     let appearance = {};
     let contact = {};
+    let gender = '';
     let location = '';
     let hobbies = '';
     let extraItems: Array<{ field: string; detail: string }> = [];
@@ -115,19 +116,20 @@ const FriendMatch: React.FC = () => {
     try { contact = JSON.parse(raw.contact || '{}'); } catch { contact = raw.contact ? { other: raw.contact } : {}; }
     try {
       const extra = JSON.parse(raw.extra || '{}');
+      gender = extra.gender || '';
       location = extra.location || '';
       hobbies = extra.hobbies || '';
       extraItems = Array.isArray(extra.items) ? extra.items : [];
     } catch {
       if (raw.extra) extraItems = [{ field: '其他', detail: raw.extra }];
     }
-    return { appearance, contact, location, hobbies, extraItems };
+    return { appearance, contact, gender, location, hobbies, extraItems };
   };
 
   const serializePrivateInfo = (info: StructuredPrivateInfo): PrivateInfo => ({
     appearance: JSON.stringify(info.appearance),
     contact: JSON.stringify(info.contact),
-    extra: JSON.stringify({ location: info.location, hobbies: info.hobbies, items: info.extraItems }),
+    extra: JSON.stringify({ gender: info.gender, location: info.location, hobbies: info.hobbies, items: info.extraItems }),
   });
 
   const handleShowPrivateInfo = async () => {
@@ -145,7 +147,7 @@ const FriendMatch: React.FC = () => {
     setSavingPrivateInfo(true);
     try {
       await friendMatchAPI.updatePrivateInfo(serializePrivateInfo(privateInfo));
-      alert('隐私信息已保存');
+      alert('个人信息已保存');
     } catch {
       alert('保存失败');
     } finally {
@@ -300,7 +302,7 @@ const FriendMatch: React.FC = () => {
       <div className="friend-match">
         <header className="fm-header">
           <button className="btn btn-secondary" onClick={goBack}>← 返回</button>
-          <h1>隐私信息</h1>
+          <h1>个人信息</h1>
           <div />
         </header>
         <div className="fm-content">
@@ -372,6 +374,17 @@ const FriendMatch: React.FC = () => {
             {/* Location & Hobbies Section */}
             <div className="form-section">
               <h3>基本信息</h3>
+              <div className="form-group">
+                <label>性别</label>
+                <select
+                  value={privateInfo.gender}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, gender: e.target.value })}
+                >
+                  <option value="">请选择</option>
+                  <option value="男">男</option>
+                  <option value="女">女</option>
+                </select>
+              </div>
               <div className="form-group">
                 <label>所在地</label>
                 <input
@@ -510,7 +523,7 @@ const FriendMatch: React.FC = () => {
         <a href="/" className="btn btn-secondary">← 首页</a>
         <h1>交友匹配</h1>
         <div className="fm-header-actions">
-          <button className="btn btn-icon" onClick={handleShowPrivateInfo} title="隐私信息">📝</button>
+          <button className="btn btn-icon" onClick={handleShowPrivateInfo} title="个人信息">📝</button>
           <NotificationBell onClick={handleShowNotifications} />
         </div>
       </header>
