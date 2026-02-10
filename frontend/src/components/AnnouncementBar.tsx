@@ -6,6 +6,25 @@ const AnnouncementBar: React.FC = () => {
   const [dismissed, setDismissed] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const durationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearDurationTimer = () => {
+    if (durationTimer.current) {
+      clearTimeout(durationTimer.current);
+      durationTimer.current = null;
+    }
+  };
+
+  const showAnnouncement = (msg: string, duration?: number | null) => {
+    setMessage(msg);
+    setDismissed(false);
+    clearDurationTimer();
+    if (duration && duration > 0) {
+      durationTimer.current = setTimeout(() => {
+        setDismissed(true);
+      }, duration * 1000);
+    }
+  };
 
   // Fetch latest announcement on mount
   useEffect(() => {
@@ -19,8 +38,7 @@ const AnnouncementBar: React.FC = () => {
       .then((res) => res.json())
       .then((data) => {
         if (data.announcement?.message) {
-          setMessage(data.announcement.message);
-          setDismissed(false);
+          showAnnouncement(data.announcement.message, data.announcement.duration);
         }
       })
       .catch(() => {
@@ -30,39 +48,49 @@ const AnnouncementBar: React.FC = () => {
 
   // WebSocket connection for real-time announcements
   const connectWs = useCallback(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = import.meta.env.DEV ? 'localhost:4000' : window.location.host;
     const wsUrl = `${wsProtocol}//${wsHost}/ws`;
 
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.type === 'announcement' && parsed.data?.message) {
-          setMessage(parsed.data.message);
-          setDismissed(false);
+      ws.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === 'announcement' && parsed.data?.message) {
+            showAnnouncement(parsed.data.message, parsed.data.duration);
+          }
+        } catch {
+          // ignore invalid messages
         }
-      } catch {
-        // ignore invalid messages
-      }
-    };
+      };
 
-    ws.onclose = () => {
-      // Reconnect after 5 seconds
-      reconnectTimer.current = setTimeout(connectWs, 5000);
-    };
+      ws.onclose = () => {
+        // Reconnect after 5 seconds only if user is still logged in
+        if (localStorage.getItem('token')) {
+          reconnectTimer.current = setTimeout(connectWs, 5000);
+        }
+      };
 
-    ws.onerror = () => {
-      ws.close();
-    };
+      ws.onerror = () => {
+        // Silently close on error to avoid console noise
+        try { ws.close(); } catch { /* ignore */ }
+      };
+    } catch {
+      // Ignore WebSocket construction errors
+    }
   }, []);
 
   useEffect(() => {
     connectWs();
     return () => {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      clearDurationTimer();
       wsRef.current?.close();
     };
   }, [connectWs]);
@@ -77,7 +105,7 @@ const AnnouncementBar: React.FC = () => {
           <span className="announcement-text">{message}</span>
         </div>
       </div>
-      <button className="announcement-close" onClick={() => setDismissed(true)} title="关闭">
+      <button className="announcement-close" onClick={() => { clearDurationTimer(); setDismissed(true); }} title="关闭">
         ✕
       </button>
     </div>

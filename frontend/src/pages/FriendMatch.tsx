@@ -52,6 +52,7 @@ const FriendMatch: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [selectedMatchReason, setSelectedMatchReason] = useState<string | null>(null);
   const [privateInfo, setPrivateInfo] = useState<StructuredPrivateInfo>({
     appearance: {}, contact: {}, gender: '', birthDate: '', birthTime: '', location: '', hobbies: '', friendIntention: '', extraItems: [],
   });
@@ -94,6 +95,9 @@ const FriendMatch: React.FC = () => {
       ]);
       setSelectedUser(profile);
       setSelectedUserId(userId);
+      // Carry over match reason from the matches list if available
+      const matchEntry = matches.find(m => m.userId === userId);
+      setSelectedMatchReason(matchEntry?.matchReason || null);
       setContactVotes(votes);
       setViewMode('user-detail');
     } catch (error) {
@@ -280,6 +284,7 @@ const FriendMatch: React.FC = () => {
     setViewMode('main');
     setSelectedUser(null);
     setSelectedUserId(null);
+    setSelectedMatchReason(null);
     setDetailedProfile(null);
     setContactVotes(null);
   };
@@ -316,6 +321,12 @@ const FriendMatch: React.FC = () => {
               <div className="user-detail-overview">
                 <h3>印象概览</h3>
                 <ParagraphText text={selectedUser.overview} />
+              </div>
+            )}
+            {selectedMatchReason && (
+              <div className="user-detail-match-reason">
+                <h3>💡 配对原因</h3>
+                <p>{selectedMatchReason}</p>
               </div>
             )}
             {selectedUser.contact && (

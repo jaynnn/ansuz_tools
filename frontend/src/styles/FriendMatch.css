@@ -205,24 +205,24 @@
   color: var(--text-primary);
 }
 
-.user-detail-overview, .user-detail-contact, .user-detail-profile {
+.user-detail-overview, .user-detail-contact, .user-detail-profile, .user-detail-match-reason {
   margin: 1.5rem 0;
   text-align: left;
 }
 
-.user-detail-overview h3, .user-detail-contact h3, .user-detail-profile h3 {
+.user-detail-overview h3, .user-detail-contact h3, .user-detail-profile h3, .user-detail-match-reason h3 {
   color: var(--text-primary);
   font-size: 1rem;
   margin: 0 0 0.5rem 0;
 }
 
-.user-detail-overview p, .user-detail-contact p, .user-detail-profile p {
+.user-detail-overview p, .user-detail-contact p, .user-detail-profile p, .user-detail-match-reason p {
   color: var(--text-secondary);
   margin: 0 0 0.6rem 0;
   line-height: 1.6;
 }
 
-.user-detail-overview p:last-child, .user-detail-profile p:last-child {
+.user-detail-overview p:last-child, .user-detail-profile p:last-child, .user-detail-match-reason p:last-child {
   margin-bottom: 0;
 }
 
