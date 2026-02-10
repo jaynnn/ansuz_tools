@@ -7,7 +7,6 @@ import ToolCard from '../components/ToolCard';
 import AddToolModal from '../components/AddToolModal';
 import Avatar from '../components/Avatar';
 import AvatarSelector from '../components/AvatarSelector';
-import NotificationBell from '../components/NotificationBell';
 import '../styles/Dashboard.css';
 
 const Dashboard: React.FC = () => {
@@ -114,8 +113,6 @@ const Dashboard: React.FC = () => {
           <h1>工具箱</h1>
         </div>
         <div className="header-actions">
-          <a href="/friend-match" className="btn btn-icon" title="交友匹配">💕</a>
-          <NotificationBell onClick={() => { window.location.href = '/friend-match'; }} />
           <button onClick={toggleTheme} className="btn btn-icon" title="切换主题">
             {theme === 'light' ? '🌙' : '☀️'}
           </button>

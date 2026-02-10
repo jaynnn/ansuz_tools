@@ -64,8 +64,40 @@ export interface Notification {
   avatar: string;
 }
 
+export interface PrivateInfoAppearance {
+  height?: string;
+  weight?: string;
+  skin?: string;
+  bodyType?: string;
+  faceShape?: string;
+  other?: string;
+}
+
+export interface PrivateInfoContact {
+  wechat?: string;
+  qq?: string;
+  phone?: string;
+  email?: string;
+  other?: string;
+}
+
+export interface PrivateInfoExtra {
+  location?: string;
+  hobbies?: string;
+  items: Array<{ field: string; detail: string }>;
+}
+
 export interface PrivateInfo {
   appearance: string;
   contact: string;
   extra: string;
+}
+
+// Structured version for frontend use
+export interface StructuredPrivateInfo {
+  appearance: PrivateInfoAppearance;
+  contact: PrivateInfoContact;
+  location: string;
+  hobbies: string;
+  extraItems: Array<{ field: string; detail: string }>;
 }

@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
+import { triggerImpressionUpdate, triggerUserMatchingDaily } from '../utils/impressionService';
 
 const router = Router();
 
@@ -101,6 +102,14 @@ router.put('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, 
 
     logInfo('private_info_updated', { userId: req.userId });
     res.json({ message: 'Private info updated' });
+
+    // Async: trigger impression update and daily-limited matching after private info save
+    triggerImpressionUpdate(
+      req.userId!,
+      '隐私信息更新',
+      `用户更新了隐私信息。外貌信息：${safeAppearance}。其他信息：${safeExtra}`
+    );
+    triggerUserMatchingDaily(req.userId!);
   } catch (error: any) {
     logError('update_private_info_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: error.message || 'Failed to update private info' });
