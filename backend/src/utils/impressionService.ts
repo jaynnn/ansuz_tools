@@ -361,8 +361,9 @@ const matchTwoUsers = (
 配对维度：${MATCHING_DIMENSIONS.join('、')}
 
 请为每个维度打分（0-10），并计算总分（各维度分数之和）。
+同时，请为双方各生成一段配对理由（reason_a_to_b 是对A说明B为什么适合A，reason_b_to_a 是对B说明A为什么适合B），每段不超过80字，要有说服力，让用户觉得对方是契合自己的。
 严格输出纯JSON格式，示例：
-{"scores":{"吸引触发":5,"价值共鸣":7},"total":80,"summary":"简要配对评语不超过50字"}`;
+{"scores":{"吸引触发":5,"价值共鸣":7},"total":80,"summary":"简要配对评语","reason_a_to_b":"对方与你在价值观上高度共鸣，性格互补能给你带来新鲜感","reason_b_to_a":"对方的踏实可靠恰好弥补你的随性，兴趣爱好的交集让你们有聊不完的话题"}`;
 
   const userMessage = `用户A的印象：${JSON.stringify(dimensionsA)}
 ${privateInfoA?.appearance ? `用户A的外貌描述：${privateInfoA.appearance}` : ''}

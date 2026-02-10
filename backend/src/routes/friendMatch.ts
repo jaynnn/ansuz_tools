@@ -34,6 +34,7 @@ router.get('/top', authMiddleware, rateLimit, async (req: AuthRequest, res: Resp
         um.score,
         um.dimensions,
         um.updated_at,
+        um.user_id_a,
         CASE WHEN um.user_id_a = ? THEN um.user_id_b ELSE um.user_id_a END as matched_user_id
        FROM user_matches um
        WHERE um.user_id_a = ? OR um.user_id_b = ?
@@ -53,13 +54,24 @@ router.get('/top', authMiddleware, rateLimit, async (req: AuthRequest, res: Resp
           'SELECT overview FROM user_impressions WHERE user_id = ?',
           [m.matched_user_id]
         );
+        let dims: any = {};
+        try {
+          dims = JSON.parse(m.dimensions);
+        } catch {
+          dims = {};
+        }
+        // Determine which reason to show: if current user is A, show reason_a_to_b; otherwise show reason_b_to_a
+        const matchReason = m.user_id_a === userId
+          ? (dims.reason_a_to_b || dims.summary || null)
+          : (dims.reason_b_to_a || dims.summary || null);
         return {
           userId: m.matched_user_id,
           nickname: userInfo?.nickname || 'Unknown',
           avatar: userInfo?.avatar || 'seal',
           score: m.score,
           overview: impression?.overview || null,
-          matchDimensions: JSON.parse(m.dimensions),
+          matchReason,
+          matchDimensions: dims,
           updatedAt: m.updated_at,
         };
       })

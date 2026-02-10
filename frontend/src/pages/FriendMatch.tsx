@@ -476,6 +476,9 @@ const FriendMatch: React.FC = () => {
                   <div className="match-info">
                     <span className="match-name">{match.nickname}</span>
                     <span className="match-overview">{match.overview || '暂无印象'}</span>
+                    {match.matchReason && (
+                      <span className="match-reason">💡 {match.matchReason}</span>
+                    )}
                   </div>
                   <div className="match-score">
                     <span className="score-value">{Math.round(match.score)}</span>
