@@ -31,7 +31,7 @@ const formatContact = (contactStr: string): Array<{ label: string; value: string
 
 /** Render text with paragraph splitting */
 const ParagraphText: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
-  const paragraphs = text.split(/\n+/).filter(p => p.trim());
+  const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 0);
   if (paragraphs.length <= 1) {
     return <p className={className}>{text}</p>;
   }

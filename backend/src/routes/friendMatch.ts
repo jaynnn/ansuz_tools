@@ -34,8 +34,9 @@ router.get('/top', authMiddleware, rateLimit, async (req: AuthRequest, res: Resp
       `SELECT target_user_id FROM user_added_list WHERE user_id = ?`,
       [userId]
     );
-    const excludedIds = excludedUsers.map((u: any) => u.target_user_id);
+    const excludedIdSet = new Set(excludedUsers.map((u: any) => u.target_user_id));
 
+    // Fetch more than 10 to account for excluded users, then filter and slice
     const matches = await dbAll(
       `SELECT
         um.score,
@@ -53,7 +54,7 @@ router.get('/top', authMiddleware, rateLimit, async (req: AuthRequest, res: Resp
     // Enrich with user info and overview, filter out excluded
     const enriched = (await Promise.all(
       matches.map(async (m: any) => {
-        if (excludedIds.includes(m.matched_user_id)) return null;
+        if (excludedIdSet.has(m.matched_user_id)) return null;
         const userInfo = await dbGet(
           'SELECT id, nickname, avatar FROM users WHERE id = ?',
           [m.matched_user_id]
