@@ -1,13 +1,31 @@
-import { Router, Response } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { dbRun, dbGet } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { broadcastMessage } from '../utils/wsManager';
-import { logInfo } from '../utils/logger';
+import { logInfo, logWarn } from '../utils/logger';
 
 const router = Router();
 
+// Rate limiter
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 30;
+
+const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const key = String(req.userId || req.ip);
+  const now = Date.now();
+  const timestamps = (rateLimitMap.get(key) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    logWarn('announcement_rate_limit_exceeded', { key });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+  timestamps.push(now);
+  rateLimitMap.set(key, timestamps);
+  next();
+};
+
 // Get latest active announcement
-router.get('/latest', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/latest', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const announcement = await dbGet(
       `SELECT id, message, created_at FROM announcements WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1`
