@@ -14,6 +14,7 @@ type SettingsTab = 'profile' | 'tools' | 'donate';
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [newNickname, setNewNickname] = useState('');
+  const [qrLoadError, setQrLoadError] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAvatarSelector, setShowAvatarSelector] = useState(false);
@@ -198,20 +199,15 @@ const Settings: React.FC = () => {
           如果你觉得好用，且有余力的话，可以扫码支持一下，在此谢过 🙏
         </p>
         <div className="donate-qr">
-          <img
-            src="/donate.png"
-            alt="捐赠二维码"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-              const parent = (e.target as HTMLImageElement).parentElement;
-              if (parent && !parent.querySelector('.donate-no-qr')) {
-                const hint = document.createElement('p');
-                hint.className = 'donate-no-qr';
-                hint.textContent = '捐赠二维码暂未上传';
-                parent.appendChild(hint);
-              }
-            }}
-          />
+          {!qrLoadError ? (
+            <img
+              src="/donate.png"
+              alt="捐赠二维码"
+              onError={() => setQrLoadError(true)}
+            />
+          ) : (
+            <p className="donate-no-qr">捐赠二维码暂未上传</p>
+          )}
         </div>
       </div>
     </div>
