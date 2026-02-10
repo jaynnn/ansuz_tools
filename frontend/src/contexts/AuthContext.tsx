@@ -66,8 +66,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const deleteAccount = async (password: string) => {
+    await authAPI.deleteAccount(password);
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, updateNickname, updateAvatar }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, updateNickname, updateAvatar, deleteAccount }}>
       {children}
     </AuthContext.Provider>
   );

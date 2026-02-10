@@ -332,6 +332,16 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create announcements table - stores broadcast announcements
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
     await migrateUsersTable();

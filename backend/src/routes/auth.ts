@@ -1,9 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { dbRun, dbGet } from '../utils/database';
+import { dbRun, dbGet, dbTransaction } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { logWarn } from '../utils/logger';
+import { logWarn, logInfo } from '../utils/logger';
 
 const router = Router();
 
@@ -165,6 +165,49 @@ router.put('/avatar', authMiddleware, rateLimit, async (req: AuthRequest, res: R
     res.json({ message: 'Avatar updated successfully', avatar });
   } catch (error) {
     console.error('Update avatar error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete account (销号)
+router.delete('/account', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required to delete account' });
+    }
+
+    // Verify password
+    const user: any = await dbGet('SELECT * FROM users WHERE id = ?', [req.userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: '密码错误' });
+    }
+
+    // Delete all related data in a transaction
+    await dbTransaction(async () => {
+      await dbRun('DELETE FROM contact_votes WHERE voter_id = ? OR target_user_id = ?', [req.userId, req.userId]);
+      await dbRun('DELETE FROM user_added_list WHERE user_id = ? OR target_user_id = ?', [req.userId, req.userId]);
+      await dbRun('DELETE FROM notifications WHERE from_user_id = ? OR to_user_id = ?', [req.userId, req.userId]);
+      await dbRun('DELETE FROM user_private_info WHERE user_id = ?', [req.userId]);
+      await dbRun('DELETE FROM match_cooldown WHERE user_id = ?', [req.userId]);
+      await dbRun('DELETE FROM user_matches WHERE user_id_a = ? OR user_id_b = ?', [req.userId, req.userId]);
+      await dbRun('DELETE FROM user_impressions WHERE user_id = ?', [req.userId]);
+      await dbRun('DELETE FROM mbti_results WHERE user_id = ?', [req.userId]);
+      await dbRun('DELETE FROM stock_predictions WHERE user_id = ?', [req.userId]);
+      await dbRun('DELETE FROM tools WHERE user_id = ?', [req.userId]);
+      await dbRun('DELETE FROM users WHERE id = ?', [req.userId]);
+    });
+
+    logInfo('account_deleted', { userId: req.userId, username: user.username });
+    res.json({ message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Delete account error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -72,6 +72,7 @@ const MBTITest: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    document.title = 'MBTI测试 - 工具箱';
     loadHistory();
   }, [loadHistory]);
   const handleSliderChange = useCallback((value: number) => {

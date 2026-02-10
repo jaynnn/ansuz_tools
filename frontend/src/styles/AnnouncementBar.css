@@ -1,0 +1,67 @@
+.announcement-bar {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(90deg, #ff9800, #ff5722);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.announcement-content {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.announcement-icon {
+  flex-shrink: 0;
+  margin-right: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.announcement-scroll {
+  overflow: hidden;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.announcement-text {
+  display: inline-block;
+  animation: announcement-marquee 15s linear infinite;
+  padding-left: 100%;
+}
+
+@keyframes announcement-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.announcement-close {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  margin-left: 0.5rem;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.announcement-close:hover {
+  opacity: 1;
+}
+
+/* Pause animation on hover for readability */
+.announcement-bar:hover .announcement-text {
+  animation-play-state: paused;
+}

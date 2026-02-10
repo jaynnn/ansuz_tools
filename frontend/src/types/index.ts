@@ -23,6 +23,7 @@ export interface AuthContextType {
   logout: () => void;
   updateNickname: (nickname: string) => Promise<void>;
   updateAvatar: (avatar: string) => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
 }
 
 export interface UserImpression {

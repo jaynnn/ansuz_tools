@@ -66,6 +66,7 @@ const FriendMatch: React.FC = () => {
   const [votingContact, setVotingContact] = useState(false);
 
   useEffect(() => {
+    document.title = '交友匹配 - 工具箱';
     fetchData();
   }, []);
 
@@ -175,7 +176,7 @@ const FriendMatch: React.FC = () => {
     setSavingPrivateInfo(true);
     try {
       await friendMatchAPI.updatePrivateInfo(serializePrivateInfo(privateInfo));
-      alert('个人信息已保存');
+      alert('个人信息已保存，需要等待几分钟时间生效。');
     } catch {
       alert('保存失败');
     } finally {
@@ -760,6 +761,7 @@ const FriendMatch: React.FC = () => {
               ) : (
                 <p className="impression-placeholder">完成MBTI测试后将生成你的印象概览</p>
               )}
+              <p className="impression-hint">💡 建议填写生辰信息（点击右上角 📝），匹配算法会参考星座和生辰八字来提升匹配准确度。</p>
             </div>
           </div>
         </section>

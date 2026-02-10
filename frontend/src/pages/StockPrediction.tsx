@@ -11,6 +11,7 @@ const StockPredictionPage: React.FC = () => {
 
   // Load predictions from server
   useEffect(() => {
+    document.title = '股票预测 - 工具箱';
     const loadPredictions = async () => {
       try {
         setLoading(true);
