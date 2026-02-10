@@ -212,8 +212,155 @@
 
 .user-detail-overview p, .user-detail-contact p, .user-detail-profile p {
   color: var(--text-secondary);
-  margin: 0;
-  line-height: 1.5;
+  margin: 0 0 0.6rem 0;
+  line-height: 1.6;
+}
+
+.user-detail-overview p:last-child, .user-detail-profile p:last-child {
+  margin-bottom: 0;
+}
+
+/* MBTI Badge */
+.mbti-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--hover-bg);
+  border-radius: 10px;
+  vertical-align: middle;
+}
+
+.mbti-badge-sm {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  margin-left: 0.35rem;
+}
+
+/* Contact Vote Buttons */
+.contact-vote-section {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.contact-vote-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 16px;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.contact-vote-btn:hover {
+  background: var(--hover-bg);
+}
+
+.contact-vote-btn.active.vote-true {
+  border-color: #27ae60;
+  color: #27ae60;
+  background: rgba(39, 174, 96, 0.08);
+}
+
+.contact-vote-btn.active.vote-false {
+  border-color: #e74c3c;
+  color: #e74c3c;
+  background: rgba(231, 76, 60, 0.08);
+}
+
+.vote-count {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  margin-left: 0.1rem;
+}
+
+/* Match card right section */
+.match-card-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 60px;
+}
+
+.btn-added {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+  background: var(--hover-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-added:hover {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: #c0392b;
+}
+
+/* Added Users / Blacklist */
+.added-users-section {
+  margin-bottom: 1.5rem;
+}
+
+.added-users-section h3 {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  margin: 0 0 0.75rem 0;
+}
+
+.added-users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.added-user-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--card-bg);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.added-user-name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.added-user-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .contact-items {

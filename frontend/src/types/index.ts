@@ -36,6 +36,7 @@ export interface MatchedUser {
   userId: number;
   nickname: string;
   avatar: string;
+  mbtiType: string | null;
   score: number;
   overview: string | null;
   matchReason: string | null;
@@ -54,6 +55,7 @@ export interface UserProfile {
     id: number;
     nickname: string;
     avatar: string;
+    mbtiType?: string | null;
   };
   overview: string | null;
   contact: string | null;
@@ -104,5 +106,20 @@ export interface StructuredPrivateInfo {
   gender: string;
   location: string;
   hobbies: string;
+  friendIntention: string;
   extraItems: Array<{ field: string; detail: string }>;
+}
+
+export interface AddedUser {
+  target_user_id: number;
+  status: 'added' | 'blocked';
+  created_at: string;
+  nickname: string;
+  avatar: string;
+}
+
+export interface ContactVotes {
+  trueCount: number;
+  falseCount: number;
+  myVote: 'true' | 'false' | null;
 }

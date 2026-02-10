@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { impressionAPI, friendMatchAPI } from '../api';
-import type { UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, StructuredPrivateInfo } from '../types/index';
+import type { UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, StructuredPrivateInfo, AddedUser, ContactVotes } from '../types/index';
 import Avatar from '../components/Avatar';
 import NotificationBell from '../components/NotificationBell';
 import '../styles/FriendMatch.css';
 
-type ViewMode = 'main' | 'user-detail' | 'notifications' | 'private-info';
+type ViewMode = 'main' | 'user-detail' | 'notifications' | 'private-info' | 'added-users';
 
 const PROFILE_CACHE_DURATION_MS = 10 * 60 * 1000;
 
@@ -29,6 +29,21 @@ const formatContact = (contactStr: string): Array<{ label: string; value: string
   }
 };
 
+/** Render text with paragraph splitting */
+const ParagraphText: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
+  const paragraphs = text.split(/\n+/).filter(p => p.trim());
+  if (paragraphs.length <= 1) {
+    return <p className={className}>{text}</p>;
+  }
+  return (
+    <div className={className}>
+      {paragraphs.map((p, i) => (
+        <p key={i}>{p.trim()}</p>
+      ))}
+    </div>
+  );
+};
+
 const FriendMatch: React.FC = () => {
   const { user } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('main');
@@ -38,7 +53,7 @@ const FriendMatch: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [privateInfo, setPrivateInfo] = useState<StructuredPrivateInfo>({
-    appearance: {}, contact: {}, gender: '', location: '', hobbies: '', extraItems: [],
+    appearance: {}, contact: {}, gender: '', location: '', hobbies: '', friendIntention: '', extraItems: [],
   });
   const [loading, setLoading] = useState(true);
   const [sendingRequest, setSendingRequest] = useState(false);
@@ -46,6 +61,9 @@ const FriendMatch: React.FC = () => {
   const [detailedProfile, setDetailedProfile] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const profileCache = useRef<Map<number, { profile: string; timestamp: number }>>(new Map());
+  const [addedUsers, setAddedUsers] = useState<AddedUser[]>([]);
+  const [contactVotes, setContactVotes] = useState<ContactVotes | null>(null);
+  const [votingContact, setVotingContact] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -69,9 +87,13 @@ const FriendMatch: React.FC = () => {
 
   const handleViewUser = async (userId: number) => {
     try {
-      const profile = await impressionAPI.getUserImpression(userId);
+      const [profile, votes] = await Promise.all([
+        impressionAPI.getUserImpression(userId),
+        friendMatchAPI.getContactVotes(userId),
+      ]);
       setSelectedUser(profile);
       setSelectedUserId(userId);
+      setContactVotes(votes);
       setViewMode('user-detail');
     } catch (error) {
       console.error('Failed to fetch user profile:', error);
@@ -110,6 +132,7 @@ const FriendMatch: React.FC = () => {
     let gender = '';
     let location = '';
     let hobbies = '';
+    let friendIntention = '';
     let extraItems: Array<{ field: string; detail: string }> = [];
 
     try { appearance = JSON.parse(raw.appearance || '{}'); } catch { appearance = raw.appearance ? { other: raw.appearance } : {}; }
@@ -119,17 +142,18 @@ const FriendMatch: React.FC = () => {
       gender = extra.gender || '';
       location = extra.location || '';
       hobbies = extra.hobbies || '';
+      friendIntention = extra.friendIntention || '';
       extraItems = Array.isArray(extra.items) ? extra.items : [];
     } catch {
       if (raw.extra) extraItems = [{ field: '其他', detail: raw.extra }];
     }
-    return { appearance, contact, gender, location, hobbies, extraItems };
+    return { appearance, contact, gender, location, hobbies, friendIntention, extraItems };
   };
 
   const serializePrivateInfo = (info: StructuredPrivateInfo): PrivateInfo => ({
     appearance: JSON.stringify(info.appearance),
     contact: JSON.stringify(info.contact),
-    extra: JSON.stringify({ gender: info.gender, location: info.location, hobbies: info.hobbies, items: info.extraItems }),
+    extra: JSON.stringify({ gender: info.gender, location: info.location, hobbies: info.hobbies, friendIntention: info.friendIntention, items: info.extraItems }),
   });
 
   const handleShowPrivateInfo = async () => {
@@ -184,11 +208,75 @@ const FriendMatch: React.FC = () => {
     }
   };
 
+  const handleAddUser = async (userId: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      await friendMatchAPI.addUser(userId);
+      setMatches(prev => prev.filter(m => m.userId !== userId));
+    } catch (error) {
+      console.error('Failed to add user:', error);
+    }
+  };
+
+  const handleShowAddedUsers = async () => {
+    try {
+      const data = await friendMatchAPI.getAddedUsers();
+      setAddedUsers(data.users);
+      setViewMode('added-users');
+    } catch (error) {
+      console.error('Failed to fetch added users:', error);
+    }
+  };
+
+  const handleRemoveAddedUser = async (targetUserId: number) => {
+    try {
+      await friendMatchAPI.removeAddedUser(targetUserId);
+      setAddedUsers(prev => prev.filter(u => u.target_user_id !== targetUserId));
+    } catch (error) {
+      console.error('Failed to remove added user:', error);
+    }
+  };
+
+  const handleBlockUser = async (targetUserId: number) => {
+    try {
+      await friendMatchAPI.blockUser(targetUserId);
+      setAddedUsers(prev => prev.map(u =>
+        u.target_user_id === targetUserId ? { ...u, status: 'blocked' as const } : u
+      ));
+    } catch (error) {
+      console.error('Failed to block user:', error);
+    }
+  };
+
+  const handleUnblockUser = async (targetUserId: number) => {
+    try {
+      await friendMatchAPI.unblockUser(targetUserId);
+      setAddedUsers(prev => prev.filter(u => u.target_user_id !== targetUserId));
+    } catch (error) {
+      console.error('Failed to unblock user:', error);
+    }
+  };
+
+  const handleVoteContact = async (vote: 'true' | 'false') => {
+    if (!selectedUserId || votingContact) return;
+    setVotingContact(true);
+    try {
+      await friendMatchAPI.voteContact(selectedUserId, vote);
+      const votes = await friendMatchAPI.getContactVotes(selectedUserId);
+      setContactVotes(votes);
+    } catch (error) {
+      console.error('Failed to vote:', error);
+    } finally {
+      setVotingContact(false);
+    }
+  };
+
   const goBack = () => {
     setViewMode('main');
     setSelectedUser(null);
     setSelectedUserId(null);
     setDetailedProfile(null);
+    setContactVotes(null);
   };
 
   if (loading) {
@@ -212,12 +300,17 @@ const FriendMatch: React.FC = () => {
           <div className="user-detail-card">
             <div className="user-detail-avatar">
               <Avatar avatarId={selectedUser.user.avatar} size={80} />
-              <h2>{selectedUser.user.nickname}</h2>
+              <h2>
+                {selectedUser.user.nickname}
+                {selectedUser.user.mbtiType && (
+                  <span className="mbti-badge">{selectedUser.user.mbtiType}</span>
+                )}
+              </h2>
             </div>
             {selectedUser.overview && (
               <div className="user-detail-overview">
                 <h3>印象概览</h3>
-                <p>{selectedUser.overview}</p>
+                <ParagraphText text={selectedUser.overview} />
               </div>
             )}
             {selectedUser.contact && (
@@ -231,12 +324,28 @@ const FriendMatch: React.FC = () => {
                     </div>
                   ))}
                 </div>
+                <div className="contact-vote-section">
+                  <button
+                    className={`contact-vote-btn vote-true ${contactVotes?.myVote === 'true' ? 'active' : ''}`}
+                    onClick={() => handleVoteContact('true')}
+                    disabled={votingContact}
+                  >
+                    真 <sub className="vote-count">{contactVotes?.trueCount || 0}</sub>
+                  </button>
+                  <button
+                    className={`contact-vote-btn vote-false ${contactVotes?.myVote === 'false' ? 'active' : ''}`}
+                    onClick={() => handleVoteContact('false')}
+                    disabled={votingContact}
+                  >
+                    假 <sub className="vote-count">{contactVotes?.falseCount || 0}</sub>
+                  </button>
+                </div>
               </div>
             )}
             {detailedProfile && (
               <div className="user-detail-profile">
                 <h3>详细资料</h3>
-                <p>{detailedProfile}</p>
+                <ParagraphText text={detailedProfile} />
               </div>
             )}
             <div className="user-detail-actions">
@@ -291,6 +400,72 @@ const FriendMatch: React.FC = () => {
               ))}
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // Added Users / Blacklist View
+  if (viewMode === 'added-users') {
+    const addedList = addedUsers.filter(u => u.status === 'added');
+    const blockedList = addedUsers.filter(u => u.status === 'blocked');
+    return (
+      <div className="friend-match">
+        <header className="fm-header">
+          <button className="btn btn-secondary" onClick={goBack}>← 返回</button>
+          <h1>已添加用户</h1>
+          <div />
+        </header>
+        <div className="fm-content">
+          <section className="added-users-section">
+            <h3>已添加 ({addedList.length})</h3>
+            {addedList.length === 0 ? (
+              <div className="empty-state"><p>暂无已添加用户</p></div>
+            ) : (
+              <div className="added-users-list">
+                {addedList.map((u) => (
+                  <div key={u.target_user_id} className="added-user-item">
+                    <Avatar avatarId={u.avatar || 'seal'} size={40} />
+                    <span className="added-user-name">{u.nickname}</span>
+                    <div className="added-user-actions">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleRemoveAddedUser(u.target_user_id)}
+                        title="移除（重新出现在匹配列表）"
+                      >移除</button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleBlockUser(u.target_user_id)}
+                        title="拉黑（永不出现在匹配列表）"
+                      >拉黑</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+          <section className="added-users-section">
+            <h3>黑名单 ({blockedList.length})</h3>
+            {blockedList.length === 0 ? (
+              <div className="empty-state"><p>暂无黑名单用户</p></div>
+            ) : (
+              <div className="added-users-list">
+                {blockedList.map((u) => (
+                  <div key={u.target_user_id} className="added-user-item">
+                    <Avatar avatarId={u.avatar || 'seal'} size={40} />
+                    <span className="added-user-name">{u.nickname}</span>
+                    <div className="added-user-actions">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleUnblockUser(u.target_user_id)}
+                        title="解除拉黑"
+                      >解除拉黑</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     );
@@ -401,6 +576,15 @@ const FriendMatch: React.FC = () => {
                   value={privateInfo.hobbies}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, hobbies: e.target.value })}
                   placeholder="如：读书、编程、旅行、摄影"
+                />
+              </div>
+              <div className="form-group">
+                <label>交友意愿</label>
+                <textarea
+                  value={privateInfo.friendIntention}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, friendIntention: e.target.value })}
+                  placeholder="如：希望找到志同道合的朋友、想找对象、寻找技术交流伙伴等"
+                  rows={3}
                 />
               </div>
             </div>
@@ -524,6 +708,7 @@ const FriendMatch: React.FC = () => {
         <h1>交友匹配</h1>
         <div className="fm-header-actions">
           <button className="btn btn-icon" onClick={handleShowPrivateInfo} title="个人信息">📝</button>
+          <button className="btn btn-icon" onClick={handleShowAddedUsers} title="已添加用户">👥</button>
           <NotificationBell onClick={handleShowNotifications} />
         </div>
       </header>
@@ -536,9 +721,9 @@ const FriendMatch: React.FC = () => {
             <div className="impression-user-info">
               <h2>{user?.nickname || user?.username}</h2>
               {myImpression?.overview_self ? (
-                <p className="impression-overview">{myImpression.overview_self}</p>
+                <ParagraphText text={myImpression.overview_self} className="impression-overview" />
               ) : myImpression?.overview ? (
-                <p className="impression-overview">{myImpression.overview}</p>
+                <ParagraphText text={myImpression.overview} className="impression-overview" />
               ) : (
                 <p className="impression-placeholder">完成MBTI测试后将生成你的印象概览</p>
               )}
@@ -563,15 +748,27 @@ const FriendMatch: React.FC = () => {
                 >
                   <Avatar avatarId={match.avatar} size={48} />
                   <div className="match-info">
-                    <span className="match-name">{match.nickname}</span>
+                    <span className="match-name">
+                      {match.nickname}
+                      {match.mbtiType && (
+                        <span className="mbti-badge mbti-badge-sm">{match.mbtiType}</span>
+                      )}
+                    </span>
                     <span className="match-overview">{match.overview || '暂无印象'}</span>
                     {match.matchReason && (
                       <span className="match-reason">💡 {match.matchReason}</span>
                     )}
                   </div>
-                  <div className="match-score">
-                    <span className="score-value">{Math.round(match.score)}</span>
-                    <span className="score-label">匹配分</span>
+                  <div className="match-card-right">
+                    <div className="match-score">
+                      <span className="score-value">{Math.round(match.score)}</span>
+                      <span className="score-label">匹配分</span>
+                    </div>
+                    <button
+                      className="btn btn-sm btn-added"
+                      onClick={(e) => handleAddUser(match.userId, e)}
+                      title="已添加（从列表中收起）"
+                    >已添加</button>
                   </div>
                 </div>
               ))}

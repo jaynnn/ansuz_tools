@@ -163,6 +163,7 @@ export const generateImpressionOverview = async (
         }
         if (extra.location) parts.push(`所在地：${extra.location}`);
         if (extra.hobbies) parts.push(`兴趣爱好：${extra.hobbies}`);
+        if (extra.friendIntention) parts.push(`交友意愿：${extra.friendIntention}`);
         if (Array.isArray(extra.items)) {
           for (const item of extra.items) {
             if (item.field && item.detail) {
@@ -196,6 +197,7 @@ export const generateImpressionOverview = async (
 5. 必须基于客观事实描述，不允许无中生有或过度美化。例如：男性身高165cm就如实描述，不要说成"身材挺拔"或将其当作优势；体重、学历等信息也应如实呈现，不要刻意拔高。
 6. 对于用户的不足或缺点，可以客观提及，不需要刻意隐藏，但也不要过度放大。
 7. 不要使用"非凡"、"卓越"、"出色"、"顶尖"等夸张修饰词，用平实的语言描述即可。
+8. 请将概览分成2-4个自然段落，每段聚焦一个方面（如性格特点、兴趣爱好、处事风格、交友意愿等），段落之间用换行符分隔。不要写成一整段。
 
 你需要生成两个版本，严格输出纯JSON格式：
 {

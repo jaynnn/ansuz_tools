@@ -72,11 +72,18 @@ router.get('/user/:userId', authMiddleware, rateLimit, async (req: AuthRequest, 
       [targetUserId]
     );
 
+    // Get MBTI type
+    const mbtiResult = await dbGet(
+      'SELECT mbti_type FROM mbti_results WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [targetUserId]
+    );
+
     res.json({
       user: {
         id: userInfo.id,
         nickname: userInfo.nickname,
         avatar: userInfo.avatar || 'seal',
+        mbtiType: mbtiResult?.mbti_type || null,
       },
       overview: impression?.overview || null,
       contact: privateInfo?.contact || null,
@@ -141,6 +148,7 @@ router.get('/user/:userId/profile', authMiddleware, rateLimit, async (req: AuthR
         const extra = JSON.parse(privateInfo.extra);
         if (extra.location) parts.push(`所在地：${extra.location}`);
         if (extra.hobbies) parts.push(`兴趣爱好：${extra.hobbies}`);
+        if (extra.friendIntention) parts.push(`交友意愿：${extra.friendIntention}`);
         if (Array.isArray(extra.items)) {
           for (const item of extra.items) {
             if (item.field && item.detail) parts.push(`${item.field}：${item.detail}`);
@@ -155,13 +163,14 @@ router.get('/user/:userId/profile', authMiddleware, rateLimit, async (req: AuthR
 
     const systemPrompt = `你是一个社交资料撰写专家。请根据以下用户信息，生成一段自然流畅的个人介绍。
 要求：
-1. 不要逐条罗列信息（如身高、体重），而是将信息融合成一段自然的描述。
+1. 不要逐条罗列信息（如身高、体重），而是将信息融合成自然的描述。
 2. 语气自然客观，基于事实描述，不要刻意夸张或美化。
 3. 必须基于客观事实，不允许无中生有或过度美化。例如：男性身高165cm就如实描述，不要说成"身材挺拔"或将其当作优势。
 4. 不超过200字。
 5. 使用第三人称。
 6. 直接输出描述文字，不要包含任何标记或前缀。
-7. 不要使用"非凡"、"卓越"、"出色"、"顶尖"等夸张修饰词，用平实的语言描述即可。`;
+7. 不要使用"非凡"、"卓越"、"出色"、"顶尖"等夸张修饰词，用平实的语言描述即可。
+8. 请将描述分成2-3个自然段落，段落之间用换行符分隔，不要写成一整段。`;
 
     const userMessage = `用户昵称：${userInfo.nickname}\n${parts.join('\n')}`;
 
