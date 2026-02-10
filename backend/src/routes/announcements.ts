@@ -53,7 +53,7 @@ router.post('/broadcast', async (req: AuthRequest, res: Response) => {
     }
 
     const trimmedMessage = message.trim();
-    const durationSeconds = (typeof duration === 'number' && duration > 0) ? duration : null;
+    const durationSeconds = (typeof duration === 'number' && duration > 0) ? Math.min(duration, 86400) : null;
 
     // Deactivate old announcements
     await dbRun('UPDATE announcements SET is_active = 0 WHERE is_active = 1');

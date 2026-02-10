@@ -16,9 +16,9 @@ const AnnouncementBar: React.FC = () => {
   };
 
   const showAnnouncement = (msg: string, duration?: number | null) => {
+    clearDurationTimer();
     setMessage(msg);
     setDismissed(false);
-    clearDurationTimer();
     if (duration && duration > 0) {
       durationTimer.current = setTimeout(() => {
         setDismissed(true);
