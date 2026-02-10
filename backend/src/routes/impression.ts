@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
+import { chatCompletion } from '../utils/llmService';
 
 const router = Router();
 
@@ -83,6 +84,96 @@ router.get('/user/:userId', authMiddleware, rateLimit, async (req: AuthRequest, 
   } catch (error: any) {
     logError('get_user_impression_error', error as Error, { targetUserId: req.params.userId });
     res.status(500).json({ error: error.message || 'Failed to fetch user impression' });
+  }
+});
+
+// Generate detailed user profile via LLM
+router.get('/user/:userId/profile', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const targetUserId = parseInt(req.params.userId as string, 10);
+
+    const userInfo = await dbGet(
+      'SELECT id, nickname FROM users WHERE id = ?',
+      [targetUserId]
+    );
+    if (!userInfo) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Gather impression dimensions
+    const impression = await dbGet(
+      'SELECT dimensions, overview FROM user_impressions WHERE user_id = ?',
+      [targetUserId]
+    );
+
+    // Gather private info
+    const privateInfo = await dbGet(
+      'SELECT appearance, extra FROM user_private_info WHERE user_id = ?',
+      [targetUserId]
+    );
+
+    const parts: string[] = [];
+    if (impression?.dimensions) {
+      try {
+        const dims = JSON.parse(impression.dimensions);
+        const dimDesc = Object.entries(dims)
+          .filter(([, v]) => v)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('；');
+        if (dimDesc) parts.push(`印象维度：${dimDesc}`);
+      } catch { /* ignore */ }
+    }
+    if (impression?.overview) {
+      parts.push(`印象概览：${impression.overview}`);
+    }
+    if (privateInfo?.appearance) {
+      try {
+        const appearance = JSON.parse(privateInfo.appearance);
+        const appDesc = Object.entries(appearance)
+          .filter(([, v]) => v)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('，');
+        if (appDesc) parts.push(`外貌信息：${appDesc}`);
+      } catch { /* ignore */ }
+    }
+    if (privateInfo?.extra) {
+      try {
+        const extra = JSON.parse(privateInfo.extra);
+        if (extra.location) parts.push(`所在地：${extra.location}`);
+        if (extra.hobbies) parts.push(`兴趣爱好：${extra.hobbies}`);
+        if (Array.isArray(extra.items)) {
+          for (const item of extra.items) {
+            if (item.field && item.detail) parts.push(`${item.field}：${item.detail}`);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    if (parts.length === 0) {
+      return res.json({ profile: '该用户暂未填写详细资料。' });
+    }
+
+    const systemPrompt = `你是一个社交资料撰写专家。请根据以下用户信息，生成一段自然流畅、有温度的个人介绍。
+要求：
+1. 不要逐条罗列信息（如身高、体重），而是将信息融合成一段有吸引力的描述。
+2. 语气自然亲切，像是在向朋友介绍这个人。
+3. 突出这个人的特点和魅力，让读者想进一步了解。
+4. 不超过200字。
+5. 使用第三人称。
+6. 直接输出描述文字，不要包含任何标记或前缀。`;
+
+    const userMessage = `用户昵称：${userInfo.nickname}\n${parts.join('\n')}`;
+
+    const llmResponse = await chatCompletion([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ]);
+
+    logInfo('user_profile_generated', { targetUserId, requestedBy: req.userId });
+    res.json({ profile: llmResponse.content.trim() });
+  } catch (error: any) {
+    logError('get_user_profile_error', error as Error, { targetUserId: req.params.userId });
+    res.status(500).json({ error: error.message || 'Failed to generate profile' });
   }
 });
 

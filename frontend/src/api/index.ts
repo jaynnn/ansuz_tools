@@ -176,6 +176,11 @@ export const impressionAPI = {
     const response = await api.get(`/impression/user/${userId}`);
     return response.data;
   },
+
+  getUserProfile: async (userId: number): Promise<{ profile: string }> => {
+    const response = await api.get(`/impression/user/${userId}/profile`);
+    return response.data;
+  },
 };
 
 // Friend Match APIs

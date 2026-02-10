@@ -8,6 +8,25 @@ import '../styles/FriendMatch.css';
 
 type ViewMode = 'main' | 'user-detail' | 'notifications' | 'private-info';
 
+const CONTACT_LABELS: Record<string, string> = {
+  wechat: '微信',
+  qq: 'QQ',
+  phone: '手机',
+  email: '邮箱',
+  other: '其他',
+};
+
+const formatContact = (contactStr: string): Array<{ label: string; value: string }> => {
+  try {
+    const obj = JSON.parse(contactStr);
+    return Object.entries(obj)
+      .filter(([, v]) => v)
+      .map(([k, v]) => ({ label: CONTACT_LABELS[k] || k, value: String(v) }));
+  } catch {
+    return contactStr ? [{ label: '联系方式', value: contactStr }] : [];
+  }
+};
+
 const FriendMatch: React.FC = () => {
   const { user } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('main');
@@ -22,6 +41,8 @@ const FriendMatch: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [savingPrivateInfo, setSavingPrivateInfo] = useState(false);
+  const [detailedProfile, setDetailedProfile] = useState<string | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -129,10 +150,24 @@ const FriendMatch: React.FC = () => {
     }
   };
 
+  const handleViewDetailedProfile = async () => {
+    if (!selectedUserId) return;
+    setLoadingProfile(true);
+    try {
+      const data = await impressionAPI.getUserProfile(selectedUserId);
+      setDetailedProfile(data.profile);
+    } catch {
+      setDetailedProfile('暂无法生成详细资料，请稍后再试');
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
   const goBack = () => {
     setViewMode('main');
     setSelectedUser(null);
     setSelectedUserId(null);
+    setDetailedProfile(null);
   };
 
   if (loading) {
@@ -167,16 +202,38 @@ const FriendMatch: React.FC = () => {
             {selectedUser.contact && (
               <div className="user-detail-contact">
                 <h3>联系方式</h3>
-                <p>{selectedUser.contact}</p>
+                <div className="contact-items">
+                  {formatContact(selectedUser.contact).map((item, idx) => (
+                    <div key={idx} className="contact-item">
+                      <span className="contact-label">{item.label}：</span>
+                      <span className="contact-value">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            <button
-              className="btn btn-primary want-to-know-btn"
-              onClick={handleSendWantToKnow}
-              disabled={sendingRequest}
-            >
-              {sendingRequest ? '发送中...' : '💌 我想认识你'}
-            </button>
+            {detailedProfile && (
+              <div className="user-detail-profile">
+                <h3>详细资料</h3>
+                <p>{detailedProfile}</p>
+              </div>
+            )}
+            <div className="user-detail-actions">
+              <button
+                className="btn btn-secondary detail-profile-btn"
+                onClick={handleViewDetailedProfile}
+                disabled={loadingProfile}
+              >
+                {loadingProfile ? '生成中...' : '📋 查看详细资料'}
+              </button>
+              <button
+                className="btn btn-primary want-to-know-btn"
+                onClick={handleSendWantToKnow}
+                disabled={sendingRequest}
+              >
+                {sendingRequest ? '发送中...' : '💌 我想认识你'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
