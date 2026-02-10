@@ -60,11 +60,12 @@ export const triggerImpressionUpdate = async (
           const updatedDimensions = JSON.parse(jsonMatch[0]);
 
           // Upsert impression
+          const dimensionsJson = JSON.stringify(updatedDimensions);
           await dbRun(
             `INSERT INTO user_impressions (user_id, dimensions, updated_at)
              VALUES (?, ?, CURRENT_TIMESTAMP)
              ON CONFLICT(user_id) DO UPDATE SET dimensions = ?, updated_at = CURRENT_TIMESTAMP`,
-            [userId, JSON.stringify(updatedDimensions), JSON.stringify(updatedDimensions)]
+            [userId, dimensionsJson, dimensionsJson]
           );
 
           logInfo('impression_updated', { userId, event });
@@ -241,6 +242,7 @@ ${privateInfoB?.appearance ? `用户B的外貌描述：${privateInfoB.appearance
         }
         const result = JSON.parse(jsonMatch[0]);
         const score = result.total || 0;
+        const dimensionsJson = JSON.stringify(result);
 
         // Upsert match (store for both directions with same data)
         const [idA, idB] = userIdA < userIdB ? [userIdA, userIdB] : [userIdB, userIdA];
@@ -249,7 +251,7 @@ ${privateInfoB?.appearance ? `用户B的外貌描述：${privateInfoB.appearance
           `INSERT INTO user_matches (user_id_a, user_id_b, score, dimensions, updated_at)
            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
            ON CONFLICT(user_id_a, user_id_b) DO UPDATE SET score = ?, dimensions = ?, updated_at = CURRENT_TIMESTAMP`,
-          [idA, idB, score, JSON.stringify(result), score, JSON.stringify(result)]
+          [idA, idB, score, dimensionsJson, score, dimensionsJson]
         );
 
         logInfo('match_completed', { userIdA, userIdB, score });

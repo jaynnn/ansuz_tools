@@ -85,8 +85,9 @@ const migrate = async () => {
     console.log('Wait a few minutes for all LLM requests to complete before verifying data.');
 
     // Keep process alive for async operations to complete
-    console.log('Waiting 30 seconds for async operations to finish...');
-    await sleep(30000);
+    const FINAL_WAIT_MS = 30000;
+    console.log(`Waiting ${FINAL_WAIT_MS / 1000} seconds for async operations to finish...`);
+    await sleep(FINAL_WAIT_MS);
     console.log('Done.');
     process.exit(0);
   } catch (error) {

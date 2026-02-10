@@ -70,12 +70,15 @@ router.get('/private-info', authMiddleware, async (req: AuthRequest, res: Respon
 router.put('/private-info', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const { appearance, contact, extra } = req.body;
+    const safeAppearance = appearance || '';
+    const safeContact = contact || '';
+    const safeExtra = extra || '';
 
     await dbRun(
       `INSERT INTO user_private_info (user_id, appearance, contact, extra, updated_at)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET appearance = ?, contact = ?, extra = ?, updated_at = CURRENT_TIMESTAMP`,
-      [req.userId, appearance || '', contact || '', extra || '', appearance || '', contact || '', extra || '']
+      [req.userId, safeAppearance, safeContact, safeExtra, safeAppearance, safeContact, safeExtra]
     );
 
     logInfo('private_info_updated', { userId: req.userId });

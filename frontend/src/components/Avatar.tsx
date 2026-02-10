@@ -1,4 +1,5 @@
 import React from 'react';
+import '../styles/Avatar.css';
 
 export const AVATAR_LIST = [
   { id: 'seal', name: '海豹' },
@@ -205,7 +206,7 @@ const avatarComponents: Record<string, React.FC<{ size: number }>> = {
 const Avatar: React.FC<AvatarProps> = ({ avatarId, size = 48, className }) => {
   const Component = avatarComponents[avatarId] || avatarComponents.seal;
   return (
-    <div className={className} style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div className={`avatar-wrapper ${className || ''}`} style={{ width: size, height: size }}>
       <Component size={size} />
     </div>
   );
