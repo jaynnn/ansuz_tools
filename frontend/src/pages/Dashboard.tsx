@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import type { Tool } from '../types/index';
@@ -22,6 +23,7 @@ const Dashboard: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { user, logout, updateNickname, updateAvatar, deleteAccount } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
 
   useEffect(() => {
     document.title = '工具箱';
@@ -114,6 +116,7 @@ const Dashboard: React.FC = () => {
     try {
       await deleteAccount(deletePassword);
       alert('账号已删除');
+      navigate('/login');
     } catch (error: unknown) {
       const axiosError = error as { response?: { data?: { error?: string } } };
       const msg = axiosError?.response?.data?.error || '销号失败';

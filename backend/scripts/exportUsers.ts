@@ -65,7 +65,7 @@ const exportUsers = async () => {
         toolCount: toolCountMap.get(user.id) || 0,
         mbti: mbti ? {
           type: mbti.mbti_type,
-          scores: JSON.parse(mbti.scores),
+          scores: (() => { try { return JSON.parse(mbti.scores); } catch { return mbti.scores; } })(),
           tested_at: mbti.created_at,
         } : null,
         impression: impression ? {
