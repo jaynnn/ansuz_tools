@@ -341,8 +341,8 @@
 }
 
 .extra-remove-btn {
-  font-size: 1rem !important;
-  padding: 0.4rem !important;
+  font-size: 1rem;
+  padding: 0.4rem;
   color: var(--text-secondary);
   flex-shrink: 0;
 }

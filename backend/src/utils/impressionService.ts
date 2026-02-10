@@ -34,8 +34,12 @@ export const triggerImpressionUpdate = async (
     let mbtiContext = '';
     if (mbtiResults.length > 0) {
       const mbti = mbtiResults[0];
-      const scores = JSON.parse(mbti.scores);
-      mbtiContext = `\n\n用户的MBTI类型：${mbti.mbti_type}，各维度分值：E/I=${scores.EI}, S/N=${scores.SN}, T/F=${scores.TF}, J/P=${scores.JP}。`;
+      try {
+        const scores = JSON.parse(mbti.scores);
+        mbtiContext = `\n\n用户的MBTI类型：${mbti.mbti_type}，各维度分值：E/I=${scores.EI}, S/N=${scores.SN}, T/F=${scores.TF}, J/P=${scores.JP}。`;
+      } catch {
+        mbtiContext = `\n\n用户的MBTI类型：${mbti.mbti_type}。`;
+      }
       if (mbti.ai_analysis) {
         mbtiContext += `\nMBTI AI详细分析：${mbti.ai_analysis}`;
       }
