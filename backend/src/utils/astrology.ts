@@ -17,18 +17,19 @@ const BRANCH_ELEMENTS = ['水', '土', '木', '木', '土', '火', '火', '土',
 
 // 时辰 mapping: hour (0-23) to earthly branch index
 const HOUR_TO_BRANCH: number[] = [
-  0, 0,   // 23:00-00:59 子
-  1, 1,   // 01:00-02:59 丑
-  2, 2,   // 03:00-04:59 寅
-  3, 3,   // 05:00-06:59 卯
-  4, 4,   // 07:00-08:59 辰
-  5, 5,   // 09:00-10:59 巳
-  6, 6,   // 11:00-12:59 午
-  7, 7,   // 13:00-14:59 未
-  8, 8,   // 15:00-16:59 申
-  9, 9,   // 17:00-18:59 酉
-  10, 10, // 19:00-20:59 戌
-  11, 11, // 21:00-22:59 亥
+  0,        // hour 0:  子时 (23:00-00:59)
+  1, 1,     // hour 1-2:  丑时 (01:00-02:59)
+  2, 2,     // hour 3-4:  寅时 (03:00-04:59)
+  3, 3,     // hour 5-6:  卯时 (05:00-06:59)
+  4, 4,     // hour 7-8:  辰时 (07:00-08:59)
+  5, 5,     // hour 9-10: 巳时 (09:00-10:59)
+  6, 6,     // hour 11-12: 午时 (11:00-12:59)
+  7, 7,     // hour 13-14: 未时 (13:00-14:59)
+  8, 8,     // hour 15-16: 申时 (15:00-16:59)
+  9, 9,     // hour 17-18: 酉时 (17:00-18:59)
+  10, 10,   // hour 19-20: 戌时 (19:00-20:59)
+  11, 11,   // hour 21-22: 亥时 (21:00-22:59)
+  0,        // hour 23: 子时 (23:00-00:59)
 ];
 
 // Western zodiac signs with date boundaries
@@ -95,19 +96,18 @@ const getYearPillar = (year: number): { stem: string; branch: string } => {
  * Uses solar month approximation. The month stem depends on the year stem.
  */
 const getMonthPillar = (year: number, month: number): { stem: string; branch: string } => {
-  // Month branch: 寅(1月/Feb) maps to index 2, and cycles
-  // Solar month 1(Jan) -> 丑(index 1), month 2(Feb) -> 寅(index 2), etc.
-  const branchIndex = (month + 1) % 12;
+  // Month branch: Jan→丑(1), Feb→寅(2), ..., Dec→子(0)
+  const branchIndex = month % 12;
 
   // Month stem is derived from year stem:
-  // 甲/己 year -> month starts from 丙寅
-  // 乙/庚 year -> month starts from 戊寅
-  // 丙/辛 year -> month starts from 庚寅
-  // 丁/壬 year -> month starts from 壬寅
-  // 戊/癸 year -> month starts from 甲寅
+  // 甲(0)/己(5) year -> 寅月 starts from 丙
+  // 乙(1)/庚(6) year -> 寅月 starts from 戊
+  // 丙(2)/辛(7) year -> 寅月 starts from 庚
+  // 丁(3)/壬(8) year -> 寅月 starts from 壬
+  // 戊(4)/癸(9) year -> 寅月 starts from 甲
   const yearStemIndex = (year - 4) % 10;
   const baseStems = [2, 4, 6, 8, 0]; // 丙=2, 戊=4, 庚=6, 壬=8, 甲=0
-  const baseStem = baseStems[Math.floor(yearStemIndex / 2) % 5];
+  const baseStem = baseStems[yearStemIndex % 5];
   const stemIndex = (baseStem + (month - 1)) % 10;
 
   return {
@@ -148,8 +148,7 @@ const getDayPillar = (year: number, month: number, day: number): { stem: string;
  * The hour stem depends on the day stem.
  */
 const getHourPillar = (year: number, month: number, day: number, hour: number): { stem: string; branch: string } => {
-  const adjustedHour = hour === 23 ? 0 : hour;
-  const branchIndex = HOUR_TO_BRANCH[adjustedHour];
+  const branchIndex = HOUR_TO_BRANCH[hour];
   const dayPillar = getDayPillar(year, month, day);
   const dayStemIndex = HEAVENLY_STEMS.indexOf(dayPillar.stem);
 

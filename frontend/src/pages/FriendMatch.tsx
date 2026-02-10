@@ -579,7 +579,7 @@ const FriendMatch: React.FC = () => {
                   onChange={(e) => setPrivateInfo({ ...privateInfo, birthTime: e.target.value })}
                 >
                   <option value="">请选择（可不填）</option>
-                  <option value="00:00">子时（23:00-01:00）</option>
+                  <option value="23:00">子时（23:00-01:00）</option>
                   <option value="02:00">丑时（01:00-03:00）</option>
                   <option value="04:00">寅时（03:00-05:00）</option>
                   <option value="06:00">卯时（05:00-07:00）</option>
