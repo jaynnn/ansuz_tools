@@ -27,12 +27,10 @@ const migrate = async () => {
     console.log('Initializing database...');
     await initDatabase();
 
-    // Find users with MBTI results but no impression
+    // Find all users with MBTI results (always regenerate impressions when running manually)
     const users = await dbAll(
       `SELECT DISTINCT mr.user_id, mr.mbti_type, mr.scores
        FROM mbti_results mr
-       LEFT JOIN user_impressions ui ON mr.user_id = ui.user_id
-       WHERE ui.id IS NULL
        ORDER BY mr.created_at DESC`
     );
 
@@ -45,10 +43,10 @@ const migrate = async () => {
     }
 
     const userList = Array.from(uniqueUsers.values());
-    console.log(`Found ${userList.length} users to migrate.`);
+    console.log(`Found ${userList.length} users to process.`);
 
     if (userList.length === 0) {
-      console.log('No users need migration. Exiting.');
+      console.log('No users with MBTI results found. Exiting.');
       process.exit(0);
     }
 
@@ -56,12 +54,12 @@ const migrate = async () => {
       const user = userList[i];
       const scores = JSON.parse(user.scores);
 
-      console.log(`[${i + 1}/${userList.length}] Migrating user ${user.user_id} (${user.mbti_type})...`);
+      console.log(`[${i + 1}/${userList.length}] Processing user ${user.user_id} (${user.mbti_type})...`);
 
       // Trigger impression update
       await triggerImpressionUpdate(
         user.user_id,
-        'MBTI测试完成（历史迁移）',
+        'MBTI测试完成（手动重新生成）',
         `用户完成了MBTI测试，结果为${user.mbti_type}。各维度分值：E/I=${scores.EI}, S/N=${scores.SN}, T/F=${scores.TF}, J/P=${scores.JP}。`
       );
 
@@ -81,7 +79,7 @@ const migrate = async () => {
       }
     }
 
-    console.log('Migration complete! Note: LLM processing is async and may still be running in the background.');
+    console.log('Processing complete! Note: LLM processing is async and may still be running in the background.');
     console.log('Wait a few minutes for all LLM requests to complete before verifying data.');
 
     // Keep process alive for async operations to complete

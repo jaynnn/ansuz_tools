@@ -27,17 +27,18 @@ const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
 router.get('/me', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const impression = await dbGet(
-      'SELECT dimensions, overview, updated_at FROM user_impressions WHERE user_id = ?',
+      'SELECT dimensions, overview, overview_self, updated_at FROM user_impressions WHERE user_id = ?',
       [req.userId]
     );
 
     if (!impression) {
-      return res.json({ dimensions: {}, overview: null, updated_at: null });
+      return res.json({ dimensions: {}, overview: null, overview_self: null, updated_at: null });
     }
 
     res.json({
       dimensions: JSON.parse(impression.dimensions),
       overview: impression.overview,
+      overview_self: impression.overview_self,
       updated_at: impression.updated_at,
     });
   } catch (error: any) {

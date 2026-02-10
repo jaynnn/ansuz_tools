@@ -446,25 +446,15 @@ const FriendMatch: React.FC = () => {
             <Avatar avatarId={user?.avatar || 'seal'} size={64} />
             <div className="impression-user-info">
               <h2>{user?.nickname || user?.username}</h2>
-              {myImpression?.overview ? (
+              {myImpression?.overview_self ? (
+                <p className="impression-overview">{myImpression.overview_self}</p>
+              ) : myImpression?.overview ? (
                 <p className="impression-overview">{myImpression.overview}</p>
               ) : (
                 <p className="impression-placeholder">完成MBTI测试后将生成你的印象概览</p>
               )}
             </div>
           </div>
-          {myImpression && Object.keys(myImpression.dimensions).length > 0 && (
-            <div className="impression-dimensions">
-              <h3>我的印象维度</h3>
-              <div className="dimension-tags">
-                {Object.entries(myImpression.dimensions).map(([key, value]) => (
-                  <span key={key} className="dimension-tag">
-                    <strong>{key}</strong>：{value}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
         </section>
 
         {/* Top Matches Section */}

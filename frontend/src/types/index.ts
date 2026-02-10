@@ -28,6 +28,7 @@ export interface AuthContextType {
 export interface UserImpression {
   dimensions: Record<string, string>;
   overview: string | null;
+  overview_self: string | null;
   updated_at: string | null;
 }
 
