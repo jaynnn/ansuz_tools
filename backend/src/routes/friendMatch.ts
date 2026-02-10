@@ -24,11 +24,19 @@ const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
   next();
 };
 
-// Get top 10 matches for current user
+// Get top 10 matches for current user (excluding added/blocked users)
 router.get('/top', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
 
+    // Get added/blocked user ids to exclude
+    const excludedUsers = await dbAll(
+      `SELECT target_user_id FROM user_added_list WHERE user_id = ?`,
+      [userId]
+    );
+    const excludedIdSet = new Set(excludedUsers.map((u: any) => u.target_user_id));
+
+    // Fetch more than 10 to account for excluded users, then filter and slice
     const matches = await dbAll(
       `SELECT
         um.score,
@@ -37,21 +45,27 @@ router.get('/top', authMiddleware, rateLimit, async (req: AuthRequest, res: Resp
         um.user_id_a,
         CASE WHEN um.user_id_a = ? THEN um.user_id_b ELSE um.user_id_a END as matched_user_id
        FROM user_matches um
-       WHERE um.user_id_a = ? OR um.user_id_b = ?
+       WHERE (um.user_id_a = ? OR um.user_id_b = ?)
        ORDER BY um.score DESC
-       LIMIT 10`,
+       LIMIT 20`,
       [userId, userId, userId]
     );
 
-    // Enrich with user info and overview
-    const enriched = await Promise.all(
+    // Enrich with user info and overview, filter out excluded
+    const enriched = (await Promise.all(
       matches.map(async (m: any) => {
+        if (excludedIdSet.has(m.matched_user_id)) return null;
         const userInfo = await dbGet(
           'SELECT id, nickname, avatar FROM users WHERE id = ?',
           [m.matched_user_id]
         );
         const impression = await dbGet(
           'SELECT overview FROM user_impressions WHERE user_id = ?',
+          [m.matched_user_id]
+        );
+        // Get MBTI type
+        const mbtiResult = await dbGet(
+          'SELECT mbti_type FROM mbti_results WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
           [m.matched_user_id]
         );
         let dims: any = {};
@@ -68,6 +82,7 @@ router.get('/top', authMiddleware, rateLimit, async (req: AuthRequest, res: Resp
           userId: m.matched_user_id,
           nickname: userInfo?.nickname || 'Unknown',
           avatar: userInfo?.avatar || 'seal',
+          mbtiType: mbtiResult?.mbti_type || null,
           score: m.score,
           overview: impression?.overview || null,
           matchReason,
@@ -75,7 +90,7 @@ router.get('/top', authMiddleware, rateLimit, async (req: AuthRequest, res: Resp
           updatedAt: m.updated_at,
         };
       })
-    );
+    )).filter(Boolean).slice(0, 10);
 
     res.json({ matches: enriched });
   } catch (error: any) {
@@ -205,6 +220,154 @@ router.put('/notifications/read', authMiddleware, rateLimit, async (req: AuthReq
   } catch (error: any) {
     logError('mark_read_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: error.message || 'Failed to mark as read' });
+  }
+});
+
+// Add user to added list
+router.post('/add-user', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const { targetUserId } = req.body;
+    const userId = req.userId!;
+    if (!targetUserId || targetUserId === userId) {
+      return res.status(400).json({ error: 'Invalid target user' });
+    }
+    await dbRun(
+      `INSERT INTO user_added_list (user_id, target_user_id, status)
+       VALUES (?, ?, 'added')
+       ON CONFLICT(user_id, target_user_id) DO UPDATE SET status = 'added'`,
+      [userId, targetUserId]
+    );
+    logInfo('user_added', { userId, targetUserId });
+    res.json({ message: 'User added' });
+  } catch (error: any) {
+    logError('add_user_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to add user' });
+  }
+});
+
+// Remove user from added list (restore to match list)
+router.delete('/add-user/:targetUserId', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const targetUserId = parseInt(req.params.targetUserId as string, 10);
+    await dbRun(
+      'DELETE FROM user_added_list WHERE user_id = ? AND target_user_id = ?',
+      [req.userId, targetUserId]
+    );
+    logInfo('user_removed_from_added', { userId: req.userId, targetUserId });
+    res.json({ message: 'User removed from added list' });
+  } catch (error: any) {
+    logError('remove_added_user_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to remove user' });
+  }
+});
+
+// Block user (add to blacklist)
+router.post('/block-user', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const { targetUserId } = req.body;
+    const userId = req.userId!;
+    if (!targetUserId || targetUserId === userId) {
+      return res.status(400).json({ error: 'Invalid target user' });
+    }
+    await dbRun(
+      `INSERT INTO user_added_list (user_id, target_user_id, status)
+       VALUES (?, ?, 'blocked')
+       ON CONFLICT(user_id, target_user_id) DO UPDATE SET status = 'blocked'`,
+      [userId, targetUserId]
+    );
+    logInfo('user_blocked', { userId, targetUserId });
+    res.json({ message: 'User blocked' });
+  } catch (error: any) {
+    logError('block_user_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to block user' });
+  }
+});
+
+// Unblock user
+router.delete('/block-user/:targetUserId', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const targetUserId = parseInt(req.params.targetUserId as string, 10);
+    await dbRun(
+      'DELETE FROM user_added_list WHERE user_id = ? AND target_user_id = ? AND status = ?',
+      [req.userId, targetUserId, 'blocked']
+    );
+    logInfo('user_unblocked', { userId: req.userId, targetUserId });
+    res.json({ message: 'User unblocked' });
+  } catch (error: any) {
+    logError('unblock_user_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to unblock user' });
+  }
+});
+
+// Get added users list
+router.get('/added-users', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const users = await dbAll(
+      `SELECT ual.target_user_id, ual.status, ual.created_at,
+              u.nickname, u.avatar
+       FROM user_added_list ual
+       JOIN users u ON ual.target_user_id = u.id
+       WHERE ual.user_id = ?
+       ORDER BY ual.created_at DESC`,
+      [req.userId]
+    );
+    res.json({ users });
+  } catch (error: any) {
+    logError('get_added_users_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to fetch added users' });
+  }
+});
+
+// Vote on contact info (true/false)
+router.post('/contact-vote', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const { targetUserId, vote } = req.body;
+    const voterId = req.userId!;
+    if (!targetUserId || !['true', 'false'].includes(vote)) {
+      return res.status(400).json({ error: 'Invalid vote' });
+    }
+    if (targetUserId === voterId) {
+      return res.status(400).json({ error: 'Cannot vote on your own contact' });
+    }
+    await dbRun(
+      `INSERT INTO contact_votes (voter_id, target_user_id, vote)
+       VALUES (?, ?, ?)
+       ON CONFLICT(voter_id, target_user_id) DO UPDATE SET vote = ?`,
+      [voterId, targetUserId, vote, vote]
+    );
+    logInfo('contact_vote', { voterId, targetUserId, vote });
+    res.json({ message: 'Vote recorded' });
+  } catch (error: any) {
+    logError('contact_vote_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to record vote' });
+  }
+});
+
+// Get contact vote counts for a user
+router.get('/contact-votes/:targetUserId', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const targetUserId = parseInt(req.params.targetUserId as string, 10);
+    const trueCount = await dbGet(
+      `SELECT COUNT(*) as count FROM contact_votes WHERE target_user_id = ? AND vote = 'true'`,
+      [targetUserId]
+    );
+    const falseCount = await dbGet(
+      `SELECT COUNT(*) as count FROM contact_votes WHERE target_user_id = ? AND vote = 'false'`,
+      [targetUserId]
+    );
+    // Get current user's vote if any
+    const myVote = await dbGet(
+      'SELECT vote FROM contact_votes WHERE voter_id = ? AND target_user_id = ?',
+      [req.userId, targetUserId]
+    );
+    res.json({
+      trueCount: trueCount?.count || 0,
+      falseCount: falseCount?.count || 0,
+      myVote: myVote?.vote || null,
+    });
+  } catch (error: any) {
+    logError('get_contact_votes_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to fetch votes' });
   }
 });
 

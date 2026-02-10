@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Tool, UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo } from '../types/index';
+import type { Tool, UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, AddedUser, ContactVotes } from '../types/index';
 import type { StockPrediction } from '../types/stock';
 
 // Use relative URL in production (when served by backend)
@@ -217,6 +217,41 @@ export const friendMatchAPI = {
 
   markNotificationsRead: async () => {
     const response = await api.put('/friend-match/notifications/read');
+    return response.data;
+  },
+
+  addUser: async (targetUserId: number) => {
+    const response = await api.post('/friend-match/add-user', { targetUserId });
+    return response.data;
+  },
+
+  removeAddedUser: async (targetUserId: number) => {
+    const response = await api.delete(`/friend-match/add-user/${targetUserId}`);
+    return response.data;
+  },
+
+  blockUser: async (targetUserId: number) => {
+    const response = await api.post('/friend-match/block-user', { targetUserId });
+    return response.data;
+  },
+
+  unblockUser: async (targetUserId: number) => {
+    const response = await api.delete(`/friend-match/block-user/${targetUserId}`);
+    return response.data;
+  },
+
+  getAddedUsers: async (): Promise<{ users: AddedUser[] }> => {
+    const response = await api.get('/friend-match/added-users');
+    return response.data;
+  },
+
+  voteContact: async (targetUserId: number, vote: 'true' | 'false') => {
+    const response = await api.post('/friend-match/contact-vote', { targetUserId, vote });
+    return response.data;
+  },
+
+  getContactVotes: async (targetUserId: number): Promise<ContactVotes> => {
+    const response = await api.get(`/friend-match/contact-votes/${targetUserId}`);
     return response.data;
   },
 };

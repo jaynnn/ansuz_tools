@@ -304,6 +304,34 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create user_added_list table - stores added/blocked users
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS user_added_list (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        target_user_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'added',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, target_user_id)
+      )
+    `);
+
+    // Create contact_votes table - stores true/false votes for contact info
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS contact_votes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        voter_id INTEGER NOT NULL,
+        target_user_id INTEGER NOT NULL,
+        vote TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (voter_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(voter_id, target_user_id)
+      )
+    `);
+
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
     await migrateUsersTable();
