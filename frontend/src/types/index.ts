@@ -104,6 +104,8 @@ export interface StructuredPrivateInfo {
   appearance: PrivateInfoAppearance;
   contact: PrivateInfoContact;
   gender: string;
+  birthDate: string;
+  birthTime: string;
   location: string;
   hobbies: string;
   friendIntention: string;

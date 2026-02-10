@@ -53,7 +53,7 @@ const FriendMatch: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [privateInfo, setPrivateInfo] = useState<StructuredPrivateInfo>({
-    appearance: {}, contact: {}, gender: '', location: '', hobbies: '', friendIntention: '', extraItems: [],
+    appearance: {}, contact: {}, gender: '', birthDate: '', birthTime: '', location: '', hobbies: '', friendIntention: '', extraItems: [],
   });
   const [loading, setLoading] = useState(true);
   const [sendingRequest, setSendingRequest] = useState(false);
@@ -130,6 +130,8 @@ const FriendMatch: React.FC = () => {
     let appearance = {};
     let contact = {};
     let gender = '';
+    let birthDate = '';
+    let birthTime = '';
     let location = '';
     let hobbies = '';
     let friendIntention = '';
@@ -140,6 +142,8 @@ const FriendMatch: React.FC = () => {
     try {
       const extra = JSON.parse(raw.extra || '{}');
       gender = extra.gender || '';
+      birthDate = extra.birthDate || '';
+      birthTime = extra.birthTime || '';
       location = extra.location || '';
       hobbies = extra.hobbies || '';
       friendIntention = extra.friendIntention || '';
@@ -147,13 +151,13 @@ const FriendMatch: React.FC = () => {
     } catch {
       if (raw.extra) extraItems = [{ field: '其他', detail: raw.extra }];
     }
-    return { appearance, contact, gender, location, hobbies, friendIntention, extraItems };
+    return { appearance, contact, gender, birthDate, birthTime, location, hobbies, friendIntention, extraItems };
   };
 
   const serializePrivateInfo = (info: StructuredPrivateInfo): PrivateInfo => ({
     appearance: JSON.stringify(info.appearance),
     contact: JSON.stringify(info.contact),
-    extra: JSON.stringify({ gender: info.gender, location: info.location, hobbies: info.hobbies, friendIntention: info.friendIntention, items: info.extraItems }),
+    extra: JSON.stringify({ gender: info.gender, birthDate: info.birthDate, birthTime: info.birthTime, location: info.location, hobbies: info.hobbies, friendIntention: info.friendIntention, items: info.extraItems }),
   });
 
   const handleShowPrivateInfo = async () => {
@@ -558,6 +562,35 @@ const FriendMatch: React.FC = () => {
                   <option value="">请选择</option>
                   <option value="男">男</option>
                   <option value="女">女</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>出生日期</label>
+                <input
+                  type="date"
+                  value={privateInfo.birthDate}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, birthDate: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>出生时辰</label>
+                <select
+                  value={privateInfo.birthTime}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, birthTime: e.target.value })}
+                >
+                  <option value="">请选择（可不填）</option>
+                  <option value="00:00">子时（23:00-01:00）</option>
+                  <option value="02:00">丑时（01:00-03:00）</option>
+                  <option value="04:00">寅时（03:00-05:00）</option>
+                  <option value="06:00">卯时（05:00-07:00）</option>
+                  <option value="08:00">辰时（07:00-09:00）</option>
+                  <option value="10:00">巳时（09:00-11:00）</option>
+                  <option value="12:00">午时（11:00-13:00）</option>
+                  <option value="14:00">未时（13:00-15:00）</option>
+                  <option value="16:00">申时（15:00-17:00）</option>
+                  <option value="18:00">酉时（17:00-19:00）</option>
+                  <option value="20:00">戌时（19:00-21:00）</option>
+                  <option value="22:00">亥时（21:00-23:00）</option>
                 </select>
               </div>
               <div className="form-group">
