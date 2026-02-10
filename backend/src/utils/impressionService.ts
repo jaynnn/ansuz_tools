@@ -185,9 +185,11 @@ export const generateImpressionOverview = async (
     const systemPrompt = `你是一个用户画像概览生成器。请根据用户的印象维度、MBTI结果、个人信息等，生成通俗易读、有吸引力的个人概览。
 要求：
 1. 概览应融合所有可用信息，不要逐条罗列维度，而是用自然流畅的语言描述这个人。
-2. 不超过150字。
+2. 字数300字左右，充分展现这个人的特点。
 3. 语气亲切自然，有吸引力，让人想进一步了解。
 4. 可以提及性格特点、兴趣爱好、处事风格等。
+5. 对于用户的优势和长处（如身高较高、身材好、学历高、能力强等），请着重突出描述，让人印象深刻。
+6. 对于用户的不足或缺点，请用委婉隐晦的方式一笔带过，不要过度强调。
 
 你需要生成两个版本，严格输出纯JSON格式：
 {
@@ -212,7 +214,7 @@ ${privateContext ? `\n个人信息：${privateContext}` : ''}
           const jsonMatch = content.match(/\{[\s\S]*\}/);
           if (!jsonMatch) {
             // Fallback: use the entire content as overview
-            const overview = content.trim().slice(0, 150);
+            const overview = content.trim();
             await dbRun(
               `UPDATE user_impressions SET overview = ?, overview_self = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
               [overview, overview, userId]
@@ -221,8 +223,8 @@ ${privateContext ? `\n个人信息：${privateContext}` : ''}
             return;
           }
           const result = JSON.parse(jsonMatch[0]);
-          const overviewSelf = (result.self || '').trim().slice(0, 150);
-          const overviewOther = (result.other || '').trim().slice(0, 150);
+          const overviewSelf = (result.self || '').trim();
+          const overviewOther = (result.other || '').trim();
           await dbRun(
             `UPDATE user_impressions SET overview = ?, overview_self = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
             [overviewOther, overviewSelf, userId]
@@ -362,6 +364,7 @@ const matchTwoUsers = (
 
 请为每个维度打分（0-10），并计算总分（各维度分数之和）。
 同时，请为双方各生成一段配对理由（reason_a_to_b 是对A说明B为什么适合A，reason_b_to_a 是对B说明A为什么适合B），每段不超过80字，要有说服力，让用户觉得对方是契合自己的。
+生成配对理由时，请着重突出对方的优势和长处（如身高、身材、能力、性格等方面的亮点），对于对方的不足之处，请用委婉隐晦的方式一笔带过，不要过度强调。
 严格输出纯JSON格式，示例：
 {"scores":{"吸引触发":5,"价值共鸣":7},"total":80,"summary":"简要配对评语","reason_a_to_b":"对方与你在价值观上高度共鸣，性格互补能给你带来新鲜感","reason_b_to_a":"对方的踏实可靠恰好弥补你的随性，兴趣爱好的交集让你们有聊不完的话题"}`;
 
