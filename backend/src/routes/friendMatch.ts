@@ -1,12 +1,30 @@
-import { Router, Response } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { logInfo, logError } from '../utils/logger';
+import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
 
 const router = Router();
 
+// Rate limiter for friend match endpoints
+const rateLimitMap = new Map<number, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 30;
+
+const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const userId = req.userId!;
+  const now = Date.now();
+  const timestamps = (rateLimitMap.get(userId) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    logWarn('friend_match_rate_limit_exceeded', { userId });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+  timestamps.push(now);
+  rateLimitMap.set(userId, timestamps);
+  next();
+};
+
 // Get top 10 matches for current user
-router.get('/top', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/top', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
 
@@ -54,7 +72,7 @@ router.get('/top', authMiddleware, async (req: AuthRequest, res: Response) => {
 });
 
 // Get/update private info for current user
-router.get('/private-info', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const info = await dbGet(
       'SELECT appearance, contact, extra FROM user_private_info WHERE user_id = ?',
@@ -67,7 +85,7 @@ router.get('/private-info', authMiddleware, async (req: AuthRequest, res: Respon
   }
 });
 
-router.put('/private-info', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.put('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const { appearance, contact, extra } = req.body;
     const safeAppearance = appearance || '';
@@ -90,7 +108,7 @@ router.put('/private-info', authMiddleware, async (req: AuthRequest, res: Respon
 });
 
 // Send "want to know you" notification
-router.post('/want-to-know', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/want-to-know', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const { targetUserId } = req.body;
     const fromUserId = req.userId!;
@@ -122,7 +140,7 @@ router.post('/want-to-know', authMiddleware, async (req: AuthRequest, res: Respo
 });
 
 // Get notifications for current user
-router.get('/notifications', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/notifications', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const notifications = await dbAll(
       `SELECT n.id, n.from_user_id, n.is_read, n.created_at,
@@ -142,7 +160,7 @@ router.get('/notifications', authMiddleware, async (req: AuthRequest, res: Respo
 });
 
 // Get unread notification count
-router.get('/notifications/unread-count', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/notifications/unread-count', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const result = await dbGet(
       'SELECT COUNT(*) as count FROM notifications WHERE to_user_id = ? AND is_read = 0',
@@ -156,7 +174,7 @@ router.get('/notifications/unread-count', authMiddleware, async (req: AuthReques
 });
 
 // Mark notifications as read
-router.put('/notifications/read', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.put('/notifications/read', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     await dbRun(
       'UPDATE notifications SET is_read = 1 WHERE to_user_id = ?',

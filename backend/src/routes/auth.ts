@@ -1,10 +1,29 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { dbRun, dbGet } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { logWarn } from '../utils/logger';
 
 const router = Router();
+
+// Rate limiter for auth endpoints
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 30;
+
+const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const key = String(req.userId || req.ip);
+  const now = Date.now();
+  const timestamps = (rateLimitMap.get(key) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    logWarn('auth_rate_limit_exceeded', { key });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+  timestamps.push(now);
+  rateLimitMap.set(key, timestamps);
+  next();
+};
 
 // Register
 router.post('/register', async (req: Request, res: Response) => {
@@ -128,7 +147,7 @@ router.put('/nickname', authMiddleware, async (req: AuthRequest, res: Response) 
 });
 
 // Update avatar
-router.put('/avatar', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.put('/avatar', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const { avatar } = req.body;
 

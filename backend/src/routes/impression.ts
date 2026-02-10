@@ -1,12 +1,30 @@
-import { Router, Response } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { logInfo, logError } from '../utils/logger';
+import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
 
 const router = Router();
 
+// Rate limiter
+const rateLimitMap = new Map<number, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 30;
+
+const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const userId = req.userId!;
+  const now = Date.now();
+  const timestamps = (rateLimitMap.get(userId) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    logWarn('impression_rate_limit_exceeded', { userId });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+  timestamps.push(now);
+  rateLimitMap.set(userId, timestamps);
+  next();
+};
+
 // Get current user's impression
-router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/me', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const impression = await dbGet(
       'SELECT dimensions, overview, updated_at FROM user_impressions WHERE user_id = ?',
@@ -29,7 +47,7 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
 });
 
 // Get another user's impression overview (public)
-router.get('/user/:userId', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/user/:userId', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const targetUserId = parseInt(req.params.userId as string, 10);
     const impression = await dbGet(
