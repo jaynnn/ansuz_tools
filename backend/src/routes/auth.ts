@@ -1,10 +1,29 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { dbRun, dbGet } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { logWarn } from '../utils/logger';
 
 const router = Router();
+
+// Rate limiter for auth endpoints
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 30;
+
+const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const key = String(req.userId || req.ip);
+  const now = Date.now();
+  const timestamps = (rateLimitMap.get(key) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    logWarn('auth_rate_limit_exceeded', { key });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+  timestamps.push(now);
+  rateLimitMap.set(key, timestamps);
+  next();
+};
 
 // Register
 router.post('/register', async (req: Request, res: Response) => {
@@ -97,10 +116,11 @@ router.post('/login', async (req: Request, res: Response) => {
 // Get current user
 router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const user: any = await dbGet('SELECT id, username, nickname, created_at FROM users WHERE id = ?', [req.userId]);
+    const user: any = await dbGet('SELECT id, username, nickname, avatar, created_at FROM users WHERE id = ?', [req.userId]);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+    user.avatar = user.avatar || 'seal';
     res.json({ user });
   } catch (error) {
     console.error('Get user error:', error);
@@ -122,6 +142,29 @@ router.put('/nickname', authMiddleware, async (req: AuthRequest, res: Response) 
     res.json({ message: 'Nickname updated successfully', nickname });
   } catch (error) {
     console.error('Update nickname error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update avatar
+router.put('/avatar', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const { avatar } = req.body;
+
+    const validAvatars = [
+      'seal', 'octopus', 'jellyfish', 'seahorse', 'pufferfish',
+      'turtle', 'whale', 'dolphin', 'clownfish', 'starfish'
+    ];
+
+    if (!avatar || !validAvatars.includes(avatar)) {
+      return res.status(400).json({ error: 'Invalid avatar selection' });
+    }
+
+    await dbRun('UPDATE users SET avatar = ? WHERE id = ?', [avatar, req.userId]);
+
+    res.json({ message: 'Avatar updated successfully', avatar });
+  } catch (error) {
+    console.error('Update avatar error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -144,6 +144,23 @@ const migrateStockPredictionsTable = async () => {
   }
 };
 
+// Migration function to add avatar column to users table
+const migrateUsersTable = async () => {
+  try {
+    const columns: any[] = await dbAll("PRAGMA table_info(users)");
+    const columnNames = columns.map((col: any) => col.name);
+
+    if (!columnNames.includes('avatar')) {
+      logInfo('users_migration_start', { reason: 'add_avatar_column' });
+      await dbRun('ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT "seal"');
+      logInfo('users_migration_success', { reason: 'added_avatar_column' });
+    }
+  } catch (error) {
+    logError('users_migration_error', error as Error);
+    throw error;
+  }
+};
+
 export const initDatabase = async () => {
   try {
     logInfo('database_init_start', { dbPath });
@@ -206,8 +223,73 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create user_impressions table - stores user impression dimensions as JSON
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS user_impressions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        dimensions TEXT NOT NULL DEFAULT '{}',
+        overview TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create user_matches table - stores pairing scores between users
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS user_matches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id_a INTEGER NOT NULL,
+        user_id_b INTEGER NOT NULL,
+        score REAL NOT NULL DEFAULT 0,
+        dimensions TEXT NOT NULL DEFAULT '{}',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id_a) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id_b) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id_a, user_id_b)
+      )
+    `);
+
+    // Create user_private_info table - stores private info (appearance, contact)
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS user_private_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        appearance TEXT,
+        contact TEXT,
+        extra TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create notifications table
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_user_id INTEGER NOT NULL,
+        to_user_id INTEGER NOT NULL,
+        type TEXT NOT NULL DEFAULT 'want_to_know',
+        is_read INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create match_cooldown table - tracks per-user weekly matching limit
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS match_cooldown (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        last_match_at DATETIME NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
+    await migrateUsersTable();
 
     console.log('Database initialized successfully');
     logInfo('database_init_success', { dbPath });

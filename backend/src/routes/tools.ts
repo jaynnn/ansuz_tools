@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { dbRun, dbGet, dbAll } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { triggerImpressionUpdate } from '../utils/impressionService';
 
 const router = Router();
 
@@ -69,6 +70,13 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
         url
       }
     });
+
+    // Async: trigger user impression update
+    triggerImpressionUpdate(
+      req.userId!,
+      '添加工具',
+      `用户添加了工具「${name}」，描述：${description || '无'}，标签：${(tags || []).join('、') || '无'}。该工具的使用者通常关注${(tags || []).join('、')}领域。`
+    );
   } catch (error) {
     console.error('Create tool error:', error);
     res.status(500).json({ error: 'Internal server error' });

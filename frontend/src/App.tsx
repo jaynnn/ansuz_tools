@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import StockPrediction from './pages/StockPrediction';
 import MBTITest from './pages/MBTITest';
+import FriendMatch from './pages/FriendMatch';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token } = useAuth();
@@ -42,6 +43,14 @@ const App: React.FC = () => {
               element={
                 <PrivateRoute>
                   <MBTITest />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/friend-match"
+              element={
+                <PrivateRoute>
+                  <FriendMatch />
                 </PrivateRoute>
               }
             />

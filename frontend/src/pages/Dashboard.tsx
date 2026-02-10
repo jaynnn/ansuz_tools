@@ -5,6 +5,9 @@ import type { Tool } from '../types/index';
 import { toolsAPI } from '../api';
 import ToolCard from '../components/ToolCard';
 import AddToolModal from '../components/AddToolModal';
+import Avatar from '../components/Avatar';
+import AvatarSelector from '../components/AvatarSelector';
+import NotificationBell from '../components/NotificationBell';
 import '../styles/Dashboard.css';
 
 const Dashboard: React.FC = () => {
@@ -14,8 +17,9 @@ const Dashboard: React.FC = () => {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAvatarSelector, setShowAvatarSelector] = useState(false);
   const [newNickname, setNewNickname] = useState('');
-  const { user, logout, updateNickname } = useAuth();
+  const { user, logout, updateNickname, updateAvatar } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -90,11 +94,28 @@ const Dashboard: React.FC = () => {
     );
   };
 
+  const handleSelectAvatar = async (avatarId: string) => {
+    try {
+      await updateAvatar(avatarId);
+      setShowAvatarSelector(false);
+    } catch (error) {
+      console.error('Failed to update avatar:', error);
+      alert('更新头像失败');
+    }
+  };
+
   return (
     <div className="dashboard">
       <header className="dashboard-header">
-        <h1>工具箱</h1>
+        <div className="header-left">
+          <button className="avatar-btn" onClick={() => setShowAvatarSelector(true)} title="更换头像">
+            <Avatar avatarId={user?.avatar || 'seal'} size={36} />
+          </button>
+          <h1>工具箱</h1>
+        </div>
         <div className="header-actions">
+          <a href="/friend-match" className="btn btn-icon" title="交友匹配">💕</a>
+          <NotificationBell onClick={() => { window.location.href = '/friend-match'; }} />
           <button onClick={toggleTheme} className="btn btn-icon" title="切换主题">
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
@@ -172,6 +193,14 @@ const Dashboard: React.FC = () => {
           onClose={() => setShowAddModal(false)}
           onAdd={handleAddTool}
           existingTools={tools}
+        />
+      )}
+
+      {showAvatarSelector && (
+        <AvatarSelector
+          currentAvatar={user?.avatar || 'seal'}
+          onSelect={handleSelectAvatar}
+          onClose={() => setShowAvatarSelector(false)}
         />
       )}
     </div>

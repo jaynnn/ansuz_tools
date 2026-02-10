@@ -59,8 +59,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateAvatar = async (avatar: string) => {
+    await authAPI.updateAvatar(avatar);
+    if (user) {
+      setUser({ ...user, avatar });
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, updateNickname }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, updateNickname, updateAvatar }}>
       {children}
     </AuthContext.Provider>
   );

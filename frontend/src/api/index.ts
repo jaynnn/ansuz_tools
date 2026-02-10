@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Tool } from '../types/index';
+import type { Tool, UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo } from '../types/index';
 import type { StockPrediction } from '../types/stock';
 
 // Use relative URL in production (when served by backend)
@@ -40,6 +40,11 @@ export const authAPI = {
   
   updateNickname: async (nickname: string) => {
     const response = await api.put('/auth/nickname', { nickname });
+    return response.data;
+  },
+
+  updateAvatar: async (avatar: string) => {
+    const response = await api.put('/auth/avatar', { avatar });
     return response.data;
   },
 };
@@ -156,6 +161,57 @@ export const mbtiAPI = {
 
   deleteResult: async (id: number) => {
     const response = await api.delete(`/mbti/history/${id}`);
+    return response.data;
+  },
+};
+
+// Impression APIs
+export const impressionAPI = {
+  getMyImpression: async (): Promise<UserImpression> => {
+    const response = await api.get('/impression/me');
+    return response.data;
+  },
+
+  getUserImpression: async (userId: number): Promise<UserProfile> => {
+    const response = await api.get(`/impression/user/${userId}`);
+    return response.data;
+  },
+};
+
+// Friend Match APIs
+export const friendMatchAPI = {
+  getTopMatches: async (): Promise<{ matches: MatchedUser[] }> => {
+    const response = await api.get('/friend-match/top');
+    return response.data;
+  },
+
+  getPrivateInfo: async (): Promise<PrivateInfo> => {
+    const response = await api.get('/friend-match/private-info');
+    return response.data;
+  },
+
+  updatePrivateInfo: async (info: Partial<PrivateInfo>) => {
+    const response = await api.put('/friend-match/private-info', info);
+    return response.data;
+  },
+
+  sendWantToKnow: async (targetUserId: number) => {
+    const response = await api.post('/friend-match/want-to-know', { targetUserId });
+    return response.data;
+  },
+
+  getNotifications: async (): Promise<{ notifications: Notification[] }> => {
+    const response = await api.get('/friend-match/notifications');
+    return response.data;
+  },
+
+  getUnreadCount: async (): Promise<{ count: number }> => {
+    const response = await api.get('/friend-match/notifications/unread-count');
+    return response.data;
+  },
+
+  markNotificationsRead: async () => {
+    const response = await api.put('/friend-match/notifications/read');
     return response.data;
   },
 };
