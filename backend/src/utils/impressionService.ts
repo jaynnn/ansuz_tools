@@ -1,6 +1,23 @@
 import { asyncLlmSubmit } from './asyncLlmService';
 import { dbRun, dbGet, dbAll } from './database';
 import { logInfo, logError } from './logger';
+import { generateAstrologyContext } from './astrology';
+
+/**
+ * Extract birth date/time from user's private info extra JSON and generate astrology context.
+ */
+const getAstrologyContextFromExtra = (extra: string | undefined): string => {
+  if (!extra) return '';
+  try {
+    const parsed = JSON.parse(extra);
+    const birthDate = parsed.birthDate;
+    const birthTime = parsed.birthTime;
+    if (!birthDate) return '';
+    return generateAstrologyContext(birthDate, birthTime || undefined);
+  } catch {
+    return '';
+  }
+};
 
 // All impression dimension keys
 const IMPRESSION_DIMENSIONS = [
@@ -45,8 +62,19 @@ export const triggerImpressionUpdate = async (
       }
     }
 
+    // Get astrology context from private info
+    const privateInfoRow = await dbGet(
+      'SELECT extra FROM user_private_info WHERE user_id = ?',
+      [userId]
+    );
+    const astrologyCtx = getAstrologyContextFromExtra(privateInfoRow?.extra);
+    let astrologyContext = '';
+    if (astrologyCtx) {
+      astrologyContext = `\n\n用户命理信息：${astrologyCtx}`;
+    }
+
     const systemPrompt = `你是一个用户画像分析专家。根据用户行为事件和所有可用信息，更新用户印象的各个维度。
-请基于现有印象数据、新事件以及MBTI分析结果，尽可能全面地填充所有维度。
+请基于现有印象数据、新事件、MBTI分析结果以及命理信息（如有），尽可能全面地填充所有维度。
 
 维度列表：${IMPRESSION_DIMENSIONS.join('、')}
 
@@ -54,9 +82,10 @@ export const triggerImpressionUpdate = async (
 1. 每个维度的值应该是简练的描述（不超过15个字）。
 2. 尽量根据MBTI类型和AI分析结果推断并填充所有维度，而不仅仅是直接相关的维度。
 3. MBTI各维度（E/I外向内向、S/N感觉直觉、T/F思维情感、J/P判断知觉）与印象维度有密切关联，请充分利用这些信息。
-4. 如果某维度已有数据，可以根据新信息进行优化；如果某维度尚无数据，请尽力根据已有信息推断。
-5. 描述必须客观事实，不要使用"非凡"、"卓越"、"出色"等夸张修饰词，用平实的语言。
-6. 不允许无中生有或过度美化，缺点也应如实描述。
+4. 如果有命理信息（星座、生辰八字、五行等），可以作为辅助参考，略微结合命理学特征来丰富描述，但不要过度依赖。
+5. 如果某维度已有数据，可以根据新信息进行优化；如果某维度尚无数据，请尽力根据已有信息推断。
+6. 描述必须客观事实，不要使用"非凡"、"卓越"、"出色"等夸张修饰词，用平实的语言。
+7. 不允许无中生有或过度美化，缺点也应如实描述。
 
 严格输出纯JSON格式，不要包含markdown标记或其他文字。示例：
 {"品格":"诚实自律","能力":"学习能力强","认知方式":"直觉型思维"}`;
@@ -64,7 +93,7 @@ export const triggerImpressionUpdate = async (
     const userMessage = `当前用户印象：${JSON.stringify(currentDimensions)}
 
 新事件：${event}
-事件详情：${eventDetail}${mbtiContext}
+事件详情：${eventDetail}${mbtiContext}${astrologyContext}
 
 请输出更新后的完整印象JSON，尽量填充所有维度。`;
 
@@ -180,6 +209,9 @@ export const generateImpressionOverview = async (
       }
     }
 
+    // Get astrology context
+    const astrologyCtx = getAstrologyContextFromExtra(privateInfo?.extra);
+
     // Determine third-person pronoun based on gender
     let pronoun = 'TA';
     if (gender.includes('男') || gender.toLowerCase() === 'male') {
@@ -188,7 +220,7 @@ export const generateImpressionOverview = async (
       pronoun = '她';
     }
 
-    const systemPrompt = `你是一个用户画像概览生成器。请根据用户的印象维度、MBTI结果、个人信息等，生成通俗易读的个人概览。
+    const systemPrompt = `你是一个用户画像概览生成器。请根据用户的印象维度、MBTI结果、个人信息、命理信息（如有）等，生成通俗易读的个人概览。
 要求：
 1. 概览应融合所有可用信息，不要逐条罗列维度，而是用自然流畅的语言描述这个人。
 2. 字数300字左右，充分展现这个人的特点。
@@ -198,6 +230,7 @@ export const generateImpressionOverview = async (
 6. 对于用户的不足或缺点，可以客观提及，不需要刻意隐藏，但也不要过度放大。
 7. 不要使用"非凡"、"卓越"、"出色"、"顶尖"等夸张修饰词，用平实的语言描述即可。
 8. 请将概览分成2-4个自然段落，每段聚焦一个方面（如性格特点、兴趣爱好、处事风格、交友意愿等），段落之间用换行符分隔。不要写成一整段。
+9. 如果有星座和生辰八字等命理信息，可以略微参考其命理特征来丰富描述，但不要过度依赖或大段提及命理术语。
 
 你需要生成两个版本，严格输出纯JSON格式：
 {
@@ -209,6 +242,7 @@ export const generateImpressionOverview = async (
     const userMessage = `印象维度：${JSON.stringify(dimensions)}
 ${mbtiContext ? `\n${mbtiContext}` : ''}
 ${privateContext ? `\n个人信息：${privateContext}` : ''}
+${astrologyCtx ? `\n命理信息：${astrologyCtx}` : ''}
 
 请生成概览JSON。`;
 
@@ -309,9 +343,16 @@ const triggerUserMatchingWithCooldown = async (
       [userId]
     );
 
+    // Get user's MBTI type
+    const userMbti = await dbGet(
+      'SELECT mbti_type FROM mbti_results WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
+
     // Get all other users with impressions
     const otherUsers = await dbAll(
-      `SELECT ui.user_id, ui.dimensions, upi.appearance, upi.extra
+      `SELECT ui.user_id, ui.dimensions, upi.appearance, upi.extra,
+              (SELECT mr.mbti_type FROM mbti_results mr WHERE mr.user_id = ui.user_id ORDER BY mr.created_at DESC LIMIT 1) as mbti_type
        FROM user_impressions ui
        LEFT JOIN user_private_info upi ON ui.user_id = upi.user_id
        WHERE ui.user_id != ?`,
@@ -338,10 +379,10 @@ const triggerUserMatchingWithCooldown = async (
       matchTwoUsers(
         userId,
         JSON.parse(userImpression.dimensions),
-        userPrivateInfo,
+        { ...userPrivateInfo, mbtiType: userMbti?.mbti_type },
         other.user_id,
         JSON.parse(other.dimensions),
-        other
+        { ...other, mbtiType: other.mbti_type }
       );
     }
   } catch (error) {
@@ -366,9 +407,19 @@ const matchTwoUsers = (
   dimensionsB: Record<string, string>,
   privateInfoB: any
 ): void => {
-  const systemPrompt = `你是一个社交配对分析专家。请根据两个用户的印象数据，从以下维度对他们的配对进行评分和分析。
+  // Extract astrology context for both users
+  const astrologyA = getAstrologyContextFromExtra(privateInfoA?.extra);
+  const astrologyB = getAstrologyContextFromExtra(privateInfoB?.extra);
+
+  const systemPrompt = `你是一个社交配对分析专家。请根据两个用户的印象数据、MBTI类型、星座信息和生辰八字命理信息，从以下维度对他们的配对进行评分和分析。
 
 配对维度：${MATCHING_DIMENSIONS.join('、')}
+
+分析时请综合考虑：
+1. MBTI性格类型的兼容性（如ENFP与INTJ的互补性等）
+2. 星座学上的配对关系（如水象与土象星座的稳定组合等）
+3. 生辰八字命理学（五行互补、天干地支相合相冲等）
+4. 以上三者仅作为参考因素，最终评分仍以印象数据和实际信息为主
 
 请为每个维度打分（0-10），并计算总分（各维度分数之和）。
 同时，请为双方各生成一段配对理由（reason_a_to_b 是对A说明B为什么适合A，reason_b_to_a 是对B说明A为什么适合B），每段不超过80字，要基于客观事实，不要夸张或美化。
@@ -378,9 +429,13 @@ const matchTwoUsers = (
 
   const userMessage = `用户A的印象：${JSON.stringify(dimensionsA)}
 ${privateInfoA?.appearance ? `用户A的外貌描述：${privateInfoA.appearance}` : ''}
+${privateInfoA?.mbtiType ? `用户A的MBTI类型：${privateInfoA.mbtiType}` : ''}
+${astrologyA ? `用户A的命理信息：${astrologyA}` : ''}
 
 用户B的印象：${JSON.stringify(dimensionsB)}
 ${privateInfoB?.appearance ? `用户B的外貌描述：${privateInfoB.appearance}` : ''}
+${privateInfoB?.mbtiType ? `用户B的MBTI类型：${privateInfoB.mbtiType}` : ''}
+${astrologyB ? `用户B的命理信息：${astrologyB}` : ''}
 
 请进行配对分析。`;
 

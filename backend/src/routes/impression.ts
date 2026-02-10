@@ -3,6 +3,7 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
 import { chatCompletion } from '../utils/llmService';
+import { generateAstrologyContext } from '../utils/astrology';
 
 const router = Router();
 
@@ -149,6 +150,10 @@ router.get('/user/:userId/profile', authMiddleware, rateLimit, async (req: AuthR
         if (extra.location) parts.push(`所在地：${extra.location}`);
         if (extra.hobbies) parts.push(`兴趣爱好：${extra.hobbies}`);
         if (extra.friendIntention) parts.push(`交友意愿：${extra.friendIntention}`);
+        if (extra.birthDate) {
+          const astrologyCtx = generateAstrologyContext(extra.birthDate, extra.birthTime || undefined);
+          if (astrologyCtx) parts.push(`命理信息：${astrologyCtx}`);
+        }
         if (Array.isArray(extra.items)) {
           for (const item of extra.items) {
             if (item.field && item.detail) parts.push(`${item.field}：${item.detail}`);
