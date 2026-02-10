@@ -8,10 +8,11 @@ import Dashboard from './pages/Dashboard';
 import StockPrediction from './pages/StockPrediction';
 import MBTITest from './pages/MBTITest';
 import FriendMatch from './pages/FriendMatch';
+import AnnouncementBar from './components/AnnouncementBar';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token } = useAuth();
-  return token ? <>{children}</> : <Navigate to="/login" />;
+  return token ? <><AnnouncementBar />{children}</> : <Navigate to="/login" />;
 };
 
 const App: React.FC = () => {

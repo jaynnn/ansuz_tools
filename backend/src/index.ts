@@ -2,8 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import http from 'http';
 import { initDatabase } from './utils/database';
 import logger, { logInfo, logError } from './utils/logger';
+import { initWebSocket } from './utils/wsManager';
 import authRoutes from './routes/auth';
 import toolsRoutes from './routes/tools';
 import stockPredictionsRoutes from './routes/stockPredictions';
@@ -11,6 +13,7 @@ import llmRoutes from './routes/llm';
 import mbtiRoutes from './routes/mbti';
 import impressionRoutes from './routes/impression';
 import friendMatchRoutes from './routes/friendMatch';
+import announcementRoutes from './routes/announcements';
 
 // Load environment variables
 dotenv.config();
@@ -56,6 +59,7 @@ app.use('/api/llm', llmRoutes);
 app.use('/api/mbti', mbtiRoutes);
 app.use('/api/impression', impressionRoutes);
 app.use('/api/friend-match', friendMatchRoutes);
+app.use('/api/announcements', announcementRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -80,7 +84,11 @@ const startServer = async () => {
   try {
     logInfo('server_starting', { port: PORT, nodeEnv: process.env.NODE_ENV });
     await initDatabase();
-    app.listen(PORT, () => {
+
+    const server = http.createServer(app);
+    initWebSocket(server);
+
+    server.listen(PORT, () => {
       const message = `Server is running on port ${PORT}`;
       console.log(message);
       logInfo('server_started', { port: PORT });
