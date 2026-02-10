@@ -26,23 +26,45 @@ export const triggerImpressionUpdate = async (
     );
     const currentDimensions = current ? JSON.parse(current.dimensions) : {};
 
-    const systemPrompt = `你是一个用户画像分析专家。根据用户行为事件，更新用户印象的各个维度。
-请基于现有印象数据和新事件，输出更新后的印象JSON。
+    // Get MBTI results for richer context
+    const mbtiResults = await dbAll(
+      'SELECT mbti_type, scores, ai_analysis FROM mbti_results WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
+    let mbtiContext = '';
+    if (mbtiResults.length > 0) {
+      const mbti = mbtiResults[0];
+      try {
+        const scores = JSON.parse(mbti.scores);
+        mbtiContext = `\n\n用户的MBTI类型：${mbti.mbti_type}，各维度分值：E/I=${scores.EI}, S/N=${scores.SN}, T/F=${scores.TF}, J/P=${scores.JP}。`;
+      } catch {
+        mbtiContext = `\n\n用户的MBTI类型：${mbti.mbti_type}。`;
+      }
+      if (mbti.ai_analysis) {
+        mbtiContext += `\nMBTI AI详细分析：${mbti.ai_analysis}`;
+      }
+    }
+
+    const systemPrompt = `你是一个用户画像分析专家。根据用户行为事件和所有可用信息，更新用户印象的各个维度。
+请基于现有印象数据、新事件以及MBTI分析结果，尽可能全面地填充所有维度。
 
 维度列表：${IMPRESSION_DIMENSIONS.join('、')}
 
-每个维度的值应该是简练的描述（不超过15个字），仅更新与本次事件相关的维度，其他维度保持不变。
-如果某维度尚无数据且本次事件也无法推断，则不要添加该维度。
+重要要求：
+1. 每个维度的值应该是简练的描述（不超过15个字）。
+2. 尽量根据MBTI类型和AI分析结果推断并填充所有维度，而不仅仅是直接相关的维度。
+3. MBTI各维度（E/I外向内向、S/N感觉直觉、T/F思维情感、J/P判断知觉）与印象维度有密切关联，请充分利用这些信息。
+4. 如果某维度已有数据，可以根据新信息进行优化；如果某维度尚无数据，请尽力根据已有信息推断。
 
 严格输出纯JSON格式，不要包含markdown标记或其他文字。示例：
-{"品格":"诚实自律","能力":"学习能力强"}`;
+{"品格":"诚实自律","能力":"学习能力强","认知方式":"直觉型思维"}`;
 
     const userMessage = `当前用户印象：${JSON.stringify(currentDimensions)}
 
 新事件：${event}
-事件详情：${eventDetail}
+事件详情：${eventDetail}${mbtiContext}
 
-请输出更新后的完整印象JSON。`;
+请输出更新后的完整印象JSON，尽量填充所有维度。`;
 
     asyncLlmSubmit(
       [
@@ -120,8 +142,27 @@ export const generateImpressionOverview = async (
  * Only triggered after MBTI test completion.
  */
 export const triggerUserMatching = async (userId: number): Promise<void> => {
+  await triggerUserMatchingWithCooldown(userId, 7 * 24 * 60 * 60 * 1000, 'weekly');
+};
+
+/**
+ * Trigger matching with daily cooldown (24 hours).
+ * Used after saving private info.
+ */
+export const triggerUserMatchingDaily = async (userId: number): Promise<void> => {
+  await triggerUserMatchingWithCooldown(userId, 24 * 60 * 60 * 1000, 'daily');
+};
+
+/**
+ * Internal: Trigger matching for a user with configurable cooldown.
+ */
+const triggerUserMatchingWithCooldown = async (
+  userId: number,
+  cooldownMs: number,
+  source: string
+): Promise<void> => {
   try {
-    // Check cooldown (7 days per user individually)
+    // Check cooldown per user
     const cooldown = await dbGet(
       'SELECT last_match_at FROM match_cooldown WHERE user_id = ?',
       [userId]
@@ -129,10 +170,10 @@ export const triggerUserMatching = async (userId: number): Promise<void> => {
 
     if (cooldown) {
       const lastMatch = new Date(cooldown.last_match_at).getTime();
-      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-      if (Date.now() - lastMatch < sevenDaysMs) {
+      if (Date.now() - lastMatch < cooldownMs) {
         logInfo('matching_cooldown_active', {
           userId,
+          source,
           lastMatchAt: cooldown.last_match_at,
         });
         return;

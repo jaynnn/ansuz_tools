@@ -158,11 +158,11 @@ ${answersDescription}
       savedId,
     });
 
-    // Async: trigger impression update with MBTI result
+    // Async: trigger impression update with MBTI result (including AI analysis)
     triggerImpressionUpdate(
       req.userId!,
       'MBTI测试完成',
-      `用户完成了MBTI测试，结果为${scoreBasedType}。各维度分值：E/I=${scores.EI}, S/N=${scores.SN}, T/F=${scores.TF}, J/P=${scores.JP}。`
+      `用户完成了MBTI测试，结果为${scoreBasedType}。各维度分值：E/I=${scores.EI}, S/N=${scores.SN}, T/F=${scores.TF}, J/P=${scores.JP}。\nAI分析报告：${result.content}`
     );
 
     // Async: trigger user matching (respects weekly cooldown)

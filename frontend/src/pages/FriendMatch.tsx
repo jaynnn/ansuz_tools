@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { impressionAPI, friendMatchAPI } from '../api';
-import type { UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo } from '../types/index';
+import type { UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, StructuredPrivateInfo } from '../types/index';
 import Avatar from '../components/Avatar';
 import NotificationBell from '../components/NotificationBell';
 import '../styles/FriendMatch.css';
@@ -16,7 +16,9 @@ const FriendMatch: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const [privateInfo, setPrivateInfo] = useState<PrivateInfo>({ appearance: '', contact: '', extra: '' });
+  const [privateInfo, setPrivateInfo] = useState<StructuredPrivateInfo>({
+    appearance: {}, contact: {}, location: '', hobbies: '', extraItems: [],
+  });
   const [loading, setLoading] = useState(true);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [savingPrivateInfo, setSavingPrivateInfo] = useState(false);
@@ -78,10 +80,36 @@ const FriendMatch: React.FC = () => {
     }
   };
 
+  const parsePrivateInfo = (raw: PrivateInfo): StructuredPrivateInfo => {
+    let appearance = {};
+    let contact = {};
+    let location = '';
+    let hobbies = '';
+    let extraItems: Array<{ field: string; detail: string }> = [];
+
+    try { appearance = JSON.parse(raw.appearance || '{}'); } catch { appearance = raw.appearance ? { other: raw.appearance } : {}; }
+    try { contact = JSON.parse(raw.contact || '{}'); } catch { contact = raw.contact ? { other: raw.contact } : {}; }
+    try {
+      const extra = JSON.parse(raw.extra || '{}');
+      location = extra.location || '';
+      hobbies = extra.hobbies || '';
+      extraItems = Array.isArray(extra.items) ? extra.items : [];
+    } catch {
+      if (raw.extra) extraItems = [{ field: '其他', detail: raw.extra }];
+    }
+    return { appearance, contact, location, hobbies, extraItems };
+  };
+
+  const serializePrivateInfo = (info: StructuredPrivateInfo): PrivateInfo => ({
+    appearance: JSON.stringify(info.appearance),
+    contact: JSON.stringify(info.contact),
+    extra: JSON.stringify({ location: info.location, hobbies: info.hobbies, items: info.extraItems }),
+  });
+
   const handleShowPrivateInfo = async () => {
     try {
-      const info = await friendMatchAPI.getPrivateInfo();
-      setPrivateInfo(info);
+      const raw = await friendMatchAPI.getPrivateInfo();
+      setPrivateInfo(parsePrivateInfo(raw));
       setViewMode('private-info');
     } catch (error) {
       console.error('Failed to fetch private info:', error);
@@ -92,7 +120,7 @@ const FriendMatch: React.FC = () => {
     e.preventDefault();
     setSavingPrivateInfo(true);
     try {
-      await friendMatchAPI.updatePrivateInfo(privateInfo);
+      await friendMatchAPI.updatePrivateInfo(serializePrivateInfo(privateInfo));
       alert('隐私信息已保存');
     } catch {
       alert('保存失败');
@@ -204,33 +232,192 @@ const FriendMatch: React.FC = () => {
             ⚠️ 注意隐私安全：以下信息将对想认识你的用户可见。请谨慎填写个人信息，不要透露敏感信息（如家庭住址、身份证号等）。
           </div>
           <form className="private-info-form" onSubmit={handleSavePrivateInfo}>
-            <div className="form-group">
-              <label>外貌描述</label>
-              <textarea
-                value={privateInfo.appearance}
-                onChange={(e) => setPrivateInfo({ ...privateInfo, appearance: e.target.value })}
-                placeholder="简单描述你的外貌特征（可选）"
-                rows={3}
-              />
+            {/* Appearance Section */}
+            <div className="form-section">
+              <h3>外貌信息</h3>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>身高</label>
+                  <input
+                    type="text"
+                    value={privateInfo.appearance.height || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, appearance: { ...privateInfo.appearance, height: e.target.value } })}
+                    placeholder="如：175cm"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>体重</label>
+                  <input
+                    type="text"
+                    value={privateInfo.appearance.weight || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, appearance: { ...privateInfo.appearance, weight: e.target.value } })}
+                    placeholder="如：65kg"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>肤色</label>
+                  <input
+                    type="text"
+                    value={privateInfo.appearance.skin || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, appearance: { ...privateInfo.appearance, skin: e.target.value } })}
+                    placeholder="如：白皙、小麦色"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>体型</label>
+                  <input
+                    type="text"
+                    value={privateInfo.appearance.bodyType || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, appearance: { ...privateInfo.appearance, bodyType: e.target.value } })}
+                    placeholder="如：偏瘦、匀称、健壮"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>脸型</label>
+                  <input
+                    type="text"
+                    value={privateInfo.appearance.faceShape || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, appearance: { ...privateInfo.appearance, faceShape: e.target.value } })}
+                    placeholder="如：圆脸、瓜子脸"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>其他外貌</label>
+                  <input
+                    type="text"
+                    value={privateInfo.appearance.other || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, appearance: { ...privateInfo.appearance, other: e.target.value } })}
+                    placeholder="其他外貌特征"
+                  />
+                </div>
+              </div>
             </div>
-            <div className="form-group">
-              <label>联系方式</label>
-              <input
-                type="text"
-                value={privateInfo.contact}
-                onChange={(e) => setPrivateInfo({ ...privateInfo, contact: e.target.value })}
-                placeholder="微信号、QQ等（可选，对想认识你的用户可见）"
-              />
+
+            {/* Location & Hobbies Section */}
+            <div className="form-section">
+              <h3>基本信息</h3>
+              <div className="form-group">
+                <label>所在地</label>
+                <input
+                  type="text"
+                  value={privateInfo.location}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, location: e.target.value })}
+                  placeholder="如：北京、上海"
+                />
+              </div>
+              <div className="form-group">
+                <label>兴趣爱好</label>
+                <input
+                  type="text"
+                  value={privateInfo.hobbies}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, hobbies: e.target.value })}
+                  placeholder="如：读书、编程、旅行、摄影"
+                />
+              </div>
             </div>
-            <div className="form-group">
-              <label>其他信息</label>
-              <textarea
-                value={privateInfo.extra}
-                onChange={(e) => setPrivateInfo({ ...privateInfo, extra: e.target.value })}
-                placeholder="其他你想让别人知道的信息（可选）"
-                rows={3}
-              />
+
+            {/* Contact Section */}
+            <div className="form-section">
+              <h3>联系方式</h3>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>微信</label>
+                  <input
+                    type="text"
+                    value={privateInfo.contact.wechat || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, contact: { ...privateInfo.contact, wechat: e.target.value } })}
+                    placeholder="微信号"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>QQ</label>
+                  <input
+                    type="text"
+                    value={privateInfo.contact.qq || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, contact: { ...privateInfo.contact, qq: e.target.value } })}
+                    placeholder="QQ号"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>手机号</label>
+                  <input
+                    type="text"
+                    value={privateInfo.contact.phone || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, contact: { ...privateInfo.contact, phone: e.target.value } })}
+                    placeholder="手机号"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>邮箱</label>
+                  <input
+                    type="text"
+                    value={privateInfo.contact.email || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, contact: { ...privateInfo.contact, email: e.target.value } })}
+                    placeholder="邮箱地址"
+                  />
+                </div>
+                <div className="form-group form-group-full">
+                  <label>其他联系方式</label>
+                  <input
+                    type="text"
+                    value={privateInfo.contact.other || ''}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, contact: { ...privateInfo.contact, other: e.target.value } })}
+                    placeholder="其他联系方式"
+                  />
+                </div>
+              </div>
             </div>
+
+            {/* Extra Items Section */}
+            <div className="form-section">
+              <h3>其他信息（想被别人知道的）</h3>
+              {privateInfo.extraItems.map((item, index) => (
+                <div key={index} className="extra-item-row">
+                  <input
+                    type="text"
+                    value={item.field}
+                    onChange={(e) => {
+                      const items = [...privateInfo.extraItems];
+                      items[index] = { ...items[index], field: e.target.value };
+                      setPrivateInfo({ ...privateInfo, extraItems: items });
+                    }}
+                    placeholder="字段名"
+                    className="extra-field-input"
+                  />
+                  <input
+                    type="text"
+                    value={item.detail}
+                    onChange={(e) => {
+                      const items = [...privateInfo.extraItems];
+                      items[index] = { ...items[index], detail: e.target.value };
+                      setPrivateInfo({ ...privateInfo, extraItems: items });
+                    }}
+                    placeholder="详情"
+                    className="extra-detail-input"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-icon extra-remove-btn"
+                    onClick={() => {
+                      const items = privateInfo.extraItems.filter((_, i) => i !== index);
+                      setPrivateInfo({ ...privateInfo, extraItems: items });
+                    }}
+                    title="删除"
+                  >✕</button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="btn btn-secondary extra-add-btn"
+                onClick={() => setPrivateInfo({
+                  ...privateInfo,
+                  extraItems: [...privateInfo.extraItems, { field: '', detail: '' }],
+                })}
+              >
+                + 添加一项
+              </button>
+            </div>
+
             <button type="submit" className="btn btn-primary" disabled={savingPrivateInfo}>
               {savingPrivateInfo ? '保存中...' : '保存'}
             </button>
