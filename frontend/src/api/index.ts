@@ -47,6 +47,11 @@ export const authAPI = {
     const response = await api.put('/auth/avatar', { avatar });
     return response.data;
   },
+
+  deleteAccount: async (password: string) => {
+    const response = await api.delete('/auth/account', { data: { password } });
+    return response.data;
+  },
 };
 
 // Tools APIs

@@ -71,6 +71,12 @@
   font-size: 0.9rem;
 }
 
+.impression-hint {
+  color: var(--text-secondary);
+  margin: 0.5rem 0 0 0;
+  font-size: 0.85rem;
+}
+
 .impression-dimensions h3 {
   color: var(--text-primary);
   font-size: 1rem;

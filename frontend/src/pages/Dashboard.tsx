@@ -18,10 +18,13 @@ const Dashboard: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showAvatarSelector, setShowAvatarSelector] = useState(false);
   const [newNickname, setNewNickname] = useState('');
-  const { user, logout, updateNickname, updateAvatar } = useAuth();
+  const [deletePassword, setDeletePassword] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { user, logout, updateNickname, updateAvatar, deleteAccount } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
+    document.title = '工具箱';
     fetchTools();
   }, []);
 
@@ -103,6 +106,21 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!window.confirm('确定要销号吗？此操作不可撤销，所有数据将被永久删除！')) {
+      return;
+    }
+    try {
+      await deleteAccount(deletePassword);
+      alert('账号已删除');
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      const msg = axiosError?.response?.data?.error || '销号失败';
+      alert(msg);
+    }
+  };
+
   return (
     <div className="dashboard">
       <header className="dashboard-header">
@@ -146,6 +164,28 @@ const Dashboard: React.FC = () => {
               <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
                 添加工具
               </button>
+            </div>
+            <div className="form-group">
+              <label>销号</label>
+              {!showDeleteConfirm ? (
+                <button onClick={() => setShowDeleteConfirm(true)} className="btn btn-danger">
+                  删除账号
+                </button>
+              ) : (
+                <form onSubmit={handleDeleteAccount}>
+                  <div className="nickname-input">
+                    <input
+                      type="password"
+                      value={deletePassword}
+                      onChange={(e) => setDeletePassword(e.target.value)}
+                      placeholder="请输入密码确认"
+                      required
+                    />
+                    <button type="submit" className="btn btn-danger">确认删除</button>
+                    <button type="button" className="btn btn-secondary" onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}>取消</button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>
