@@ -161,6 +161,23 @@ const migrateUsersTable = async () => {
   }
 };
 
+// Migration function to add overview_self column to user_impressions table
+const migrateUserImpressionsTable = async () => {
+  try {
+    const columns: any[] = await dbAll("PRAGMA table_info(user_impressions)");
+    const columnNames = columns.map((col: any) => col.name);
+
+    if (!columnNames.includes('overview_self')) {
+      logInfo('user_impressions_migration_start', { reason: 'add_overview_self_column' });
+      await dbRun('ALTER TABLE user_impressions ADD COLUMN overview_self TEXT');
+      logInfo('user_impressions_migration_success', { reason: 'added_overview_self_column' });
+    }
+  } catch (error) {
+    logError('user_impressions_migration_error', error as Error);
+    throw error;
+  }
+};
+
 export const initDatabase = async () => {
   try {
     logInfo('database_init_start', { dbPath });
@@ -290,6 +307,7 @@ export const initDatabase = async () => {
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
     await migrateUsersTable();
+    await migrateUserImpressionsTable();
 
     console.log('Database initialized successfully');
     logInfo('database_init_success', { dbPath });

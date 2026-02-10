@@ -106,34 +106,137 @@ export const triggerImpressionUpdate = async (
 };
 
 /**
- * Generate a concise overview (≤100 chars) of user impression.
+ * Generate readable, attractive overviews of user impression.
+ * Combines impression dimensions, MBTI results, and private info.
+ * Generates two versions:
+ * - overview_self: first-person perspective for the user themselves
+ * - overview: third-person perspective for other users (gender-aware)
  */
 export const generateImpressionOverview = async (
   userId: number,
   dimensions: Record<string, string>
 ): Promise<void> => {
-  const systemPrompt = `你是一个用户画像概览生成器。请根据用户的印象维度数据，生成一段不超过100字的简练概览，用于展示给其他用户。
-只输出概览文字，不要其他内容。`;
+  try {
+    // Gather MBTI results
+    const mbtiResults = await dbAll(
+      'SELECT mbti_type, scores, ai_analysis FROM mbti_results WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
+    let mbtiContext = '';
+    if (mbtiResults.length > 0) {
+      const mbti = mbtiResults[0];
+      try {
+        const scores = JSON.parse(mbti.scores);
+        mbtiContext = `MBTI类型：${mbti.mbti_type}，各维度分值：E/I=${scores.EI}, S/N=${scores.SN}, T/F=${scores.TF}, J/P=${scores.JP}。`;
+      } catch {
+        mbtiContext = `MBTI类型：${mbti.mbti_type}。`;
+      }
+      if (mbti.ai_analysis) {
+        mbtiContext += `\nMBTI分析：${mbti.ai_analysis}`;
+      }
+    }
 
-  const userMessage = `用户印象维度：${JSON.stringify(dimensions)}
+    // Gather private info
+    const privateInfo = await dbGet(
+      'SELECT appearance, extra FROM user_private_info WHERE user_id = ?',
+      [userId]
+    );
+    let privateContext = '';
+    let gender = '';
+    if (privateInfo) {
+      const parts: string[] = [];
+      try {
+        const appearance = JSON.parse(privateInfo.appearance || '{}');
+        const appDesc = Object.entries(appearance)
+          .filter(([, v]) => v)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('，');
+        if (appDesc) parts.push(`外貌信息：${appDesc}`);
+      } catch { /* ignore */ }
+      try {
+        const extra = JSON.parse(privateInfo.extra || '{}');
+        if (extra.location) parts.push(`所在地：${extra.location}`);
+        if (extra.hobbies) parts.push(`兴趣爱好：${extra.hobbies}`);
+        if (Array.isArray(extra.items)) {
+          for (const item of extra.items) {
+            if (item.field && item.detail) {
+              parts.push(`${item.field}：${item.detail}`);
+              if (item.field === '性别' || item.field === 'gender') {
+                gender = item.detail;
+                break;
+              }
+            }
+          }
+        }
+      } catch { /* ignore */ }
+      if (parts.length > 0) {
+        privateContext = parts.join('；');
+      }
+    }
 
-请生成不超过100字的概览。`;
+    // Determine third-person pronoun based on gender
+    let pronoun = 'TA';
+    if (gender.includes('男') || gender.toLowerCase() === 'male') {
+      pronoun = '他';
+    } else if (gender.includes('女') || gender.toLowerCase() === 'female') {
+      pronoun = '她';
+    }
 
-  asyncLlmSubmit(
-    [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ],
-    async (content: string) => {
-      const overview = content.trim().slice(0, 100);
-      await dbRun(
-        `UPDATE user_impressions SET overview = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
-        [overview, userId]
-      );
-      logInfo('impression_overview_generated', { userId, overviewLength: overview.length });
-    },
-    'impression_overview'
-  );
+    const systemPrompt = `你是一个用户画像概览生成器。请根据用户的印象维度、MBTI结果、个人信息等，生成通俗易读、有吸引力的个人概览。
+要求：
+1. 概览应融合所有可用信息，不要逐条罗列维度，而是用自然流畅的语言描述这个人。
+2. 不超过150字。
+3. 语气亲切自然，有吸引力，让人想进一步了解。
+4. 可以提及性格特点、兴趣爱好、处事风格等。
+
+你需要生成两个版本，严格输出纯JSON格式：
+{
+  "self": "第一人称版本，用'我'开头，例如：我是一个热爱生活的人...",
+  "other": "第三人称版本，用'${pronoun}'开头，例如：${pronoun}是一个热爱生活的人..."
+}
+不要包含markdown标记或其他文字，只输出JSON。`;
+
+    const userMessage = `印象维度：${JSON.stringify(dimensions)}
+${mbtiContext ? `\n${mbtiContext}` : ''}
+${privateContext ? `\n个人信息：${privateContext}` : ''}
+
+请生成概览JSON。`;
+
+    asyncLlmSubmit(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      async (content: string) => {
+        try {
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+            // Fallback: use the entire content as overview
+            const overview = content.trim().slice(0, 150);
+            await dbRun(
+              `UPDATE user_impressions SET overview = ?, overview_self = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
+              [overview, overview, userId]
+            );
+            logInfo('impression_overview_generated_fallback', { userId });
+            return;
+          }
+          const result = JSON.parse(jsonMatch[0]);
+          const overviewSelf = (result.self || '').trim().slice(0, 150);
+          const overviewOther = (result.other || '').trim().slice(0, 150);
+          await dbRun(
+            `UPDATE user_impressions SET overview = ?, overview_self = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
+            [overviewOther, overviewSelf, userId]
+          );
+          logInfo('impression_overview_generated', { userId, selfLength: overviewSelf.length, otherLength: overviewOther.length });
+        } catch (parseErr) {
+          logError('impression_overview_parse_error', parseErr as Error, { content });
+        }
+      },
+      'impression_overview'
+    );
+  } catch (error) {
+    logError('generate_impression_overview_error', error as Error, { userId });
+  }
 };
 
 /**
