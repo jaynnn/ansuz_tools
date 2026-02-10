@@ -9,6 +9,7 @@ import StockPrediction from './pages/StockPrediction';
 import MBTITest from './pages/MBTITest';
 import FriendMatch from './pages/FriendMatch';
 import AnnouncementBar from './components/AnnouncementBar';
+import Footer from './components/Footer';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token } = useAuth();
@@ -20,42 +21,47 @@ const App: React.FC = () => {
     <ThemeProvider>
       <AuthProvider>
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route
-              path="/"
-              element={
-                <PrivateRoute>
-                  <Dashboard />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/stock-prediction"
-              element={
-                <PrivateRoute>
-                  <StockPrediction />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/mbti-test"
-              element={
-                <PrivateRoute>
-                  <MBTITest />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/friend-match"
-              element={
-                <PrivateRoute>
-                  <FriendMatch />
-                </PrivateRoute>
-              }
-            />
-          </Routes>
+          <div className="app-wrapper">
+            <div className="app-content">
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route
+                  path="/"
+                  element={
+                    <PrivateRoute>
+                      <Dashboard />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/stock-prediction"
+                  element={
+                    <PrivateRoute>
+                      <StockPrediction />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/mbti-test"
+                  element={
+                    <PrivateRoute>
+                      <MBTITest />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/friend-match"
+                  element={
+                    <PrivateRoute>
+                      <FriendMatch />
+                    </PrivateRoute>
+                  }
+                />
+              </Routes>
+            </div>
+            <Footer />
+          </div>
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>
