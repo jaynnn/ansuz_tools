@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { impressionAPI, friendMatchAPI } from '../api';
 import type { UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, StructuredPrivateInfo } from '../types/index';
@@ -7,6 +7,8 @@ import NotificationBell from '../components/NotificationBell';
 import '../styles/FriendMatch.css';
 
 type ViewMode = 'main' | 'user-detail' | 'notifications' | 'private-info';
+
+const PROFILE_CACHE_DURATION_MS = 10 * 60 * 1000;
 
 const CONTACT_LABELS: Record<string, string> = {
   wechat: '微信',
@@ -43,6 +45,7 @@ const FriendMatch: React.FC = () => {
   const [savingPrivateInfo, setSavingPrivateInfo] = useState(false);
   const [detailedProfile, setDetailedProfile] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const profileCache = useRef<Map<number, { profile: string; timestamp: number }>>(new Map());
 
   useEffect(() => {
     fetchData();
@@ -152,10 +155,25 @@ const FriendMatch: React.FC = () => {
 
   const handleViewDetailedProfile = async () => {
     if (!selectedUserId) return;
+
+    // If profile is currently shown, collapse it
+    if (detailedProfile) {
+      setDetailedProfile(null);
+      return;
+    }
+
+    // Check cache
+    const cached = profileCache.current.get(selectedUserId);
+    if (cached && Date.now() - cached.timestamp < PROFILE_CACHE_DURATION_MS) {
+      setDetailedProfile(cached.profile);
+      return;
+    }
+
     setLoadingProfile(true);
     try {
       const data = await impressionAPI.getUserProfile(selectedUserId);
       setDetailedProfile(data.profile);
+      profileCache.current.set(selectedUserId, { profile: data.profile, timestamp: Date.now() });
     } catch (error) {
       console.error('Failed to fetch detailed profile:', error);
       setDetailedProfile('暂无法生成详细资料，请稍后再试');
@@ -225,7 +243,7 @@ const FriendMatch: React.FC = () => {
                 onClick={handleViewDetailedProfile}
                 disabled={loadingProfile}
               >
-                {loadingProfile ? '生成中...' : '📋 查看详细资料'}
+                {loadingProfile ? '查看中...' : detailedProfile ? '📋 收起' : '📋 查看详细资料'}
               </button>
               <button
                 className="btn btn-primary want-to-know-btn"
