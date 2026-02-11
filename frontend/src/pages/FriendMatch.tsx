@@ -424,7 +424,7 @@ const FriendMatch: React.FC = () => {
           setMatches(matchData.matches);
         } catch { /* ignore */ }
         setRefreshing(false);
-      }, 3000);
+      }, MATCH_REFRESH_DELAY_MS);
     } catch (error: any) {
       if (error?.response?.status === 429) {
         setRefreshRemaining(0);
