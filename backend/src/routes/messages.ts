@@ -69,7 +69,7 @@ router.post('/', authMiddleware, rateLimit, async (req: AuthRequest, res: Respon
 });
 
 // Get my messages
-router.get('/mine', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/mine', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const messages = await dbAll(
       'SELECT id, category, content, created_at FROM messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
