@@ -380,7 +380,7 @@ const FriendMatch: React.FC = () => {
       setCopiedContact(value);
       setTimeout(() => setCopiedContact(null), 1500);
     } catch {
-      // fallback ignored
+      alert(`复制失败，请手动复制：${value}`);
     }
   };
 
