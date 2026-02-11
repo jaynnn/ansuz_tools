@@ -34,6 +34,14 @@ while getopts "an:c:" opt; do
   esac
 done
 
+# Validate category to prevent SQL injection
+if [ -n "$CATEGORY" ]; then
+  case "$CATEGORY" in
+    tool_request|suggestion|bug_report|other) ;;
+    *) echo "错误：无效的类型。可选值：tool_request, suggestion, bug_report, other"; exit 1 ;;
+  esac
+fi
+
 echo "============================================"
 echo "           用户留言板"
 echo "============================================"

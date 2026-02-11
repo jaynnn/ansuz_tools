@@ -11,6 +11,19 @@ const rateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 
+// Periodic cleanup of expired rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, timestamps] of rateLimitMap) {
+    const valid = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+    if (valid.length === 0) {
+      rateLimitMap.delete(key);
+    } else {
+      rateLimitMap.set(key, valid);
+    }
+  }
+}, 5 * 60 * 1000).unref();
+
 const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
   const key = String(req.userId || req.ip);
   const now = Date.now();
