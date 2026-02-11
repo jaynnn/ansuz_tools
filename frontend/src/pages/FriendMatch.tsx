@@ -134,7 +134,8 @@ const FriendMatch: React.FC = () => {
       // Birthday saved, now load main data
       setViewMode('main');
       await fetchData();
-    } catch {
+    } catch (error) {
+      console.error('Failed to save birthday:', error);
       alert('保存失败，请重试');
     } finally {
       setSavingBirthday(false);
