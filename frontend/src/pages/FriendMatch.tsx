@@ -416,7 +416,8 @@ const FriendMatch: React.FC = () => {
     try {
       const result = await friendMatchAPI.refreshMatches();
       setRefreshRemaining(result.remaining);
-      // Wait a bit then reload matches
+      // Wait for background matching to process before reloading
+      const MATCH_REFRESH_DELAY_MS = 3000;
       setTimeout(async () => {
         try {
           const matchData = await friendMatchAPI.getTopMatches();

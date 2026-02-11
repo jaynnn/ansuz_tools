@@ -37,8 +37,8 @@ sqlite3 -separator '|' "$DB_PATH" "
   GROUP BY u.id
   ORDER BY token_total DESC;
 " | awk -F'|' '{
-  NR_COUNT++;
-  printf "%-6s %-12s %-10s %-10s %-10s %-6s\n", NR_COUNT, $1, $2, $3, $4, $5
+  RANK++;
+  printf "%-6s %-12s %-10s %-10s %-10s %-6s\n", RANK, $1, $2, $3, $4, $5
 }'
 
 echo ""
