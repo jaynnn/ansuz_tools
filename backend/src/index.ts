@@ -32,7 +32,15 @@ const PORT = process.env.PORT || 4000;
 
 // Security middleware
 app.use(helmet({
-  contentSecurityPolicy: false,  // Disabled to allow frontend SPA to work
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'", "ws:", "wss:"],
+    },
+  },
 }));
 
 // CORS configuration

@@ -3,9 +3,16 @@
  * Strips HTML tags and dangerous content from user input.
  */
 
-/** Strip HTML tags from a string */
+/** Strip HTML tags from a string (applied iteratively to handle nested/malformed tags) */
 export function stripHtml(input: string): string {
-  return input.replace(/<[^>]*>/g, '');
+  const tagPattern = /<[^>]*>/g;
+  let result = input;
+  let previous = '';
+  while (result !== previous) {
+    previous = result;
+    result = result.replace(tagPattern, '');
+  }
+  return result;
 }
 
 /** Sanitize a string value: trim, strip HTML tags, limit length */
