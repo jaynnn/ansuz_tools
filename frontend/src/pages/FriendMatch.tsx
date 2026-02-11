@@ -1062,7 +1062,7 @@ const FriendMatch: React.FC = () => {
         </div>
       </header>
       <div className="fm-scroll-hint">
-        <span className="fm-scroll-hint-text">填写生辰信息，解锁专属星座与命理配对分析✨</span>
+        <span className="fm-scroll-hint-text">填写的个人信息越完善，匹配结果越准确哦 ✨</span>
       </div>
 
       <div className="fm-content">
