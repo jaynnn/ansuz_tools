@@ -772,7 +772,7 @@ const FriendMatch: React.FC = () => {
               ) : (
                 <p className="impression-placeholder">完成MBTI测试后将生成你的印象概览</p>
               )}
-              <p className="impression-hint">💡 建议填写生辰信息（点击右上角 📝），匹配算法会参考星座和生辰八字来提升匹配准确度。</p>
+              <p className="impression-hint">🔮 MBTI人格 × 星座能量 × 八字命理 三重融合匹配！点击右上角 📝 填写生辰信息，解锁专属星座命理配对分析，看看谁是你命中注定的灵魂搭档 ✨</p>
             </div>
           </div>
         </section>
