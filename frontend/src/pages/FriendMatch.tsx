@@ -54,7 +54,10 @@ const FriendMatch: React.FC = () => {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedMatchReason, setSelectedMatchReason] = useState<string | null>(null);
   const [privateInfo, setPrivateInfo] = useState<StructuredPrivateInfo>({
-    appearance: {}, contact: {}, gender: '', birthDate: '', birthTime: '', location: '', hobbies: '', friendIntention: '', extraItems: [],
+    appearance: {}, contact: {}, gender: '', birthDate: '', birthTime: '', location: '', hobbies: '', friendIntention: '',
+    education: '', occupation: '', smoking: '', drinking: '', sleepSchedule: '', exercise: '', pets: '',
+    gaming: '', tvShows: '', music: '', food: '', travel: '', reading: '', socialStyle: '',
+    extraItems: [],
   });
   const [loading, setLoading] = useState(true);
   const [sendingRequest, setSendingRequest] = useState(false);
@@ -140,6 +143,20 @@ const FriendMatch: React.FC = () => {
     let location = '';
     let hobbies = '';
     let friendIntention = '';
+    let education = '';
+    let occupation = '';
+    let smoking = '';
+    let drinking = '';
+    let sleepSchedule = '';
+    let exercise = '';
+    let pets = '';
+    let gaming = '';
+    let tvShows = '';
+    let music = '';
+    let food = '';
+    let travel = '';
+    let reading = '';
+    let socialStyle = '';
     let extraItems: Array<{ field: string; detail: string }> = [];
 
     try { appearance = JSON.parse(raw.appearance || '{}'); } catch { appearance = raw.appearance ? { other: raw.appearance } : {}; }
@@ -152,17 +169,41 @@ const FriendMatch: React.FC = () => {
       location = extra.location || '';
       hobbies = extra.hobbies || '';
       friendIntention = extra.friendIntention || '';
+      education = extra.education || '';
+      occupation = extra.occupation || '';
+      smoking = extra.smoking || '';
+      drinking = extra.drinking || '';
+      sleepSchedule = extra.sleepSchedule || '';
+      exercise = extra.exercise || '';
+      pets = extra.pets || '';
+      gaming = extra.gaming || '';
+      tvShows = extra.tvShows || '';
+      music = extra.music || '';
+      food = extra.food || '';
+      travel = extra.travel || '';
+      reading = extra.reading || '';
+      socialStyle = extra.socialStyle || '';
       extraItems = Array.isArray(extra.items) ? extra.items : [];
     } catch {
       if (raw.extra) extraItems = [{ field: '其他', detail: raw.extra }];
     }
-    return { appearance, contact, gender, birthDate, birthTime, location, hobbies, friendIntention, extraItems };
+    return { appearance, contact, gender, birthDate, birthTime, location, hobbies, friendIntention,
+      education, occupation, smoking, drinking, sleepSchedule, exercise, pets,
+      gaming, tvShows, music, food, travel, reading, socialStyle, extraItems };
   };
 
   const serializePrivateInfo = (info: StructuredPrivateInfo): PrivateInfo => ({
     appearance: JSON.stringify(info.appearance),
     contact: JSON.stringify(info.contact),
-    extra: JSON.stringify({ gender: info.gender, birthDate: info.birthDate, birthTime: info.birthTime, location: info.location, hobbies: info.hobbies, friendIntention: info.friendIntention, items: info.extraItems }),
+    extra: JSON.stringify({
+      gender: info.gender, birthDate: info.birthDate, birthTime: info.birthTime,
+      location: info.location, hobbies: info.hobbies, friendIntention: info.friendIntention,
+      education: info.education, occupation: info.occupation, smoking: info.smoking,
+      drinking: info.drinking, sleepSchedule: info.sleepSchedule, exercise: info.exercise,
+      pets: info.pets, gaming: info.gaming, tvShows: info.tvShows, music: info.music,
+      food: info.food, travel: info.travel, reading: info.reading, socialStyle: info.socialStyle,
+      items: info.extraItems,
+    }),
   });
 
   const handleShowPrivateInfo = async () => {
@@ -630,6 +671,160 @@ const FriendMatch: React.FC = () => {
                   onChange={(e) => setPrivateInfo({ ...privateInfo, friendIntention: e.target.value })}
                   placeholder="如：希望找到志同道合的朋友、想找对象、寻找技术交流伙伴等"
                   rows={3}
+                />
+              </div>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>学历</label>
+                  <select
+                    value={privateInfo.education}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, education: e.target.value })}
+                  >
+                    <option value="">请选择</option>
+                    <option value="高中及以下">高中及以下</option>
+                    <option value="大专">大专</option>
+                    <option value="本科">本科</option>
+                    <option value="硕士">硕士</option>
+                    <option value="博士">博士</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>职业/行业</label>
+                  <input
+                    type="text"
+                    value={privateInfo.occupation}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, occupation: e.target.value })}
+                    placeholder="如：互联网、金融、教师、自由职业"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Lifestyle Section */}
+            <div className="form-section">
+              <h3>生活偏好</h3>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>作息习惯</label>
+                  <select
+                    value={privateInfo.sleepSchedule}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, sleepSchedule: e.target.value })}
+                  >
+                    <option value="">请选择</option>
+                    <option value="早睡早起">早睡早起</option>
+                    <option value="晚睡晚起">晚睡晚起</option>
+                    <option value="晚睡早起">晚睡早起</option>
+                    <option value="不固定">不固定</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>社交风格</label>
+                  <select
+                    value={privateInfo.socialStyle}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, socialStyle: e.target.value })}
+                  >
+                    <option value="">请选择</option>
+                    <option value="喜欢热闹，经常社交">喜欢热闹，经常社交</option>
+                    <option value="偏好小圈子">偏好小圈子</option>
+                    <option value="享受独处，偶尔社交">享受独处，偶尔社交</option>
+                    <option value="宅家为主">宅家为主</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>吸烟习惯</label>
+                  <select
+                    value={privateInfo.smoking}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, smoking: e.target.value })}
+                  >
+                    <option value="">请选择</option>
+                    <option value="不吸烟">不吸烟</option>
+                    <option value="偶尔吸烟">偶尔吸烟</option>
+                    <option value="经常吸烟">经常吸烟</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>饮酒习惯</label>
+                  <select
+                    value={privateInfo.drinking}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, drinking: e.target.value })}
+                  >
+                    <option value="">请选择</option>
+                    <option value="不喝酒">不喝酒</option>
+                    <option value="偶尔小酌">偶尔小酌</option>
+                    <option value="经常喝酒">经常喝酒</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>运动健身</label>
+                  <input
+                    type="text"
+                    value={privateInfo.exercise}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, exercise: e.target.value })}
+                    placeholder="如：跑步、健身、游泳、不运动"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>饮食偏好</label>
+                  <input
+                    type="text"
+                    value={privateInfo.food}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, food: e.target.value })}
+                    placeholder="如：不挑食、素食主义、无辣不欢"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>宠物偏好</label>
+                  <input
+                    type="text"
+                    value={privateInfo.pets}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, pets: e.target.value })}
+                    placeholder="如：养猫、养狗、喜欢但没养、不喜欢宠物"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>旅行偏好</label>
+                  <input
+                    type="text"
+                    value={privateInfo.travel}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, travel: e.target.value })}
+                    placeholder="如：喜欢自由行、跟团游、宅家不爱出门"
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>游戏偏好</label>
+                <input
+                  type="text"
+                  value={privateInfo.gaming}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, gaming: e.target.value })}
+                  placeholder="如：不玩游戏、王者荣耀、原神、Steam党、主机玩家"
+                />
+              </div>
+              <div className="form-group">
+                <label>追剧/观影偏好</label>
+                <input
+                  type="text"
+                  value={privateInfo.tvShows}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, tvShows: e.target.value })}
+                  placeholder="如：不怎么看剧、喜欢看悬疑剧、日韩剧、美剧、电影"
+                />
+              </div>
+              <div className="form-group">
+                <label>音乐偏好</label>
+                <input
+                  type="text"
+                  value={privateInfo.music}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, music: e.target.value })}
+                  placeholder="如：流行、摇滚、古典、说唱、民谣、什么都听"
+                />
+              </div>
+              <div className="form-group">
+                <label>阅读偏好</label>
+                <input
+                  type="text"
+                  value={privateInfo.reading}
+                  onChange={(e) => setPrivateInfo({ ...privateInfo, reading: e.target.value })}
+                  placeholder="如：不怎么读书、科幻小说、历史、心理学、技术书籍"
                 />
               </div>
             </div>

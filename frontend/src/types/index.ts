@@ -91,6 +91,20 @@ export interface PrivateInfoContact {
 export interface PrivateInfoExtra {
   location?: string;
   hobbies?: string;
+  education?: string;
+  occupation?: string;
+  smoking?: string;
+  drinking?: string;
+  sleepSchedule?: string;
+  exercise?: string;
+  pets?: string;
+  gaming?: string;
+  tvShows?: string;
+  music?: string;
+  food?: string;
+  travel?: string;
+  reading?: string;
+  socialStyle?: string;
   items: Array<{ field: string; detail: string }>;
 }
 
@@ -110,6 +124,20 @@ export interface StructuredPrivateInfo {
   location: string;
   hobbies: string;
   friendIntention: string;
+  education: string;
+  occupation: string;
+  smoking: string;
+  drinking: string;
+  sleepSchedule: string;
+  exercise: string;
+  pets: string;
+  gaming: string;
+  tvShows: string;
+  music: string;
+  food: string;
+  travel: string;
+  reading: string;
+  socialStyle: string;
   extraItems: Array<{ field: string; detail: string }>;
 }
 
