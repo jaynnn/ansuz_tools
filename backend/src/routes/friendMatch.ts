@@ -2,7 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
-import { triggerImpressionUpdate, triggerUserMatchingDaily } from '../utils/impressionService';
+import { triggerImpressionUpdate, triggerUserMatchingDaily, triggerUserMatchingForce } from '../utils/impressionService';
 import { sanitizeJsonString } from '../utils/sanitize';
 
 const router = Router();
@@ -376,6 +376,70 @@ router.get('/contact-votes/:targetUserId', authMiddleware, rateLimit, async (req
   } catch (error: any) {
     logError('get_contact_votes_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: error.message || 'Failed to fetch votes' });
+  }
+});
+
+const DAILY_REFRESH_LIMIT = 3;
+
+// Get remaining refresh count for today
+router.get('/refresh-remaining', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const today = new Date().toISOString().split('T')[0];
+    const row = await dbGet(
+      'SELECT count FROM match_refresh_count WHERE user_id = ? AND refresh_date = ?',
+      [userId, today]
+    );
+    const used = row?.count || 0;
+    res.json({ remaining: Math.max(0, DAILY_REFRESH_LIMIT - used), limit: DAILY_REFRESH_LIMIT });
+  } catch (error: any) {
+    logError('get_refresh_remaining_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to get refresh count' });
+  }
+});
+
+// Trigger manual match refresh (limited to 3 per day)
+router.post('/refresh', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const today = new Date().toISOString().split('T')[0];
+
+    // Check daily limit
+    const row = await dbGet(
+      'SELECT count FROM match_refresh_count WHERE user_id = ? AND refresh_date = ?',
+      [userId, today]
+    );
+    const used = row?.count || 0;
+    if (used >= DAILY_REFRESH_LIMIT) {
+      return res.status(429).json({ error: '今日刷新次数已用完', remaining: 0 });
+    }
+
+    // Check user has MBTI results
+    const mbtiResult = await dbGet(
+      'SELECT id FROM mbti_results WHERE user_id = ? LIMIT 1',
+      [userId]
+    );
+    if (!mbtiResult) {
+      return res.status(400).json({ error: '请先完成MBTI测试' });
+    }
+
+    // Increment usage counter
+    await dbRun(
+      `INSERT INTO match_refresh_count (user_id, refresh_date, count)
+       VALUES (?, ?, 1)
+       ON CONFLICT(user_id, refresh_date) DO UPDATE SET count = count + 1`,
+      [userId, today]
+    );
+
+    // Trigger matching without cooldown
+    triggerUserMatchingForce(userId);
+
+    const remaining = DAILY_REFRESH_LIMIT - used - 1;
+    logInfo('match_refresh_triggered', { userId, remaining });
+    res.json({ message: '配对刷新已触发', remaining });
+  } catch (error: any) {
+    logError('match_refresh_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || 'Failed to refresh matches' });
   }
 });
 

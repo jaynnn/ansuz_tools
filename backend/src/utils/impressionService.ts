@@ -128,9 +128,9 @@ export const triggerImpressionUpdate = async (
 3. MBTI各维度（E/I外向内向、S/N感觉直觉、T/F思维情感、J/P判断知觉）与印象维度有密切关联，请充分利用这些信息。
 4. 个人信息（如兴趣爱好、游戏偏好、追剧偏好、运动习惯、社交风格、作息习惯等）能直接反映用户的生活方式和性格特征，应充分融入各维度的描述中。例如：喜欢玩竞技游戏可能反映较强的竞争意识和团队协作能力；喜欢独处和阅读可能反映内省型认知方式等。
 5. 如果有命理信息（星座、生辰八字、五行等），可以作为辅助参考，略微结合命理学特征来丰富描述，但不要过度依赖。
-6. 如果某维度已有数据，可以根据新信息进行优化；如果某维度尚无数据，请尽力根据已有信息推断。
+6. 如果某维度已有数据，可以根据新信息进行优化；如果某维度尚无数据且无法从已有信息合理推断，请留空或填"暂无数据"，绝对不要凭空捏造。
 7. 描述必须客观事实，不要使用"非凡"、"卓越"、"出色"等夸张修饰词，用平实的语言。
-8. 不允许无中生有或过度美化，缺点也应如实描述。
+8. 【严禁】无中生有：只能使用用户实际提供的信息。如果用户没有填写性别、身高、体重、学历、年龄等个人信息，绝对不能自行推测或编造这些内容。例如：用户没有提到性别就不能判定男女，没有提到身高就不能写具体身高数字，没有提到学历就不能写"初中"或"大学"。
 
 严格输出纯JSON格式，不要包含markdown标记或其他文字。示例：
 {"品格":"诚实自律","能力":"学习能力强","认知方式":"直觉型思维"}`;
@@ -174,7 +174,8 @@ export const triggerImpressionUpdate = async (
           logError('impression_update_parse_error', parseErr as Error, { content });
         }
       },
-      'impression_update'
+      'impression_update',
+      userId
     );
   } catch (error) {
     logError('trigger_impression_error', error as Error, { userId, event });
@@ -291,6 +292,7 @@ export const generateImpressionOverview = async (
 8. 请将概览分成3-5个自然段落，每段聚焦一个方面（如性格特点、兴趣爱好与生活方式、星座与命理特质、处事风格、交友意愿等），段落之间用换行符分隔。不要写成一整段。
 9. 如果有星座和生辰八字等命理信息，应当用一个段落专门从星座性格特质和命理角度进行分析（如星座对应的性格倾向、五行属性对个性的影响等），将命理特征与用户实际表现相结合，让描述更加立体。不要堆砌命理术语，而是用通俗的语言解读命理对性格和生活方式的影响。
 10. 如果用户有MBTI信息，应结合MBTI类型特征进行性格描述，说明该类型的典型表现如何在用户身上体现。
+11.【严禁捏造信息】只能描述用户实际提供的信息，绝对不能凭空编造用户未提供的内容。具体来说：如果用户没有填写性别，不能写"他是一个男生"或"她是一个女生"；如果没有填写身高体重，不能写具体的数字；如果没有填写学历，不能写"初中"、"大学"等；如果没有填写职业，不能写具体职业。对于缺失的信息，完全跳过不提，不要猜测、推断或补充。只能使用上方"个人信息"中明确列出的字段内容。
 
 你需要生成两个版本，严格输出纯JSON格式：
 {
@@ -336,7 +338,8 @@ ${astrologyCtx ? `\n命理信息：${astrologyCtx}` : ''}
           logError('impression_overview_parse_error', parseErr as Error, { content });
         }
       },
-      'impression_overview'
+      'impression_overview',
+      userId
     );
   } catch (error) {
     logError('generate_impression_overview_error', error as Error, { userId });
@@ -358,6 +361,14 @@ export const triggerUserMatching = async (userId: number): Promise<void> => {
  */
 export const triggerUserMatchingDaily = async (userId: number): Promise<void> => {
   await triggerUserMatchingWithCooldown(userId, 24 * 60 * 60 * 1000, 'daily');
+};
+
+/**
+ * Force trigger matching for a user (no cooldown check).
+ * Used for manual refresh from the UI.
+ */
+export const triggerUserMatchingForce = async (userId: number): Promise<void> => {
+  await triggerUserMatchingWithCooldown(userId, 0, 'force_refresh');
 };
 
 /**
@@ -620,6 +631,7 @@ ${astrologyB ? `用户B的命理信息：${astrologyB}` : ''}
         logError('match_parse_error', parseErr as Error, { content });
       }
     },
-    'user_matching'
+    'user_matching',
+    userIdA
   );
 };

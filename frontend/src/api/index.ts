@@ -259,4 +259,14 @@ export const friendMatchAPI = {
     const response = await api.get(`/friend-match/contact-votes/${targetUserId}`);
     return response.data;
   },
+
+  getRefreshRemaining: async (): Promise<{ remaining: number; limit: number }> => {
+    const response = await api.get('/friend-match/refresh-remaining');
+    return response.data;
+  },
+
+  refreshMatches: async (): Promise<{ message: string; remaining: number }> => {
+    const response = await api.post('/friend-match/refresh');
+    return response.data;
+  },
 };

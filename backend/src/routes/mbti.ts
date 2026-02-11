@@ -3,6 +3,7 @@ import { chatCompletion } from '../utils/llmService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbAll, dbGet } from '../utils/database';
+import { recordTokenUsage } from '../utils/asyncLlmService';
 import { triggerImpressionUpdate, triggerUserMatching } from '../utils/impressionService';
 
 const router = Router();
@@ -134,6 +135,10 @@ ${answersDescription}
     ]);
 
     logInfo('mbti_analyze_success', { userId: req.userId, model: result.model });
+    // Record token usage
+    if (req.userId) {
+      recordTokenUsage(req.userId, 'mbti_analyze', result.usage, result.model);
+    }
 
     // Auto-save analysis result to history
     let savedId: number | null = null;

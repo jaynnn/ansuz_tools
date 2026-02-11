@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { chatCompletion, getLLMConfig } from '../utils/llmService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
+import { recordTokenUsage } from '../utils/asyncLlmService';
 import type { LLMMessage, LLMConfig } from '../utils/llmService';
 
 const router = Router();
@@ -52,6 +53,10 @@ router.post('/chat', authMiddleware, llmRateLimit, async (req: AuthRequest, res:
     const result = await chatCompletion(messages, config);
 
     logInfo('llm_chat_success', { userId: req.userId, model: result.model });
+    // Record token usage
+    if (req.userId) {
+      recordTokenUsage(req.userId, 'llm_chat', result.usage, result.model);
+    }
     res.json(result);
   } catch (error: any) {
     logError('llm_chat_error', error as Error, { userId: req.userId });
