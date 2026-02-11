@@ -10,6 +10,13 @@ type ViewMode = 'main' | 'user-detail' | 'notifications' | 'private-info' | 'add
 
 const PROFILE_CACHE_DURATION_MS = 10 * 60 * 1000;
 
+const DEFAULT_PRIVATE_INFO: StructuredPrivateInfo = {
+  appearance: {}, contact: {}, gender: '', birthDate: '', birthTime: '', location: '', hobbies: '', friendIntention: '',
+  education: '', occupation: '', smoking: '', drinking: '', sleepSchedule: '', exercise: '', pets: '',
+  gaming: '', tvShows: '', music: '', food: '', travel: '', reading: '', socialStyle: '',
+  extraItems: [],
+};
+
 const CONTACT_LABELS: Record<string, string> = {
   wechat: '微信',
   qq: 'QQ',
@@ -53,12 +60,7 @@ const FriendMatch: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedMatchReason, setSelectedMatchReason] = useState<string | null>(null);
-  const [privateInfo, setPrivateInfo] = useState<StructuredPrivateInfo>({
-    appearance: {}, contact: {}, gender: '', birthDate: '', birthTime: '', location: '', hobbies: '', friendIntention: '',
-    education: '', occupation: '', smoking: '', drinking: '', sleepSchedule: '', exercise: '', pets: '',
-    gaming: '', tvShows: '', music: '', food: '', travel: '', reading: '', socialStyle: '',
-    extraItems: [],
-  });
+  const [privateInfo, setPrivateInfo] = useState<StructuredPrivateInfo>({ ...DEFAULT_PRIVATE_INFO });
   const [loading, setLoading] = useState(true);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [savingPrivateInfo, setSavingPrivateInfo] = useState(false);

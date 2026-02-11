@@ -19,6 +19,15 @@ const getAstrologyContextFromExtra = (extra: string | undefined): string => {
   }
 };
 
+const PERSONAL_INFO_FIELD_MAP: Record<string, string> = {
+  gender: '性别', location: '所在地', education: '学历', occupation: '职业/行业',
+  hobbies: '兴趣爱好', friendIntention: '交友意愿', smoking: '吸烟习惯',
+  drinking: '饮酒习惯', sleepSchedule: '作息习惯', exercise: '运动健身',
+  pets: '宠物偏好', gaming: '游戏偏好', tvShows: '追剧/观影偏好',
+  music: '音乐偏好', food: '饮食偏好', travel: '旅行偏好',
+  reading: '阅读偏好', socialStyle: '社交风格',
+};
+
 /**
  * Extract structured personal info context from extra JSON for matching.
  * Returns a human-readable string of personal info fields.
@@ -35,15 +44,7 @@ const getPersonalInfoContext = (appearance: string | undefined, extra: string | 
   } catch { /* ignore */ }
   try {
     const parsed = JSON.parse(extra || '{}');
-    const fieldMap: Record<string, string> = {
-      gender: '性别', location: '所在地', education: '学历', occupation: '职业/行业',
-      hobbies: '兴趣爱好', friendIntention: '交友意愿', smoking: '吸烟习惯',
-      drinking: '饮酒习惯', sleepSchedule: '作息习惯', exercise: '运动健身',
-      pets: '宠物偏好', gaming: '游戏偏好', tvShows: '追剧/观影偏好',
-      music: '音乐偏好', food: '饮食偏好', travel: '旅行偏好',
-      reading: '阅读偏好', socialStyle: '社交风格',
-    };
-    for (const [key, label] of Object.entries(fieldMap)) {
+    for (const [key, label] of Object.entries(PERSONAL_INFO_FIELD_MAP)) {
       if (parsed[key]) parts.push(`${label}：${parsed[key]}`);
     }
     if (Array.isArray(parsed.items)) {
