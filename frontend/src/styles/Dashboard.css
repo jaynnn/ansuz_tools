@@ -147,3 +147,30 @@
 .empty-state p {
   font-size: 1.1rem;
 }
+
+.add-tool-card {
+  border: 2px dashed var(--border);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  min-height: 180px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.add-tool-card:hover {
+  border-color: var(--primary);
+  background: var(--hover-bg);
+}
+
+.add-tool-cross {
+  font-size: 3rem;
+  color: var(--text-secondary);
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.add-tool-card:hover .add-tool-cross {
+  color: var(--primary);
+}
