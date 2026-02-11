@@ -70,9 +70,10 @@ export const chatCompletion = async (
         },
       },
       (res) => {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => { chunks.push(chunk); });
         res.on('end', () => {
+          const data = Buffer.concat(chunks).toString('utf-8');
           try {
             if (res.statusCode && res.statusCode >= 400) {
               logError('llm_request_failed', new Error(`LLM API returned status ${res.statusCode}`), { response: data });

@@ -75,13 +75,31 @@ const FriendMatch: React.FC = () => {
   const [savingBirthday, setSavingBirthday] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [copiedContact, setCopiedContact] = useState<string | null>(null);
-  const [refreshRemaining, setRefreshRemaining] = useState<number>(3);
   const [refreshing, setRefreshing] = useState(false);
+  const [saveCooldownSeconds, setSaveCooldownSeconds] = useState(0);
+  const saveCooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     document.title = '缘分罗盘 - 工具箱';
     checkBirthdayAndFetch();
+    return () => {
+      if (saveCooldownTimer.current) clearInterval(saveCooldownTimer.current);
+    };
   }, []);
+
+  const startSaveCooldown = (seconds: number) => {
+    setSaveCooldownSeconds(seconds);
+    if (saveCooldownTimer.current) clearInterval(saveCooldownTimer.current);
+    saveCooldownTimer.current = setInterval(() => {
+      setSaveCooldownSeconds(prev => {
+        if (prev <= 1) {
+          if (saveCooldownTimer.current) clearInterval(saveCooldownTimer.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
   const checkBirthdayAndFetch = async () => {
     setLoading(true);
@@ -104,14 +122,12 @@ const FriendMatch: React.FC = () => {
         return;
       }
       // Both birthday and MBTI exist, proceed to load main data
-      const [impressionData, matchData, refreshData] = await Promise.all([
+      const [impressionData, matchData] = await Promise.all([
         impressionAPI.getMyImpression(),
         friendMatchAPI.getTopMatches(),
-        friendMatchAPI.getRefreshRemaining(),
       ]);
       setMyImpression(impressionData);
       setMatches(matchData.matches);
-      setRefreshRemaining(refreshData.remaining);
     } catch (error) {
       console.error('Failed to fetch friend match data:', error);
     } finally {
@@ -122,14 +138,12 @@ const FriendMatch: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [impressionData, matchData, refreshData] = await Promise.all([
+      const [impressionData, matchData] = await Promise.all([
         impressionAPI.getMyImpression(),
         friendMatchAPI.getTopMatches(),
-        friendMatchAPI.getRefreshRemaining(),
       ]);
       setMyImpression(impressionData);
       setMatches(matchData.matches);
-      setRefreshRemaining(refreshData.remaining);
     } catch (error) {
       console.error('Failed to fetch friend match data:', error);
     } finally {
@@ -300,9 +314,18 @@ const FriendMatch: React.FC = () => {
     setSavingPrivateInfo(true);
     try {
       await friendMatchAPI.updatePrivateInfo(serializePrivateInfo(privateInfo));
-      alert('个人信息已保存，需要等待几分钟时间生效。');
-    } catch {
-      alert('保存失败');
+      startSaveCooldown(300); // 5 minutes
+      alert('个人信息已保存，配对评估已触发，需要等待几分钟时间生效。');
+    } catch (error: any) {
+      if (error?.response?.status === 429) {
+        const retryAfter = error.response.data?.retryAfter;
+        if (retryAfter) {
+          startSaveCooldown(retryAfter);
+        }
+        alert(error.response.data?.error || '保存太频繁，请稍后再试');
+      } else {
+        alert('保存失败');
+      }
     } finally {
       setSavingPrivateInfo(false);
     }
@@ -411,11 +434,10 @@ const FriendMatch: React.FC = () => {
   };
 
   const handleRefreshMatches = async () => {
-    if (refreshing || refreshRemaining <= 0) return;
+    if (refreshing) return;
     setRefreshing(true);
     try {
-      const result = await friendMatchAPI.refreshMatches();
-      setRefreshRemaining(result.remaining);
+      await friendMatchAPI.refreshMatches();
       // Wait for background matching to process before reloading
       const MATCH_REFRESH_DELAY_MS = 3000;
       setTimeout(async () => {
@@ -425,10 +447,7 @@ const FriendMatch: React.FC = () => {
         } catch { /* ignore */ }
         setRefreshing(false);
       }, MATCH_REFRESH_DELAY_MS);
-    } catch (error: any) {
-      if (error?.response?.status === 429) {
-        setRefreshRemaining(0);
-      }
+    } catch {
       setRefreshing(false);
     }
   };
@@ -1132,8 +1151,12 @@ const FriendMatch: React.FC = () => {
               </button>
             </div>
 
-            <button type="submit" className="btn btn-primary" disabled={savingPrivateInfo}>
-              {savingPrivateInfo ? '保存中...' : '保存'}
+            <button type="submit" className="btn btn-primary" disabled={savingPrivateInfo || saveCooldownSeconds > 0}>
+              {savingPrivateInfo
+                ? '保存中...'
+                : saveCooldownSeconds > 0
+                  ? `保存 (${Math.floor(saveCooldownSeconds / 60)}:${String(saveCooldownSeconds % 60).padStart(2, '0')})`
+                  : '保存'}
             </button>
           </form>
         </div>
@@ -1228,13 +1251,10 @@ const FriendMatch: React.FC = () => {
             <button
               className="btn btn-secondary match-refresh-btn"
               onClick={handleRefreshMatches}
-              disabled={refreshing || refreshRemaining <= 0}
+              disabled={refreshing}
             >
               {refreshing ? '⏳ 刷新中...' : '🔄 重新配对'}
             </button>
-            <span className="refresh-remaining">
-              今日剩余 {refreshRemaining} 次
-            </span>
           </div>
         </section>
       </div>
