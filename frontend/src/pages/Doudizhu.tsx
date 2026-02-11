@@ -731,37 +731,24 @@ const initialGameState: GameState = {
 const Doudizhu: React.FC = () => {
   const navigate = useNavigate();
 
-  // Use a ref for game state to avoid stale closures, plus a render trigger
+  // State for rendering, ref for callbacks to avoid stale closures
+  const [gameState, setGameState] = useState<GameState>({ ...initialGameState });
   const gs = useRef<GameState>({ ...initialGameState });
-  const [, setRenderTick] = useState(0);
-  const rerender = useCallback(() => setRenderTick(t => t + 1), []);
 
   const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [matchCount, setMatchCount] = useState(1);
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
 
-  // Helper to update game state and trigger re-render
+  // Helper to update game state (both ref and render state)
   const updateGame = useCallback((updates: Partial<GameState>) => {
     Object.assign(gs.current, updates);
-    rerender();
-  }, [rerender]);
+    setGameState({ ...gs.current });
+  }, []);
 
   // Cleanup timers
   useEffect(() => {
     return () => { if (aiTimerRef.current) clearTimeout(aiTimerRef.current); };
   }, []);
-
-  // ============ Matching Phase ============
-  useEffect(() => {
-    if (gs.current.phase !== 'matching') return;
-    const timers = [
-      setTimeout(() => setMatchCount(2), 1200),
-      setTimeout(() => setMatchCount(3), 2800),
-      setTimeout(() => startGame(), 3800),
-    ];
-    return () => timers.forEach(clearTimeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gs.current.phase]);
 
   // ============ Game Start ============
   const startGame = useCallback(() => {
@@ -785,92 +772,19 @@ const Doudizhu: React.FC = () => {
     setSelectedCards(new Set());
   }, [updateGame]);
 
-  // ============ Bidding ============
-  const finalizeBidding = useCallback((landlord: PlayerIndex) => {
-    const g = gs.current;
-    const newHands = g.hands.map(h => [...h]);
-    newHands[landlord] = sortCards([...newHands[landlord], ...g.landlordCards]);
-    updateGame({
-      phase: 'playing',
-      hands: newHands,
-      landlordIndex: landlord,
-      currentPlayer: landlord,
-      lastPlay: null,
-      passCount: 0,
-      playedCardsDisplay: [],
-      message: landlord === 0 ? '你是地主！请出牌' : `${PLAYER_NAMES[landlord]}是地主`,
-    });
-    if (landlord !== 0) {
-      aiTimerRef.current = setTimeout(() => doAiPlay(landlord), 1500);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateGame]);
-
-  const processBid = useCallback((playerIdx: PlayerIndex, bid: boolean) => {
-    const g = gs.current;
-    const newBidCount = g.bidCount + 1;
-    let newHighestBid = g.highestBid;
-    let newHighestBidder = g.highestBidder;
-
-    if (bid) {
-      newHighestBid = g.highestBid + 1;
-      newHighestBidder = playerIdx;
-    }
-
-    const displayEntry = { playerIndex: playerIdx, cards: [] as Card[], text: bid ? '叫地主!' : '不叫' };
-
-    // Update state
-    gs.current.bidCount = newBidCount;
-    gs.current.highestBid = newHighestBid;
-    gs.current.highestBidder = newHighestBidder;
-
-    if ((bid && newHighestBid >= 3) || newBidCount >= 3) {
-      if (newHighestBidder !== null) {
-        updateGame({ playedCardsDisplay: [displayEntry] });
-        finalizeBidding(newHighestBidder);
-      } else {
-        updateGame({ message: '无人叫地主，重新发牌...', playedCardsDisplay: [displayEntry] });
-        setTimeout(() => {
-          setMatchCount(3);
-          updateGame({ phase: 'matching' });
-          setTimeout(() => startGame(), 1000);
-        }, 1500);
-      }
-      return;
-    }
-
-    const nextBidder = ((playerIdx + 1) % 3) as PlayerIndex;
-    gs.current.currentBidder = nextBidder;
-
-    if (nextBidder !== 0) {
-      updateGame({
-        message: `${PLAYER_NAMES[nextBidder]}正在思考...`,
-        playedCardsDisplay: [displayEntry],
-      });
-      aiTimerRef.current = setTimeout(() => {
-        const aiBid = gs.current.highestBid === 0 ? Math.random() < 0.6 : Math.random() < 0.3;
-        processBid(nextBidder, aiBid);
-      }, 1000 + Math.random() * 500);
-    } else {
-      updateGame({ message: '请选择是否叫地主', playedCardsDisplay: [displayEntry] });
-    }
-  }, [updateGame, finalizeBidding, startGame]);
-
-  // Auto-start AI bidding if AI goes first
+  // ============ Matching Phase ============
   useEffect(() => {
-    if (gs.current.phase === 'bidding' && gs.current.currentBidder !== 0 && gs.current.bidCount === 0) {
-      aiTimerRef.current = setTimeout(() => {
-        const aiBid = Math.random() < 0.5;
-        processBid(gs.current.currentBidder, aiBid);
-      }, 1000);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gs.current.phase]);
+    if (gameState.phase !== 'matching') return;
+    const timers = [
+      setTimeout(() => setMatchCount(2), 1200),
+      setTimeout(() => setMatchCount(3), 2800),
+      setTimeout(() => startGame(), 3800),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [gameState.phase, startGame]);
 
-  const handleBid = useCallback((bid: boolean) => {
-    if (gs.current.phase !== 'bidding' || gs.current.currentBidder !== 0) return;
-    processBid(0, bid);
-  }, [processBid]);
+  // Use a ref for AI play to break circular callback dependencies
+  const doAiPlayRef = useRef<(playerIdx: PlayerIndex) => void>(() => {});
 
   // ============ Playing Phase ============
   const doExecutePlay = useCallback((playerIdx: PlayerIndex, cards: Card[], handInfo: HandInfo) => {
@@ -914,9 +828,8 @@ const Doudizhu: React.FC = () => {
     setSelectedCards(new Set());
 
     if (nextPlayer !== 0) {
-      aiTimerRef.current = setTimeout(() => doAiPlay(nextPlayer), 800 + Math.random() * 700);
+      aiTimerRef.current = setTimeout(() => doAiPlayRef.current(nextPlayer), 800 + Math.random() * 700);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateGame]);
 
   const doExecutePass = useCallback((playerIdx: PlayerIndex) => {
@@ -937,9 +850,8 @@ const Doudizhu: React.FC = () => {
     setSelectedCards(new Set());
 
     if (nextPlayer !== 0) {
-      aiTimerRef.current = setTimeout(() => doAiPlay(nextPlayer), 800 + Math.random() * 700);
+      aiTimerRef.current = setTimeout(() => doAiPlayRef.current(nextPlayer), 800 + Math.random() * 700);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateGame]);
 
   const doAiPlay = useCallback((playerIdx: PlayerIndex) => {
@@ -958,6 +870,99 @@ const Doudizhu: React.FC = () => {
     }
     doExecutePass(playerIdx);
   }, [doExecutePlay, doExecutePass]);
+
+  // Keep ref in sync
+  useEffect(() => { doAiPlayRef.current = doAiPlay; }, [doAiPlay]);
+
+  // ============ Bidding ============
+  const finalizeBidding = useCallback((landlord: PlayerIndex) => {
+    const g = gs.current;
+    const newHands = g.hands.map(h => [...h]);
+    newHands[landlord] = sortCards([...newHands[landlord], ...g.landlordCards]);
+    updateGame({
+      phase: 'playing',
+      hands: newHands,
+      landlordIndex: landlord,
+      currentPlayer: landlord,
+      lastPlay: null,
+      passCount: 0,
+      playedCardsDisplay: [],
+      message: landlord === 0 ? '你是地主！请出牌' : `${PLAYER_NAMES[landlord]}是地主`,
+    });
+    if (landlord !== 0) {
+      aiTimerRef.current = setTimeout(() => doAiPlayRef.current(landlord), 1500);
+    }
+  }, [updateGame]);
+
+  // Use a ref for processBid to allow self-referencing in setTimeout
+  const processBidRef = useRef<(playerIdx: PlayerIndex, bid: boolean) => void>(() => {});
+
+  const processBid = useCallback((playerIdx: PlayerIndex, bid: boolean) => {
+    const g = gs.current;
+    const newBidCount = g.bidCount + 1;
+    let newHighestBid = g.highestBid;
+    let newHighestBidder = g.highestBidder;
+
+    if (bid) {
+      newHighestBid = g.highestBid + 1;
+      newHighestBidder = playerIdx;
+    }
+
+    const displayEntry = { playerIndex: playerIdx, cards: [] as Card[], text: bid ? '叫地主!' : '不叫' };
+
+    gs.current.bidCount = newBidCount;
+    gs.current.highestBid = newHighestBid;
+    gs.current.highestBidder = newHighestBidder;
+
+    if ((bid && newHighestBid >= 3) || newBidCount >= 3) {
+      if (newHighestBidder !== null) {
+        updateGame({ playedCardsDisplay: [displayEntry] });
+        finalizeBidding(newHighestBidder);
+      } else {
+        updateGame({ message: '无人叫地主，重新发牌...', playedCardsDisplay: [displayEntry] });
+        setTimeout(() => {
+          setMatchCount(3);
+          updateGame({ phase: 'matching' });
+          setTimeout(() => startGame(), 1000);
+        }, 1500);
+      }
+      return;
+    }
+
+    const nextBidder = ((playerIdx + 1) % 3) as PlayerIndex;
+    gs.current.currentBidder = nextBidder;
+
+    if (nextBidder !== 0) {
+      updateGame({
+        message: `${PLAYER_NAMES[nextBidder]}正在思考...`,
+        playedCardsDisplay: [displayEntry],
+      });
+      aiTimerRef.current = setTimeout(() => {
+        const aiBid = gs.current.highestBid === 0 ? Math.random() < 0.6 : Math.random() < 0.3;
+        processBidRef.current(nextBidder, aiBid);
+      }, 1000 + Math.random() * 500);
+    } else {
+      updateGame({ message: '请选择是否叫地主', playedCardsDisplay: [displayEntry] });
+    }
+  }, [updateGame, finalizeBidding, startGame]);
+
+  // Keep ref in sync
+  useEffect(() => { processBidRef.current = processBid; }, [processBid]);
+
+  // Auto-start AI bidding if AI goes first
+  useEffect(() => {
+    if (gameState.phase === 'bidding' && gs.current.currentBidder !== 0 && gs.current.bidCount === 0) {
+      aiTimerRef.current = setTimeout(() => {
+        const aiBid = Math.random() < 0.5;
+        processBidRef.current(gs.current.currentBidder, aiBid);
+      }, 1000);
+    }
+  }, [gameState.phase]);
+
+  const handleBid = useCallback((bid: boolean) => {
+    if (gs.current.phase !== 'bidding' || gs.current.currentBidder !== 0) return;
+    processBid(0, bid);
+  }, [processBid]);
 
   const toggleCardSelection = useCallback((cardId: string) => {
     if (gs.current.phase !== 'playing' || gs.current.currentPlayer !== 0) return;
@@ -1027,13 +1032,13 @@ const Doudizhu: React.FC = () => {
   const handleNewGame = useCallback(() => {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     Object.assign(gs.current, { ...initialGameState });
+    setGameState({ ...initialGameState });
     setMatchCount(1);
     setSelectedCards(new Set());
-    rerender();
-  }, [rerender]);
+  }, []);
 
   // ============ Render ============
-  const g = gs.current;
+  const g = gameState;
 
   const renderCard = (card: Card, selectable: boolean = false, isSelected: boolean = false) => {
     const display = getCardDisplay(card);
