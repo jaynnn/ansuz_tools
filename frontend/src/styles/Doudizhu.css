@@ -1,0 +1,521 @@
+/* Doudizhu (斗地主) Game Styles */
+
+.ddz-page {
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--text-primary);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.ddz-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+}
+
+.ddz-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  color: var(--text-primary);
+}
+
+.ddz-header .btn-back {
+  padding: 8px 16px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+}
+
+.ddz-header .btn-back:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.ddz-header-info {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.ddz-multiplier {
+  background: #ff6b35;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: bold;
+  font-size: 0.85rem;
+}
+
+/* ============ Matching Phase ============ */
+.ddz-matching {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+}
+
+.ddz-matching-card {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 48px 48px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  animation: ddz-fadeIn 0.5s ease;
+  max-width: 400px;
+  width: 100%;
+}
+
+.ddz-matching-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  animation: ddz-bounce 1.5s infinite;
+}
+
+.ddz-matching-card h2 {
+  margin: 0 0 20px;
+  font-size: 1.4rem;
+  color: var(--text-primary);
+}
+
+.ddz-matching-count {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: var(--primary);
+  margin-bottom: 24px;
+}
+
+.ddz-match-number {
+  font-size: 3rem;
+  color: #ff6b35;
+}
+
+.ddz-matching-players {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ddz-player-dot {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  transition: all 0.4s ease;
+}
+
+.ddz-player-dot-active {
+  background: #4caf50;
+  color: white;
+  transform: scale(1.1);
+}
+
+.ddz-match-ready {
+  color: #4caf50;
+  font-weight: bold;
+  font-size: 1.1rem;
+  animation: ddz-pulse 0.8s infinite;
+}
+
+/* ============ Game Table ============ */
+.ddz-table {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+/* Opponents */
+.ddz-opponents {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ddz-opponent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddz-opponent-area {
+  text-align: center;
+}
+
+.ddz-opponent-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.ddz-card-backs {
+  display: flex;
+  justify-content: center;
+}
+
+.ddz-card-back-stack {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddz-card-count {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: var(--text-secondary);
+}
+
+/* ============ Cards ============ */
+.ddz-card {
+  width: 52px;
+  height: 72px;
+  background: #ffffff;
+  border: 2px solid #d0d0d0;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  user-select: none;
+  position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.ddz-card-rank {
+  font-size: 1.1rem;
+  line-height: 1.1;
+}
+
+.ddz-card-suit {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.ddz-card-joker .ddz-card-rank {
+  font-size: 0.75rem;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: -2px;
+}
+
+.ddz-card-back {
+  background: linear-gradient(135deg, #2563eb, #1e40af);
+  border-color: #1e3a8a;
+  color: transparent;
+  width: 42px;
+  height: 58px;
+}
+
+.ddz-card-back::after {
+  content: '🂠';
+  font-size: 1.8rem;
+  opacity: 0.3;
+}
+
+.ddz-card-selectable {
+  cursor: pointer;
+}
+
+.ddz-card-selectable:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-color: var(--primary);
+}
+
+.ddz-card-selected {
+  transform: translateY(-14px);
+  border-color: #2563eb;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+}
+
+.ddz-card-selected:hover {
+  transform: translateY(-14px);
+}
+
+/* ============ Center Area ============ */
+.ddz-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 100px;
+  padding: 8px 0;
+}
+
+.ddz-landlord-cards {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--card-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.ddz-landlord-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.ddz-landlord-card-row {
+  display: flex;
+  gap: 4px;
+}
+
+.ddz-landlord-card-row .ddz-card {
+  width: 40px;
+  height: 56px;
+}
+
+.ddz-landlord-card-row .ddz-card-rank {
+  font-size: 0.85rem;
+}
+
+.ddz-landlord-card-row .ddz-card-suit {
+  font-size: 0.7rem;
+}
+
+/* Played cards display */
+.ddz-played-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  animation: ddz-fadeIn 0.3s ease;
+}
+
+.ddz-played-opponent {
+  margin-top: 4px;
+}
+
+.ddz-played-cards {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.ddz-played-cards .ddz-card {
+  width: 44px;
+  height: 60px;
+}
+
+.ddz-played-cards .ddz-card-rank {
+  font-size: 0.9rem;
+}
+
+.ddz-played-cards .ddz-card-suit {
+  font-size: 0.75rem;
+}
+
+.ddz-play-text {
+  font-size: 1rem;
+  font-weight: bold;
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  background: var(--card-bg);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+}
+
+.ddz-message {
+  font-size: 1rem;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: center;
+  min-height: 24px;
+  padding: 4px 0;
+}
+
+/* ============ Player Area ============ */
+.ddz-player-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.ddz-player-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ddz-hand {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 8px 4px;
+  min-height: 90px;
+}
+
+/* ============ Action Buttons ============ */
+.ddz-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.ddz-btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ddz-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ddz-btn-primary {
+  background: #2563eb;
+  color: white;
+}
+
+.ddz-btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.ddz-btn-secondary {
+  background: var(--card-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.ddz-btn-secondary:hover:not(:disabled) {
+  background: var(--border);
+  transform: translateY(-1px);
+}
+
+.ddz-btn-hint {
+  background: #f59e0b;
+  color: white;
+}
+
+.ddz-btn-hint:hover:not(:disabled) {
+  background: #d97706;
+  transform: translateY(-1px);
+}
+
+/* Game Result */
+.ddz-game-result {
+  font-size: 1.3rem;
+  font-weight: bold;
+  color: var(--text-primary);
+  padding: 8px 16px;
+  animation: ddz-pulse 1s ease 2;
+}
+
+/* ============ Animations ============ */
+@keyframes ddz-fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ddz-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes ddz-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ============ Responsive ============ */
+@media (max-width: 600px) {
+  .ddz-page {
+    padding: 8px;
+  }
+
+  .ddz-header h1 {
+    font-size: 1.2rem;
+  }
+
+  .ddz-card {
+    width: 40px;
+    height: 56px;
+  }
+
+  .ddz-card-rank {
+    font-size: 0.85rem;
+  }
+
+  .ddz-card-suit {
+    font-size: 0.7rem;
+  }
+
+  .ddz-hand {
+    gap: 1px;
+  }
+
+  .ddz-played-cards .ddz-card {
+    width: 36px;
+    height: 50px;
+  }
+
+  .ddz-btn {
+    padding: 8px 16px;
+    font-size: 0.9rem;
+  }
+
+  .ddz-matching-card {
+    padding: 32px 24px;
+  }
+}
+
+@media (max-width: 400px) {
+  .ddz-card {
+    width: 34px;
+    height: 48px;
+  }
+
+  .ddz-card-rank {
+    font-size: 0.75rem;
+  }
+
+  .ddz-card-suit {
+    font-size: 0.6rem;
+  }
+
+  .ddz-landlord-card-row .ddz-card {
+    width: 32px;
+    height: 44px;
+  }
+}
