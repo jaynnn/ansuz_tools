@@ -417,6 +417,22 @@
   color: var(--text-secondary);
 }
 
+.contact-copy-btn {
+  margin-left: 0.4rem;
+  padding: 0.15rem 0.35rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.contact-copy-btn:hover {
+  background: var(--hover-bg);
+}
+
 .user-detail-actions {
   display: flex;
   flex-direction: column;
@@ -679,4 +695,23 @@
 .birthday-gate-form .btn {
   width: 100%;
   margin-top: 0.5rem;
+}
+
+/* MBTI Gate link button */
+.fm-mbti-gate-link {
+  display: block;
+  text-decoration: none;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Analyzing Banner */
+.fm-analyzing-banner {
+  background: #e8f4fd;
+  color: #1a73e8;
+  padding: 0.6rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #b3d7f5;
 }

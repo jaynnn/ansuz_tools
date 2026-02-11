@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { impressionAPI, friendMatchAPI } from '../api';
+import { impressionAPI, friendMatchAPI, mbtiAPI } from '../api';
 import type { UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, StructuredPrivateInfo, AddedUser, ContactVotes } from '../types/index';
 import Avatar from '../components/Avatar';
 import NotificationBell from '../components/NotificationBell';
 import '../styles/FriendMatch.css';
 
-type ViewMode = 'main' | 'user-detail' | 'notifications' | 'private-info' | 'added-users' | 'birthday-gate';
+type ViewMode = 'main' | 'user-detail' | 'notifications' | 'private-info' | 'added-users' | 'birthday-gate' | 'mbti-gate';
 
 const PROFILE_CACHE_DURATION_MS = 10 * 60 * 1000;
 
@@ -73,6 +73,8 @@ const FriendMatch: React.FC = () => {
   const [birthdayGateDate, setBirthdayGateDate] = useState('');
   const [birthdayGateTime, setBirthdayGateTime] = useState('');
   const [savingBirthday, setSavingBirthday] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [copiedContact, setCopiedContact] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = '缘分罗盘 - 工具箱';
@@ -92,7 +94,14 @@ const FriendMatch: React.FC = () => {
         setLoading(false);
         return;
       }
-      // Birthday exists, proceed to load main data
+      // Check if user has completed MBTI test
+      const mbtiHistory = await mbtiAPI.getHistory();
+      if (!mbtiHistory || mbtiHistory.length === 0) {
+        setViewMode('mbti-gate');
+        setLoading(false);
+        return;
+      }
+      // Both birthday and MBTI exist, proceed to load main data
       const [impressionData, matchData] = await Promise.all([
         impressionAPI.getMyImpression(),
         friendMatchAPI.getTopMatches(),
@@ -131,9 +140,21 @@ const FriendMatch: React.FC = () => {
       const updatedInfo = { ...privateInfo, birthDate: birthdayGateDate, birthTime: birthdayGateTime };
       setPrivateInfo(updatedInfo);
       await friendMatchAPI.updatePrivateInfo(serializePrivateInfo(updatedInfo));
-      // Birthday saved, now load main data
-      setViewMode('main');
-      await fetchData();
+      // Check MBTI status after saving birthday
+      const mbtiHistory = await mbtiAPI.getHistory();
+      if (!mbtiHistory || mbtiHistory.length === 0) {
+        // No MBTI yet, prompt user to complete it
+        setViewMode('mbti-gate');
+      } else {
+        // Both ready, backend triggers analysis/matching, show analyzing status
+        setAnalyzing(true);
+        setViewMode('main');
+        await Promise.all([
+          fetchData(),
+          new Promise(resolve => setTimeout(resolve, 2000)),
+        ]);
+        setAnalyzing(false);
+      }
     } catch (error) {
       console.error('Failed to save birthday:', error);
       alert('保存失败，请重试');
@@ -373,6 +394,16 @@ const FriendMatch: React.FC = () => {
     }
   };
 
+  const handleCopyContact = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedContact(value);
+      setTimeout(() => setCopiedContact(null), 1500);
+    } catch {
+      alert(`复制失败，请手动复制：${value}`);
+    }
+  };
+
   const goBack = () => {
     setViewMode('main');
     setSelectedUser(null);
@@ -447,6 +478,31 @@ const FriendMatch: React.FC = () => {
     );
   }
 
+  // MBTI Gate View - shown when birthday is filled but MBTI test not completed
+  if (viewMode === 'mbti-gate') {
+    return (
+      <div className="friend-match">
+        <header className="fm-header">
+          <a href="/" className="btn btn-secondary">← 首页</a>
+          <h1>缘分罗盘</h1>
+          <div />
+        </header>
+        <div className="fm-content">
+          <div className="birthday-gate">
+            <div className="birthday-gate-icon">🧩</div>
+            <h2>请先完成 MBTI 测试</h2>
+            <p className="birthday-gate-desc">
+              缘分罗盘需要结合你的 MBTI 人格类型进行分析与匹配，请先完成 MBTI 测试。完成后返回此页面即可开启匹配。
+            </p>
+            <a href="/mbti" className="btn btn-primary fm-mbti-gate-link">
+              前往 MBTI 测试
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // User Detail View (shared for matches & notification clicks)
   if (viewMode === 'user-detail' && selectedUser) {
     return (
@@ -487,6 +543,13 @@ const FriendMatch: React.FC = () => {
                     <div key={idx} className="contact-item">
                       <span className="contact-label">{item.label}：</span>
                       <span className="contact-value">{item.value}</span>
+                      <button
+                        className="contact-copy-btn"
+                        onClick={() => handleCopyContact(item.value)}
+                        title={`复制${item.label}`}
+                      >
+                        {copiedContact === item.value ? '✅' : '📋'}
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1064,6 +1127,12 @@ const FriendMatch: React.FC = () => {
       <div className="fm-scroll-hint">
         <span className="fm-scroll-hint-text">填写的个人信息越完善，匹配结果越准确哦 ✨</span>
       </div>
+
+      {analyzing && (
+        <div className="fm-analyzing-banner">
+          ⏳ 正在分析与匹配中，请稍候...
+        </div>
+      )}
 
       <div className="fm-content">
         {/* My Impression Section */}
