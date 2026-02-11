@@ -494,7 +494,7 @@ const FriendMatch: React.FC = () => {
             <p className="birthday-gate-desc">
               缘分罗盘需要结合你的 MBTI 人格类型进行分析与匹配，请先完成 MBTI 测试。完成后返回此页面即可开启匹配。
             </p>
-            <a href="/mbti" className="btn btn-primary fm-mbti-gate-link">
+            <a href="/mbti-test" className="btn btn-primary fm-mbti-gate-link">
               前往 MBTI 测试
             </a>
           </div>
