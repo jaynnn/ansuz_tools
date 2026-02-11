@@ -23,7 +23,7 @@ const PREDEFINED_TOOLS = [
     tags: ['AI', '心理', '测试', 'MBTI'],
   },
   {
-    name: '交友匹配',
+    name: '缘分罗盘',
     description: 'MBTI人格 × 星座能量 × 八字命理 三重融合匹配，发现你命中注定的灵魂搭档',
     url: '/friend-match',
     tags: ['社交', '交友', 'AI'],

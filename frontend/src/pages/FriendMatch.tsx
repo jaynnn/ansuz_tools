@@ -6,7 +6,7 @@ import Avatar from '../components/Avatar';
 import NotificationBell from '../components/NotificationBell';
 import '../styles/FriendMatch.css';
 
-type ViewMode = 'main' | 'user-detail' | 'notifications' | 'private-info' | 'added-users';
+type ViewMode = 'main' | 'user-detail' | 'notifications' | 'private-info' | 'added-users' | 'birthday-gate';
 
 const PROFILE_CACHE_DURATION_MS = 10 * 60 * 1000;
 
@@ -70,11 +70,41 @@ const FriendMatch: React.FC = () => {
   const [addedUsers, setAddedUsers] = useState<AddedUser[]>([]);
   const [contactVotes, setContactVotes] = useState<ContactVotes | null>(null);
   const [votingContact, setVotingContact] = useState(false);
+  const [birthdayGateDate, setBirthdayGateDate] = useState('');
+  const [birthdayGateTime, setBirthdayGateTime] = useState('');
+  const [savingBirthday, setSavingBirthday] = useState(false);
 
   useEffect(() => {
-    document.title = '交友匹配 - 工具箱';
-    fetchData();
+    document.title = '缘分罗盘 - 工具箱';
+    checkBirthdayAndFetch();
   }, []);
+
+  const checkBirthdayAndFetch = async () => {
+    setLoading(true);
+    try {
+      // Check if user has filled in birthDate
+      const raw = await friendMatchAPI.getPrivateInfo();
+      const parsed = parsePrivateInfo(raw);
+      setPrivateInfo(parsed);
+      if (!parsed.birthDate) {
+        // User hasn't filled in birthday, show the gate
+        setViewMode('birthday-gate');
+        setLoading(false);
+        return;
+      }
+      // Birthday exists, proceed to load main data
+      const [impressionData, matchData] = await Promise.all([
+        impressionAPI.getMyImpression(),
+        friendMatchAPI.getTopMatches(),
+      ]);
+      setMyImpression(impressionData);
+      setMatches(matchData.matches);
+    } catch (error) {
+      console.error('Failed to fetch friend match data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -89,6 +119,25 @@ const FriendMatch: React.FC = () => {
       console.error('Failed to fetch friend match data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBirthdayGateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!birthdayGateDate) return;
+    setSavingBirthday(true);
+    try {
+      // Merge with existing private info
+      const updatedInfo = { ...privateInfo, birthDate: birthdayGateDate, birthTime: birthdayGateTime };
+      setPrivateInfo(updatedInfo);
+      await friendMatchAPI.updatePrivateInfo(serializePrivateInfo(updatedInfo));
+      // Birthday saved, now load main data
+      setViewMode('main');
+      await fetchData();
+    } catch {
+      alert('保存失败，请重试');
+    } finally {
+      setSavingBirthday(false);
     }
   };
 
@@ -336,6 +385,63 @@ const FriendMatch: React.FC = () => {
     return (
       <div className="friend-match">
         <div className="loading-state">加载中...</div>
+      </div>
+    );
+  }
+
+  // Birthday Gate View - shown when user hasn't filled in birthDate
+  if (viewMode === 'birthday-gate') {
+    return (
+      <div className="friend-match">
+        <header className="fm-header">
+          <a href="/" className="btn btn-secondary">← 首页</a>
+          <h1>缘分罗盘</h1>
+          <div />
+        </header>
+        <div className="fm-content">
+          <div className="birthday-gate">
+            <div className="birthday-gate-icon">🎂</div>
+            <h2>请先填写你的生日</h2>
+            <p className="birthday-gate-desc">
+              缘分罗盘基于星座与命理进行匹配分析，需要你的出生日期才能开启。
+            </p>
+            <form className="birthday-gate-form" onSubmit={handleBirthdayGateSubmit}>
+              <div className="form-group">
+                <label>出生日期 <span className="required">*</span></label>
+                <input
+                  type="date"
+                  value={birthdayGateDate}
+                  onChange={(e) => setBirthdayGateDate(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>出生时辰（可不填）</label>
+                <select
+                  value={birthdayGateTime}
+                  onChange={(e) => setBirthdayGateTime(e.target.value)}
+                >
+                  <option value="">请选择（可不填）</option>
+                  <option value="23:00">子时（23:00-01:00）</option>
+                  <option value="02:00">丑时（01:00-03:00）</option>
+                  <option value="04:00">寅时（03:00-05:00）</option>
+                  <option value="06:00">卯时（05:00-07:00）</option>
+                  <option value="08:00">辰时（07:00-09:00）</option>
+                  <option value="10:00">巳时（09:00-11:00）</option>
+                  <option value="12:00">午时（11:00-13:00）</option>
+                  <option value="14:00">未时（13:00-15:00）</option>
+                  <option value="16:00">申时（15:00-17:00）</option>
+                  <option value="18:00">酉时（17:00-19:00）</option>
+                  <option value="20:00">戌时（19:00-21:00）</option>
+                  <option value="22:00">亥时（21:00-23:00）</option>
+                </select>
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={savingBirthday || !birthdayGateDate}>
+                {savingBirthday ? '保存中...' : '进入缘分罗盘'}
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     );
   }
@@ -947,7 +1053,7 @@ const FriendMatch: React.FC = () => {
     <div className="friend-match">
       <header className="fm-header">
         <a href="/" className="btn btn-secondary">← 首页</a>
-        <h1>交友匹配</h1>
+        <h1>缘分罗盘</h1>
         <div className="fm-header-actions">
           <button className="btn btn-icon" onClick={handleShowPrivateInfo} title="个人信息">📝</button>
           <button className="btn btn-icon" onClick={handleShowAddedUsers} title="已添加用户">👥</button>
