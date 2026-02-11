@@ -360,6 +360,18 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create messages table - stores user feedback/messages to the webmaster
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        category TEXT NOT NULL DEFAULT 'other',
+        content TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     // Create token_usage table - tracks LLM token consumption per user
     await dbRun(`
       CREATE TABLE IF NOT EXISTS token_usage (
