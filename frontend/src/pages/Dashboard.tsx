@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import type { Tool } from '../types/index';
 import { toolsAPI } from '../api';
 import ToolCard from '../components/ToolCard';
+import AddToolModal from '../components/AddToolModal';
 import Avatar from '../components/Avatar';
 import AvatarSelector from '../components/AvatarSelector';
 import '../styles/Dashboard.css';
@@ -15,6 +16,7 @@ const Dashboard: React.FC = () => {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [showAvatarSelector, setShowAvatarSelector] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const { user, logout, updateAvatar } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -70,6 +72,16 @@ const Dashboard: React.FC = () => {
     );
   };
 
+  const handleAddTool = async (tool: Omit<Tool, 'id' | 'user_id' | 'created_at'>) => {
+    try {
+      await toolsAPI.create(tool);
+      await fetchTools();
+      setShowAddModal(false);
+    } catch (error) {
+      console.error('Failed to add tool:', error);
+    }
+  };
+
   const handleSelectAvatar = async (avatarId: string) => {
     try {
       await updateAvatar(avatarId);
@@ -122,15 +134,19 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="tools-grid">
-          {filteredTools.length === 0 ? (
-            <div className="empty-state">
-              <p>还没有工具，点击右上角的设置添加工具吧！</p>
-            </div>
-          ) : (
-            filteredTools.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} onDelete={handleDeleteTool} />
-            ))
-          )}
+          {filteredTools.map((tool) => (
+            <ToolCard key={tool.id} tool={tool} onDelete={handleDeleteTool} />
+          ))}
+          <div
+            className="tool-card add-tool-card"
+            onClick={() => setShowAddModal(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowAddModal(true); } }}
+            role="button"
+            tabIndex={0}
+            aria-label="添加新工具"
+          >
+            <div className="add-tool-cross">＋</div>
+          </div>
         </div>
       </div>
 
@@ -139,6 +155,14 @@ const Dashboard: React.FC = () => {
           currentAvatar={user?.avatar || 'seal'}
           onSelect={handleSelectAvatar}
           onClose={() => setShowAvatarSelector(false)}
+        />
+      )}
+
+      {showAddModal && (
+        <AddToolModal
+          onClose={() => setShowAddModal(false)}
+          onAdd={handleAddTool}
+          existingTools={tools}
         />
       )}
     </div>

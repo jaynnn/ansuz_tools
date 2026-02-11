@@ -75,12 +75,31 @@ const MBTITest: React.FC = () => {
     document.title = 'MBTI测试 - 工具箱';
     loadHistory();
   }, [loadHistory]);
+  const autoAdvanceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (autoAdvanceTimer.current) {
+        clearTimeout(autoAdvanceTimer.current);
+      }
+    };
+  }, []);
+
   const handleSliderChange = useCallback((value: number) => {
     setAnswers(prev => {
       const next = [...prev];
       next[currentIndex] = value;
       return next;
     });
+    // Auto-advance to next question after user stops interacting
+    if (autoAdvanceTimer.current) {
+      clearTimeout(autoAdvanceTimer.current);
+    }
+    if (currentIndex < mbtiQuestions.length - 1) {
+      autoAdvanceTimer.current = setTimeout(() => {
+        setCurrentIndex(prev => Math.min(prev + 1, mbtiQuestions.length - 1));
+      }, 400);
+    }
   }, [currentIndex]);
 
   const scores = useMemo(() => {
@@ -109,10 +128,6 @@ const MBTITest: React.FC = () => {
 
   const handlePrev = () => {
     if (currentIndex > 0) setCurrentIndex(currentIndex - 1);
-  };
-
-  const handleNext = () => {
-    if (currentIndex < mbtiQuestions.length - 1) setCurrentIndex(currentIndex + 1);
   };
 
   const handleSubmit = async () => {
@@ -336,9 +351,7 @@ const MBTITest: React.FC = () => {
             >
               上一题
             </button>
-            {currentIndex < mbtiQuestions.length - 1 ? (
-              <button className="btn-next" onClick={handleNext}>下一题</button>
-            ) : (
+            {currentIndex === mbtiQuestions.length - 1 && (
               <button className="btn-submit" onClick={handleSubmit}>提交并查看结果</button>
             )}
           </div>
