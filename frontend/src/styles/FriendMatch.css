@@ -696,3 +696,22 @@
   width: 100%;
   margin-top: 0.5rem;
 }
+
+/* MBTI Gate link button */
+.fm-mbti-gate-link {
+  display: block;
+  text-decoration: none;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Analyzing Banner */
+.fm-analyzing-banner {
+  background: #e8f4fd;
+  color: #1a73e8;
+  padding: 0.6rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #b3d7f5;
+}

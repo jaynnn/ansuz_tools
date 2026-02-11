@@ -133,13 +133,18 @@ router.put('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, 
     logInfo('private_info_updated', { userId: req.userId });
     res.json({ message: 'Private info updated' });
 
-    // Async: trigger impression update and daily-limited matching after private info save
-    triggerImpressionUpdate(
-      req.userId!,
-      '隐私信息更新',
-      `用户更新了隐私信息。外貌信息：${safeAppearance}。其他信息：${safeExtra}`
-    );
-    triggerUserMatchingDaily(req.userId!);
+    // Fire-and-forget: trigger impression update and matching only if user has MBTI results
+    const userId = req.userId!;
+    dbGet('SELECT id FROM mbti_results WHERE user_id = ? LIMIT 1', [userId]).then(mbtiResult => {
+      if (mbtiResult) {
+        triggerImpressionUpdate(
+          userId,
+          '隐私信息更新',
+          `用户更新了隐私信息。外貌信息：${safeAppearance}。其他信息：${safeExtra}`
+        );
+        triggerUserMatchingDaily(userId);
+      }
+    }).catch(err => logError('post_private_info_trigger_error', err as Error, { userId }));
   } catch (error: any) {
     logError('update_private_info_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: error.message || 'Failed to update private info' });
