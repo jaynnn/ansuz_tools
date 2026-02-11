@@ -411,6 +411,10 @@ const matchTwoUsers = (
   const astrologyA = getAstrologyContextFromExtra(privateInfoA?.extra);
   const astrologyB = getAstrologyContextFromExtra(privateInfoB?.extra);
 
+  // Determine which astrology/MBTI info is available for both users
+  const hasBothAstrology = !!(astrologyA && astrologyB);
+  const hasBothMbti = !!(privateInfoA?.mbtiType && privateInfoB?.mbtiType);
+
   const systemPrompt = `你是一个社交配对分析专家。请根据两个用户的印象数据、MBTI类型、星座信息和生辰八字命理信息，从以下维度对他们的配对进行评分和分析。
 
 配对维度：${MATCHING_DIMENSIONS.join('、')}
@@ -423,14 +427,13 @@ const matchTwoUsers = (
 
 请为每个维度打分（0-10），并计算总分（各维度分数之和）。
 同时，请为双方各生成一段配对理由（reason_a_to_b 是对A说明B为什么适合A，reason_b_to_a 是对B说明A为什么适合B），每段不超过80字，要基于客观事实，不要夸张或美化。
-生成配对理由时：
-- 应结合双方的MBTI类型兼容性来说明（如有MBTI信息）
-- 应结合双方的星座配对关系来说明（如有星座信息）
-- 应结合双方的生辰八字命理来说明（如有生辰信息）
-- 以上信息如存在应在理由中有所体现，与印象数据中的契合点结合描述
+生成配对理由时的【强制要求】：
+${hasBothMbti ? '- 双方均有MBTI信息，配对理由中【必须】明确提及双方的MBTI类型（如"你的ENFP与对方INTJ形成互补"），并说明MBTI兼容性对配对的影响。' : '- 如有MBTI信息，应结合双方的MBTI类型兼容性来说明。'}
+${hasBothAstrology ? '- 双方均有生辰和星座信息，配对理由中【必须】明确提及双方的星座（如"你的天蝎座与对方巨蟹座同属水象星座，天然亲近"），并融合五行或八字命理分析（如"五行互补，木火相生"）。这些内容不可省略。' : '- 如有星座或命理信息，应结合星座配对关系和生辰八字命理来说明。'}
+- 配对理由应将MBTI、星座命理与印象数据中的契合点融合描述，而非只说笼统的性格评价。
 - 不要无中生有或刻意拔高对方的条件。对于对方的不足之处，不需要刻意隐藏，可以不提及但不要美化。
 严格输出纯JSON格式，示例：
-{"scores":{"吸引触发":5,"价值共鸣":7},"total":80,"summary":"简要配对评语","reason_a_to_b":"对方与你在价值观上比较接近，性格上有一定互补","reason_b_to_a":"对方做事踏实，兴趣爱好有一些交集"}`;
+{"scores":{"吸引触发":5,"价值共鸣":7},"total":80,"summary":"简要配对评语","reason_a_to_b":"你的ENFP与对方INTJ互补性强，双鱼座与天蝎座水象共鸣深，五行木火相生，价值观契合","reason_b_to_a":"对方ENFP的热情激发你的创造力，巨蟹座与双鱼座情感联结紧密，八字天干相合，兴趣有交集"}`;
 
   const userMessage = `用户A的印象：${JSON.stringify(dimensionsA)}
 ${privateInfoA?.appearance ? `用户A的外貌描述：${privateInfoA.appearance}` : ''}
