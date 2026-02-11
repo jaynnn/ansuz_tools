@@ -77,6 +77,14 @@ const MBTITest: React.FC = () => {
   }, [loadHistory]);
   const autoAdvanceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  React.useEffect(() => {
+    return () => {
+      if (autoAdvanceTimer.current) {
+        clearTimeout(autoAdvanceTimer.current);
+      }
+    };
+  }, []);
+
   const handleSliderChange = useCallback((value: number) => {
     setAnswers(prev => {
       const next = [...prev];

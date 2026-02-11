@@ -137,7 +137,14 @@ const Dashboard: React.FC = () => {
           {filteredTools.map((tool) => (
             <ToolCard key={tool.id} tool={tool} onDelete={handleDeleteTool} />
           ))}
-          <div className="tool-card add-tool-card" onClick={() => setShowAddModal(true)}>
+          <div
+            className="tool-card add-tool-card"
+            onClick={() => setShowAddModal(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowAddModal(true); } }}
+            role="button"
+            tabIndex={0}
+            aria-label="添加新工具"
+          >
             <div className="add-tool-cross">＋</div>
           </div>
         </div>
