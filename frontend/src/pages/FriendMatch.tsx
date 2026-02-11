@@ -757,6 +757,9 @@ const FriendMatch: React.FC = () => {
           <NotificationBell onClick={handleShowNotifications} />
         </div>
       </header>
+      <div className="fm-scroll-hint">
+        <span className="fm-scroll-hint-text">填写生辰信息，解锁专属星座与命理配对分析✨</span>
+      </div>
 
       <div className="fm-content">
         {/* My Impression Section */}
@@ -772,7 +775,6 @@ const FriendMatch: React.FC = () => {
               ) : (
                 <p className="impression-placeholder">完成MBTI测试后将生成你的印象概览</p>
               )}
-              <p className="impression-hint">🔮 MBTI人格 × 星座能量 × 八字命理 三重融合匹配！点击右上角 📝 填写生辰信息，解锁专属星座命理配对分析，看看谁是你命中注定的灵魂搭档 ✨</p>
             </div>
           </div>
         </section>
