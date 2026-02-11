@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { dbRun, dbGet, dbTransaction } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logWarn, logInfo } from '../utils/logger';
+import { sanitizeString } from '../utils/sanitize';
 
 const router = Router();
 
@@ -34,8 +35,15 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
+    const safeUsername = sanitizeString(username, 50);
+    const safeNickname = sanitizeString(nickname || username, 50);
+
+    if (!safeUsername) {
+      return res.status(400).json({ error: 'Invalid username' });
+    }
+
     // Check if user already exists
-    const existingUser = await dbGet('SELECT * FROM users WHERE username = ?', [username]);
+    const existingUser = await dbGet('SELECT * FROM users WHERE username = ?', [safeUsername]);
     if (existingUser) {
       return res.status(400).json({ error: 'Username already exists' });
     }
@@ -46,7 +54,7 @@ router.post('/register', async (req: Request, res: Response) => {
     // Create user
     const result = await dbRun(
       'INSERT INTO users (username, password, nickname) VALUES (?, ?, ?)',
-      [username, hashedPassword, nickname || username]
+      [safeUsername, hashedPassword, safeNickname]
     );
 
     const token = jwt.sign(
@@ -60,8 +68,8 @@ router.post('/register', async (req: Request, res: Response) => {
       token,
       user: {
         id: (result as any).lastID,
-        username,
-        nickname: nickname || username
+        username: safeUsername,
+        nickname: safeNickname
       }
     });
   } catch (error) {
@@ -137,9 +145,14 @@ router.put('/nickname', authMiddleware, async (req: AuthRequest, res: Response) 
       return res.status(400).json({ error: 'Nickname is required' });
     }
 
-    await dbRun('UPDATE users SET nickname = ? WHERE id = ?', [nickname, req.userId]);
+    const safeNickname = sanitizeString(nickname, 50);
+    if (!safeNickname) {
+      return res.status(400).json({ error: 'Invalid nickname' });
+    }
 
-    res.json({ message: 'Nickname updated successfully', nickname });
+    await dbRun('UPDATE users SET nickname = ? WHERE id = ?', [safeNickname, req.userId]);
+
+    res.json({ message: 'Nickname updated successfully', nickname: safeNickname });
   } catch (error) {
     console.error('Update nickname error:', error);
     res.status(500).json({ error: 'Internal server error' });

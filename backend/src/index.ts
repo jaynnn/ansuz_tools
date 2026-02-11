@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import http from 'http';
@@ -29,9 +30,17 @@ if (!process.env.JWT_SECRET) {
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: false,  // Disabled to allow frontend SPA to work
+}));
+
+// CORS configuration
+const corsOrigin = process.env.CORS_ORIGIN;
+app.use(cors(corsOrigin ? { origin: corsOrigin.split(',') } : undefined));
+
+// Body parsing with size limits
+app.use(express.json({ limit: '1mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {

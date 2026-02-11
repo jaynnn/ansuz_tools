@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { dbRun, dbGet, dbAll } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { triggerImpressionUpdate } from '../utils/impressionService';
+import { sanitizeString } from '../utils/sanitize';
 
 const router = Router();
 
@@ -51,12 +52,17 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Tool name is required' });
     }
 
+    const safeName = sanitizeString(name, 100);
+    const safeDescription = sanitizeString(description || '', 500);
+    const safeUrl = sanitizeString(url || '', 500);
+    const safeTags = Array.isArray(tags) ? tags.map((t: unknown) => sanitizeString(t, 50)).filter(Boolean) : [];
+
     // Convert tags array to JSON string
-    const tagsJson = JSON.stringify(tags || []);
+    const tagsJson = JSON.stringify(safeTags);
 
     const result = await dbRun(
       'INSERT INTO tools (user_id, name, description, tags, url) VALUES (?, ?, ?, ?, ?)',
-      [req.userId, name, description, tagsJson, url]
+      [req.userId, safeName, safeDescription, tagsJson, safeUrl]
     );
 
     res.status(201).json({
@@ -64,10 +70,10 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
       tool: {
         id: (result as any).lastID,
         user_id: req.userId,
-        name,
-        description,
-        tags: tags || [],
-        url
+        name: safeName,
+        description: safeDescription,
+        tags: safeTags,
+        url: safeUrl
       }
     });
 
@@ -75,7 +81,7 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     triggerImpressionUpdate(
       req.userId!,
       '添加工具',
-      `用户添加了工具「${name}」，描述：${description || '无'}，标签：${(tags || []).join('、') || '无'}。该工具的使用者通常关注${(tags || []).join('、')}领域。`
+      `用户添加了工具「${safeName}」，描述：${safeDescription || '无'}，标签：${safeTags.join('、') || '无'}。该工具的使用者通常关注${safeTags.join('、')}领域。`
     );
   } catch (error) {
     console.error('Create tool error:', error);
@@ -94,22 +100,27 @@ router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Tool not found' });
     }
 
+    const safeName = sanitizeString(name || '', 100);
+    const safeDescription = sanitizeString(description || '', 500);
+    const safeUrl = sanitizeString(url || '', 500);
+    const safeTags = Array.isArray(tags) ? tags.map((t: unknown) => sanitizeString(t, 50)).filter(Boolean) : [];
+
     // Convert tags array to JSON string
-    const tagsJson = JSON.stringify(tags || []);
+    const tagsJson = JSON.stringify(safeTags);
 
     await dbRun(
       'UPDATE tools SET name = ?, description = ?, tags = ?, url = ? WHERE id = ? AND user_id = ?',
-      [name, description, tagsJson, url, req.params.id, req.userId]
+      [safeName, safeDescription, tagsJson, safeUrl, req.params.id, req.userId]
     );
 
     res.json({
       message: 'Tool updated successfully',
       tool: {
         id: req.params.id,
-        name,
-        description,
-        tags: tags || [],
-        url
+        name: safeName,
+        description: safeDescription,
+        tags: safeTags,
+        url: safeUrl
       }
     });
   } catch (error) {

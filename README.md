@@ -352,6 +352,11 @@ ansuz_tools/
 - JWT token 用于会话管理，有效期 7 天
 - 所有工具相关的 API 都需要身份验证
 - JWT_SECRET 必须在环境变量中设置，否则服务器将拒绝启动
+- 使用 Helmet 设置安全 HTTP 响应头
+- 所有用户输入经过 HTML 标签过滤和长度限制，防止 XSS 攻击
+- 所有数据库操作使用参数化查询，防止 SQL 注入
+- 请求体大小限制为 1MB，防止 DoS 攻击
+- CORS 可通过环境变量 `CORS_ORIGIN` 配置允许的来源域名
 
 ## 技术实现细节
 
@@ -430,17 +435,34 @@ chmod +x deploy.sh
    - 使用强密码
 6. **监控**：设置应用监控和日志收集
 
-### 使用 PM2 管理（可选）
+### 一键更新（推荐）
 
-如果想使用 PM2 管理进程，可以按以下步骤操作：
+项目提供了基于 PM2 的一键更新脚本，支持零停机平滑更新：
 
 ```bash
-# 安装 PM2
+# 运行一键更新脚本
+chmod +x update.sh
+./update.sh
+```
+
+更新脚本会自动完成以下操作：
+- 从远程仓库拉取最新代码
+- 安装前后端依赖
+- 编译构建前后端代码
+- 使用 PM2 平滑重启（零停机）
+
+首次运行会自动安装 PM2 并创建 `.env` 文件。后续更新只需重复执行 `./update.sh`。
+
+### 使用 PM2 管理（推荐）
+
+项目自带 `ecosystem.config.js` 配置文件，可直接使用 PM2：
+
+```bash
+# 安装 PM2（如果尚未安装）
 npm install -g pm2
 
 # 启动应用
-cd backend
-pm2 start dist/index.js --name ansuz_tools
+pm2 start ecosystem.config.js
 
 # 设置开机自启
 pm2 startup
@@ -451,6 +473,9 @@ pm2 status
 
 # 查看日志
 pm2 logs ansuz_tools
+
+# 平滑重启（零停机）
+pm2 reload ecosystem.config.js
 
 # 停止应用
 pm2 stop ansuz_tools
