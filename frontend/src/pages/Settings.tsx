@@ -9,12 +9,11 @@ import Avatar from '../components/Avatar';
 import AvatarSelector from '../components/AvatarSelector';
 import '../styles/Settings.css';
 
-type SettingsTab = 'profile' | 'tools' | 'donate';
+type SettingsTab = 'profile' | 'tools';
 
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [newNickname, setNewNickname] = useState('');
-  const [qrLoadError, setQrLoadError] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAvatarSelector, setShowAvatarSelector] = useState(false);
@@ -190,29 +189,6 @@ const Settings: React.FC = () => {
     </div>
   );
 
-  const renderDonateTab = () => (
-    <div className="settings-tab-content">
-      <h2>捐赠支持</h2>
-      <div className="settings-section donate-section">
-        <p className="donate-text">
-          本工具箱的 AI 功能（如 MBTI 分析、缘分罗盘等）所使用的 Token 均为站长自费购买。
-          如果你觉得好用，且有余力的话，可以扫码支持一下，在此谢过 🙏
-        </p>
-        <div className="donate-qr">
-          {!qrLoadError ? (
-            <img
-              src="/donate.png"
-              alt="捐赠二维码"
-              onError={() => setQrLoadError(true)}
-            />
-          ) : (
-            <p className="donate-no-qr">捐赠二维码暂未上传</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <div className="settings-page">
       <header className="settings-header">
@@ -235,18 +211,11 @@ const Settings: React.FC = () => {
           >
             🔧 工具管理
           </button>
-          <button
-            className={`sidebar-item ${activeTab === 'donate' ? 'active' : ''}`}
-            onClick={() => setActiveTab('donate')}
-          >
-            ❤️
-          </button>
         </nav>
 
         <main className="settings-main">
           {activeTab === 'profile' && renderProfileTab()}
           {activeTab === 'tools' && renderToolsTab()}
-          {activeTab === 'donate' && renderDonateTab()}
         </main>
       </div>
 
