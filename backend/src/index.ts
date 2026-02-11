@@ -37,9 +37,9 @@ app.use(helmet({
 
 // CORS configuration
 const corsOrigin = process.env.CORS_ORIGIN;
-app.use(cors(corsOrigin ? { origin: corsOrigin.split(',') } : undefined));
+app.use(cors(corsOrigin ? { origin: corsOrigin.split(',').map(o => o.trim()) } : undefined));
 
-// Body parsing with size limits
+// Body parsing with size limits to prevent DoS
 app.use(express.json({ limit: '1mb' }));
 
 // Request logging middleware

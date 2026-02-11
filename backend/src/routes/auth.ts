@@ -39,7 +39,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const safeNickname = sanitizeString(nickname || username, 50);
 
     if (!safeUsername) {
-      return res.status(400).json({ error: 'Invalid username' });
+      return res.status(400).json({ error: 'Username cannot be empty or contain invalid characters' });
     }
 
     // Check if user already exists
