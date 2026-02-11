@@ -73,6 +73,7 @@ const FriendMatch: React.FC = () => {
   const [birthdayGateDate, setBirthdayGateDate] = useState('');
   const [birthdayGateTime, setBirthdayGateTime] = useState('');
   const [savingBirthday, setSavingBirthday] = useState(false);
+  const [copiedContact, setCopiedContact] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = '缘分罗盘 - 工具箱';
@@ -373,6 +374,16 @@ const FriendMatch: React.FC = () => {
     }
   };
 
+  const handleCopyContact = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedContact(value);
+      setTimeout(() => setCopiedContact(null), 1500);
+    } catch {
+      // fallback ignored
+    }
+  };
+
   const goBack = () => {
     setViewMode('main');
     setSelectedUser(null);
@@ -487,6 +498,13 @@ const FriendMatch: React.FC = () => {
                     <div key={idx} className="contact-item">
                       <span className="contact-label">{item.label}：</span>
                       <span className="contact-value">{item.value}</span>
+                      <button
+                        className="contact-copy-btn"
+                        onClick={() => handleCopyContact(item.value)}
+                        title={`复制${item.label}`}
+                      >
+                        {copiedContact === item.value ? '✅' : '📋'}
+                      </button>
                     </div>
                   ))}
                 </div>
