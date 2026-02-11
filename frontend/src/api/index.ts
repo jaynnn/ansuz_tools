@@ -260,12 +260,7 @@ export const friendMatchAPI = {
     return response.data;
   },
 
-  getRefreshRemaining: async (): Promise<{ remaining: number; limit: number }> => {
-    const response = await api.get('/friend-match/refresh-remaining');
-    return response.data;
-  },
-
-  refreshMatches: async (): Promise<{ message: string; remaining: number }> => {
+  refreshMatches: async (): Promise<{ message: string }> => {
     const response = await api.post('/friend-match/refresh');
     return response.data;
   },

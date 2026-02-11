@@ -2,7 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
-import { triggerImpressionUpdate, triggerUserMatchingDaily, triggerUserMatchingForce } from '../utils/impressionService';
+import { triggerImpressionUpdate, triggerUserMatchingForce } from '../utils/impressionService';
 import { sanitizeJsonString } from '../utils/sanitize';
 
 const router = Router();
@@ -114,8 +114,26 @@ router.get('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, 
   }
 });
 
+const SAVE_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
 router.put('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.userId!;
+
+    // Check 5-minute save cooldown
+    const existing = await dbGet(
+      'SELECT updated_at FROM user_private_info WHERE user_id = ?',
+      [userId]
+    );
+    if (existing) {
+      const lastSave = new Date(existing.updated_at).getTime();
+      const elapsed = Date.now() - lastSave;
+      if (elapsed < SAVE_COOLDOWN_MS) {
+        const retryAfter = Math.ceil((SAVE_COOLDOWN_MS - elapsed) / 1000);
+        return res.status(429).json({ error: `保存太频繁，请${retryAfter}秒后再试`, retryAfter });
+      }
+    }
+
     const { appearance, contact, extra } = req.body;
     // Sanitize inputs: strip HTML tags and remove empty values
     // This ensures the backend only stores data the user actually filled in
@@ -127,14 +145,13 @@ router.put('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, 
       `INSERT INTO user_private_info (user_id, appearance, contact, extra, updated_at)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET appearance = ?, contact = ?, extra = ?, updated_at = CURRENT_TIMESTAMP`,
-      [req.userId, safeAppearance, safeContact, safeExtra, safeAppearance, safeContact, safeExtra]
+      [userId, safeAppearance, safeContact, safeExtra, safeAppearance, safeContact, safeExtra]
     );
 
-    logInfo('private_info_updated', { userId: req.userId });
+    logInfo('private_info_updated', { userId });
     res.json({ message: 'Private info updated' });
 
-    // Fire-and-forget: trigger impression update and matching only if user has MBTI results
-    const userId = req.userId!;
+    // Fire-and-forget: trigger impression update and force matching if user has MBTI results
     dbGet('SELECT id FROM mbti_results WHERE user_id = ? LIMIT 1', [userId]).then(mbtiResult => {
       if (mbtiResult) {
         triggerImpressionUpdate(
@@ -142,7 +159,7 @@ router.put('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, 
           '隐私信息更新',
           `用户更新了隐私信息。外貌信息：${safeAppearance}。其他信息：${safeExtra}`
         );
-        triggerUserMatchingDaily(userId);
+        triggerUserMatchingForce(userId);
       }
     }).catch(err => logError('post_private_info_trigger_error', err as Error, { userId }));
   } catch (error: any) {
@@ -379,40 +396,10 @@ router.get('/contact-votes/:targetUserId', authMiddleware, rateLimit, async (req
   }
 });
 
-const DAILY_REFRESH_LIMIT = 3;
-
-// Get remaining refresh count for today
-router.get('/refresh-remaining', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.userId!;
-    const today = new Date().toISOString().split('T')[0];
-    const row = await dbGet(
-      'SELECT count FROM match_refresh_count WHERE user_id = ? AND refresh_date = ?',
-      [userId, today]
-    );
-    const used = row?.count || 0;
-    res.json({ remaining: Math.max(0, DAILY_REFRESH_LIMIT - used), limit: DAILY_REFRESH_LIMIT });
-  } catch (error: any) {
-    logError('get_refresh_remaining_error', error as Error, { userId: req.userId });
-    res.status(500).json({ error: error.message || 'Failed to get refresh count' });
-  }
-});
-
-// Trigger manual match refresh (limited to 3 per day)
+// Trigger manual match refresh (re-evaluates with all other users)
 router.post('/refresh', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
-    const today = new Date().toISOString().split('T')[0];
-
-    // Check daily limit
-    const row = await dbGet(
-      'SELECT count FROM match_refresh_count WHERE user_id = ? AND refresh_date = ?',
-      [userId, today]
-    );
-    const used = row?.count || 0;
-    if (used >= DAILY_REFRESH_LIMIT) {
-      return res.status(429).json({ error: '今日刷新次数已用完', remaining: 0 });
-    }
 
     // Check user has MBTI results
     const mbtiResult = await dbGet(
@@ -423,20 +410,11 @@ router.post('/refresh', authMiddleware, rateLimit, async (req: AuthRequest, res:
       return res.status(400).json({ error: '请先完成MBTI测试' });
     }
 
-    // Increment usage counter
-    await dbRun(
-      `INSERT INTO match_refresh_count (user_id, refresh_date, count)
-       VALUES (?, ?, 1)
-       ON CONFLICT(user_id, refresh_date) DO UPDATE SET count = count + 1`,
-      [userId, today]
-    );
-
     // Trigger matching without cooldown
     triggerUserMatchingForce(userId);
 
-    const remaining = DAILY_REFRESH_LIMIT - used - 1;
-    logInfo('match_refresh_triggered', { userId, remaining });
-    res.json({ message: '配对刷新已触发', remaining });
+    logInfo('match_refresh_triggered', { userId });
+    res.json({ message: '配对刷新已触发' });
   } catch (error: any) {
     logError('match_refresh_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: error.message || 'Failed to refresh matches' });
