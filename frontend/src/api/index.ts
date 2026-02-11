@@ -265,3 +265,16 @@ export const friendMatchAPI = {
     return response.data;
   },
 };
+
+// Messages APIs
+export const messagesAPI = {
+  create: async (category: string, content: string) => {
+    const response = await api.post('/messages', { category, content });
+    return response.data;
+  },
+
+  getMine: async () => {
+    const response = await api.get('/messages/mine');
+    return response.data;
+  },
+};

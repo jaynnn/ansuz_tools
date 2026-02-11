@@ -188,6 +188,64 @@
   font-style: italic;
 }
 
+/* Messages section */
+.messages-desc {
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+.settings-textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+}
+
+.message-char-count {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  align-self: center;
+}
+
+.settings-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settings-message-item {
+  padding: 0.75rem 1rem;
+  background: var(--background);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.settings-message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.settings-message-category {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.settings-message-time {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.settings-message-content {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .settings-layout {

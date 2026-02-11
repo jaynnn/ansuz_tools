@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import type { Tool } from '../types/index';
-import { toolsAPI } from '../api';
+import { toolsAPI, messagesAPI } from '../api';
 import AddToolModal from '../components/AddToolModal';
 import Avatar from '../components/Avatar';
 import AvatarSelector from '../components/AvatarSelector';
 import '../styles/Settings.css';
 
-type SettingsTab = 'profile' | 'tools';
+type SettingsTab = 'profile' | 'tools' | 'messages';
 
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
@@ -19,6 +19,10 @@ const Settings: React.FC = () => {
   const [showAvatarSelector, setShowAvatarSelector] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [tools, setTools] = useState<Tool[]>([]);
+  const [messageCategory, setMessageCategory] = useState('suggestion');
+  const [messageContent, setMessageContent] = useState('');
+  const [myMessages, setMyMessages] = useState<Array<{ id: number; category: string; content: string; created_at: string }>>([]);
+  const [messageSubmitting, setMessageSubmitting] = useState(false);
   const { user, logout, updateNickname, updateAvatar, deleteAccount } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -94,6 +98,43 @@ const Settings: React.FC = () => {
       const msg = axiosError?.response?.data?.error || '销号失败';
       alert(msg);
     }
+  };
+
+  const fetchMyMessages = async () => {
+    try {
+      const data = await messagesAPI.getMine();
+      setMyMessages(data.messages);
+    } catch (error) {
+      console.error('Failed to fetch messages:', error);
+    }
+  };
+
+  const handleSubmitMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!messageContent.trim()) {
+      alert('请输入留言内容');
+      return;
+    }
+    setMessageSubmitting(true);
+    try {
+      const data = await messagesAPI.create(messageCategory, messageContent);
+      alert(data.message || '留言成功！');
+      setMessageContent('');
+      await fetchMyMessages();
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      const msg = axiosError?.response?.data?.error || '留言失败，请稍后重试';
+      alert(msg);
+    } finally {
+      setMessageSubmitting(false);
+    }
+  };
+
+  const categoryLabels: Record<string, string> = {
+    tool_request: '🛠 工具许愿',
+    suggestion: '💡 建议反馈',
+    bug_report: '🐛 Bug 报告',
+    other: '💬 其他',
   };
 
   const renderProfileTab = () => (
@@ -189,6 +230,60 @@ const Settings: React.FC = () => {
     </div>
   );
 
+  const renderMessagesTab = () => (
+    <div className="settings-tab-content">
+      <h2>给站长留言</h2>
+      <p className="messages-desc">许愿想要的工具、提出建议或反馈问题，站长会认真阅读每一条留言 ✨</p>
+
+      <div className="settings-section">
+        <h3>写留言</h3>
+        <form onSubmit={handleSubmitMessage} className="settings-form">
+          <select
+            value={messageCategory}
+            onChange={(e) => setMessageCategory(e.target.value)}
+            className="settings-input"
+          >
+            <option value="tool_request">🛠 工具许愿</option>
+            <option value="suggestion">💡 建议反馈</option>
+            <option value="bug_report">🐛 Bug 报告</option>
+            <option value="other">💬 其他</option>
+          </select>
+          <textarea
+            value={messageContent}
+            onChange={(e) => setMessageContent(e.target.value)}
+            placeholder="请输入您的留言内容..."
+            className="settings-input settings-textarea"
+            rows={5}
+            maxLength={2000}
+          />
+          <div className="settings-form-actions">
+            <button type="submit" className="btn btn-primary" disabled={messageSubmitting}>
+              {messageSubmitting ? '提交中...' : '提交留言'}
+            </button>
+            <span className="message-char-count">{messageContent.length}/2000</span>
+          </div>
+        </form>
+      </div>
+
+      {myMessages.length > 0 && (
+        <div className="settings-section">
+          <h3>我的留言记录</h3>
+          <div className="settings-message-list">
+            {myMessages.map((msg) => (
+              <div key={msg.id} className="settings-message-item">
+                <div className="settings-message-header">
+                  <span className="settings-message-category">{categoryLabels[msg.category] || msg.category}</span>
+                  <span className="settings-message-time">{new Date(msg.created_at).toLocaleString()}</span>
+                </div>
+                <div className="settings-message-content">{msg.content}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="settings-page">
       <header className="settings-header">
@@ -211,11 +306,18 @@ const Settings: React.FC = () => {
           >
             🔧 工具管理
           </button>
+          <button
+            className={`sidebar-item ${activeTab === 'messages' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('messages'); fetchMyMessages(); }}
+          >
+            ✉️ 给站长留言
+          </button>
         </nav>
 
         <main className="settings-main">
           {activeTab === 'profile' && renderProfileTab()}
           {activeTab === 'tools' && renderToolsTab()}
+          {activeTab === 'messages' && renderMessagesTab()}
         </main>
       </div>
 
