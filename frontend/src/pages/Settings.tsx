@@ -195,7 +195,7 @@ const Settings: React.FC = () => {
       <h2>捐赠支持</h2>
       <div className="settings-section donate-section">
         <p className="donate-text">
-          本工具箱的 AI 功能（如 MBTI 分析、交友匹配等）所使用的 Token 均为站长自费购买。
+          本工具箱的 AI 功能（如 MBTI 分析、缘分罗盘等）所使用的 Token 均为站长自费购买。
           如果你觉得好用，且有余力的话，可以扫码支持一下，在此谢过 🙏
         </p>
         <div className="donate-qr">

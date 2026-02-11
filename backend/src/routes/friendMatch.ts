@@ -3,6 +3,7 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
 import { triggerImpressionUpdate, triggerUserMatchingDaily } from '../utils/impressionService';
+import { sanitizeJsonString } from '../utils/sanitize';
 
 const router = Router();
 
@@ -116,9 +117,11 @@ router.get('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, 
 router.put('/private-info', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const { appearance, contact, extra } = req.body;
-    const safeAppearance = appearance || '';
-    const safeContact = contact || '';
-    const safeExtra = extra || '';
+    // Sanitize inputs: strip HTML tags and remove empty values
+    // This ensures the backend only stores data the user actually filled in
+    const safeAppearance = sanitizeJsonString(appearance || '', 500);
+    const safeContact = sanitizeJsonString(contact || '', 500);
+    const safeExtra = sanitizeJsonString(extra || '', 5000);
 
     await dbRun(
       `INSERT INTO user_private_info (user_id, appearance, contact, extra, updated_at)

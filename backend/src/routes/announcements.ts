@@ -3,6 +3,7 @@ import { dbRun, dbGet } from '../utils/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { broadcastMessage } from '../utils/wsManager';
 import { logInfo, logWarn } from '../utils/logger';
+import { sanitizeString } from '../utils/sanitize';
 
 const router = Router();
 
@@ -52,7 +53,7 @@ router.post('/broadcast', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const trimmedMessage = message.trim();
+    const trimmedMessage = sanitizeString(message, 1000);
     const durationSeconds = (typeof duration === 'number' && duration > 0) ? Math.min(duration, 86400) : null;
 
     // Deactivate old announcements
