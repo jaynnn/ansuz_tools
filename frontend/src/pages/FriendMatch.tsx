@@ -1152,7 +1152,11 @@ const FriendMatch: React.FC = () => {
             </div>
 
             <button type="submit" className="btn btn-primary" disabled={savingPrivateInfo || saveCooldownSeconds > 0}>
-              {savingPrivateInfo ? '保存中...' : saveCooldownSeconds > 0 ? `保存 (${Math.floor(saveCooldownSeconds / 60)}:${String(saveCooldownSeconds % 60).padStart(2, '0')})` : '保存'}
+              {savingPrivateInfo
+                ? '保存中...'
+                : saveCooldownSeconds > 0
+                  ? `保存 (${Math.floor(saveCooldownSeconds / 60)}:${String(saveCooldownSeconds % 60).padStart(2, '0')})`
+                  : '保存'}
             </button>
           </form>
         </div>
