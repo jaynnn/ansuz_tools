@@ -3,6 +3,7 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
 import { chatCompletion } from '../utils/llmService';
+import { recordTokenUsage } from '../utils/asyncLlmService';
 import { generateAstrologyContext } from '../utils/astrology';
 
 const router = Router();
@@ -175,7 +176,8 @@ router.get('/user/:userId/profile', authMiddleware, rateLimit, async (req: AuthR
 5. 使用第三人称。
 6. 直接输出描述文字，不要包含任何标记或前缀。
 7. 不要使用"非凡"、"卓越"、"出色"、"顶尖"等夸张修饰词，用平实的语言描述即可。
-8. 请将描述分成2-3个自然段落，段落之间用换行符分隔，不要写成一整段。`;
+8. 请将描述分成2-3个自然段落，段落之间用换行符分隔，不要写成一整段。
+9.【严禁捏造信息】只能描述下方明确提供的信息，不能自行编造未提供的内容（如性别、身高、体重、学历、职业等）。对于缺失的信息，跳过不提。`;
 
     const userMessage = `用户昵称：${userInfo.nickname}\n${parts.join('\n')}`;
 
@@ -186,6 +188,10 @@ router.get('/user/:userId/profile', authMiddleware, rateLimit, async (req: AuthR
         { role: 'user', content: userMessage },
       ]);
       profile = llmResponse.content.trim();
+      // Record token usage for the requesting user
+      if (req.userId) {
+        recordTokenUsage(req.userId, 'user_profile', llmResponse.usage, llmResponse.model);
+      }
     } catch (llmError) {
       logError('user_profile_llm_error', llmError as Error, { targetUserId });
       return res.status(500).json({ error: '无法生成详细资料，请稍后再试' });
