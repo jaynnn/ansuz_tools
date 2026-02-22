@@ -28,6 +28,12 @@ const PREDEFINED_TOOLS = [
     url: '/friend-match',
     tags: ['社交', '交友', 'AI'],
   },
+  {
+    name: '数独游戏',
+    description: '经典数独益智游戏，支持简单/中等/困难三种难度，提供笔记模式和计时功能',
+    url: '/sudoku',
+    tags: ['游戏', '益智', '数独'],
+  },
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [] }) => {
