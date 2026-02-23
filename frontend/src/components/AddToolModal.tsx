@@ -34,6 +34,12 @@ const PREDEFINED_TOOLS = [
     url: '/sudoku',
     tags: ['游戏', '益智', '数独'],
   },
+  {
+    name: '斗地主',
+    description: '经典斗地主扑克牌游戏，支持叫地主、抢地主，与AI对手智能对战',
+    url: '/doudizhu',
+    tags: ['游戏', '扑克', '斗地主'],
+  },
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [] }) => {
