@@ -137,6 +137,46 @@ const Sudoku: React.FC = () => {
     setSelected([row, col]);
   };
 
+  const computeErrors = useCallback((grid: Grid): boolean[][] => {
+    const errs = Array.from({ length: 9 }, () => Array(9).fill(false));
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const val = grid[r][c];
+        if (val === null) continue;
+        // Check row
+        for (let k = 0; k < 9; k++) {
+          if (k !== c && grid[r][k] === val) {
+            errs[r][c] = true;
+            break;
+          }
+        }
+        // Check column
+        if (!errs[r][c]) {
+          for (let k = 0; k < 9; k++) {
+            if (k !== r && grid[k][c] === val) {
+              errs[r][c] = true;
+              break;
+            }
+          }
+        }
+        // Check 3x3 box
+        if (!errs[r][c]) {
+          const sr = Math.floor(r / 3) * 3;
+          const sc = Math.floor(c / 3) * 3;
+          outer: for (let br = sr; br < sr + 3; br++) {
+            for (let bc = sc; bc < sc + 3; bc++) {
+              if ((br !== r || bc !== c) && grid[br][bc] === val) {
+                errs[r][c] = true;
+                break outer;
+              }
+            }
+          }
+        }
+      }
+    }
+    return errs;
+  }, []);
+
   const handleNumberInput = useCallback(
     (num: number) => {
       if (!selected || isComplete) return;
@@ -164,17 +204,8 @@ const Sudoku: React.FC = () => {
       newNotes[row][col] = new Set<number>();
       setNotes(newNotes);
 
-      // Validate
-      const newErrors = Array.from({ length: 9 }, () => Array(9).fill(false));
-      for (let r = 0; r < 9; r++) {
-        for (let c = 0; c < 9; c++) {
-          const val = newGrid[r][c];
-          if (val !== null && val !== solution[r][c]) {
-            newErrors[r][c] = true;
-          }
-        }
-      }
-      setErrors(newErrors);
+      // Validate: mark conflicts (same number in same row/col/box), not wrong answers
+      setErrors(computeErrors(newGrid));
 
       // Check completion
       const complete = newGrid.every((row, r) =>
@@ -185,7 +216,7 @@ const Sudoku: React.FC = () => {
         setTimerActive(false);
       }
     },
-    [selected, puzzle, userGrid, solution, isComplete, noteMode, notes]
+    [selected, puzzle, userGrid, solution, isComplete, noteMode, notes, computeErrors]
   );
 
   const handleErase = useCallback(() => {
@@ -196,14 +227,13 @@ const Sudoku: React.FC = () => {
     newGrid[row][col] = null;
     setUserGrid(newGrid);
 
-    const newErrors = errors.map((r) => [...r]);
-    newErrors[row][col] = false;
-    setErrors(newErrors);
+    // Re-validate all cells after erasing
+    setErrors(computeErrors(newGrid));
 
     const newNotes = notes.map((r) => r.map((cell) => new Set(cell)));
     newNotes[row][col] = new Set<number>();
     setNotes(newNotes);
-  }, [selected, puzzle, userGrid, errors, isComplete, notes]);
+  }, [selected, puzzle, userGrid, isComplete, notes, computeErrors]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
