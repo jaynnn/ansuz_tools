@@ -280,8 +280,7 @@ export const messagesAPI = {
 };
 
 // Goal Task APIs
-export const goalTaskAPI = {
-  getGoals: async () => {
+export const goalTaskAPI = {  getGoals: async () => {
     const response = await api.get('/goal-task/goals');
     return response.data;
   },
@@ -323,6 +322,19 @@ export const goalTaskAPI = {
 
   chatAboutTraining: async (trainingId: number, messages: Array<{ role: string; content: string }>) => {
     const response = await api.post(`/goal-task/trainings/${trainingId}/chat`, { messages });
+    return response.data;
+  },
+};
+
+// Guitar Practice APIs
+export const guitarPracticeAPI = {
+  analyze: async (title: string, artist: string): Promise<{
+    difficulty: 'beginner' | 'intermediate' | 'advanced';
+    chords: string[];
+    lyricsWithChords: string;
+    annotations: Array<{ time: number; chord: string; lyrics: string }>;
+  }> => {
+    const response = await api.post('/guitar-practice/analyze', { title, artist });
     return response.data;
   },
 };

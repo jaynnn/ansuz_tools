@@ -790,6 +790,100 @@
 
 /* ─── Song Editor ──────────────────────────────────────────────────────────── */
 
+/* ─── AI Analyze Section ────────────────────────────────────────────────────── */
+
+.ai-analyze-section {
+  background: linear-gradient(135deg, var(--guitar-section) 0%, var(--guitar-surface) 100%);
+  border: 1px solid var(--guitar-border);
+  border-left: 3px solid var(--guitar-accent);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.ai-analyze-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.ai-icon {
+  font-size: 1.1rem;
+}
+
+.ai-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--guitar-accent);
+}
+
+.ai-analyze-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.audio-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn-upload-audio {
+  background: none;
+  border: 1px dashed var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: all 0.2s;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-upload-audio:hover {
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+.audio-ready {
+  font-size: 0.82rem;
+  color: #27ae60;
+}
+
+.ai-analyze-hint {
+  font-size: 0.8rem;
+  color: var(--guitar-muted);
+}
+
+.btn-ai-generate {
+  background: var(--guitar-accent);
+  color: white;
+  border: none;
+  padding: 0.55rem 1.4rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  align-self: flex-start;
+}
+
+.btn-ai-generate:hover:not(:disabled) {
+  background: var(--guitar-accent-light);
+}
+
+.btn-ai-generate:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ─── Song Editor ──────────────────────────────────────────────────────────── */
+
 .song-editor {
   background: var(--guitar-surface);
   border: 1px solid var(--guitar-border);

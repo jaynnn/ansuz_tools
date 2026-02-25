@@ -17,6 +17,7 @@ import friendMatchRoutes from './routes/friendMatch';
 import announcementRoutes from './routes/announcements';
 import messageRoutes from './routes/messages';
 import goalTaskRoutes from './routes/goalTask';
+import guitarPracticeRoutes from './routes/guitarPractice';
 
 // Load environment variables
 dotenv.config();
@@ -81,6 +82,7 @@ app.use('/api/friend-match', friendMatchRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/goal-task', goalTaskRoutes);
+app.use('/api/guitar-practice', guitarPracticeRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
