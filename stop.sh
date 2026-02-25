@@ -14,7 +14,12 @@ fi
 PID=$(cat ansuz.pid)
 if ps -p "$PID" > /dev/null 2>&1; then
     echo "正在停止 Ansuz Tools (PID: $PID)..."
+    CHILD_PIDS=$(ps --ppid "$PID" -o pid= 2>/dev/null)
     kill $PID
+    if [ -n "$CHILD_PIDS" ]; then
+        sleep 0.5
+        kill $CHILD_PIDS 2>/dev/null || true
+    fi
     rm ansuz.pid
     echo "Ansuz Tools 已停止"
 else
