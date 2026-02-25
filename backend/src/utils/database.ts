@@ -217,6 +217,28 @@ const migrateGoalTaskGoalsTable = async () => {
   }
 };
 
+// Migration function to add completion_rating column to goal_task_trainings table
+const migrateGoalTaskTrainingsTable = async () => {
+  try {
+    const tableInfo: any = await dbGet(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='goal_task_trainings'"
+    );
+    if (!tableInfo) return;
+
+    const columns: any[] = await dbAll("PRAGMA table_info(goal_task_trainings)");
+    const columnNames = columns.map((col: any) => col.name);
+
+    if (!columnNames.includes('completion_rating')) {
+      logInfo('goal_task_trainings_migration_start', { reason: 'add_completion_rating_column' });
+      await dbRun('ALTER TABLE goal_task_trainings ADD COLUMN completion_rating INTEGER');
+      logInfo('goal_task_trainings_migration_success', { reason: 'added_completion_rating_column' });
+    }
+  } catch (error) {
+    logError('goal_task_trainings_migration_error', error as Error);
+    throw error;
+  }
+};
+
 export const initDatabase = async () => {
   try {
     logInfo('database_init_start', { dbPath });
@@ -432,6 +454,7 @@ export const initDatabase = async () => {
         session_id INTEGER NOT NULL,
         description TEXT NOT NULL,
         is_completed INTEGER NOT NULL DEFAULT 0,
+        completion_rating INTEGER,
         FOREIGN KEY (session_id) REFERENCES goal_task_sessions(id) ON DELETE CASCADE
       )
     `);
@@ -469,6 +492,7 @@ export const initDatabase = async () => {
     await migrateUserImpressionsTable();
     await migrateAnnouncementsTable();
     await migrateGoalTaskGoalsTable();
+    await migrateGoalTaskTrainingsTable();
 
     console.log('Database initialized successfully');
     logInfo('database_init_success', { dbPath });

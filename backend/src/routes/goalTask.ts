@@ -13,6 +13,17 @@ const router = Router();
 // GET /api/goal-task/goals  –  list all goals for the current user
 router.get('/goals', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
+    // Reset 'done' goals to 'not_started' if their session was not completed today
+    await dbRun(
+      `UPDATE goal_task_goals SET status = 'not_started'
+       WHERE user_id = ? AND status = 'done'
+         AND id NOT IN (
+           SELECT DISTINCT goal_id FROM goal_task_sessions
+           WHERE DATE(completed_at) = DATE('now', 'localtime')
+         )`,
+      [req.userId]
+    );
+
     const goals = await dbAll(
       `SELECT * FROM goal_task_goals WHERE user_id = ? ORDER BY
         CASE status
@@ -173,18 +184,26 @@ router.post('/goals/:goalId/sessions', authMiddleware, async (req: AuthRequest, 
 
     // Fetch previous sessions for history context
     const prevSessions = await dbAll(
-      `SELECT s.created_at, s.available_minutes, s.is_complete, s.session_target, s.trainings
+      `SELECT s.created_at, s.available_minutes, s.is_complete, s.session_target, s.trainings, s.id
        FROM goal_task_sessions s
        WHERE s.goal_id = ? AND s.is_complete = 1
        ORDER BY s.created_at DESC LIMIT 5`,
       [goal.id]
     );
 
-    const historyText = prevSessions.map((s: any) => {
+    const historyText = (await Promise.all(prevSessions.map(async (s: any) => {
       const dateStr = new Date(s.created_at).toLocaleDateString('zh-CN');
       const status = s.is_complete ? '已完成' : '未完成';
-      return `${dateStr} 训练${s.available_minutes}分钟 ${status}${s.session_target ? ' 目标："' + s.session_target + '"' : ''}`;
-    }).join('；');
+      // Fetch training ratings for this session
+      const trainingsWithRating = await dbAll(
+        'SELECT description, completion_rating FROM goal_task_trainings WHERE session_id = ? AND completion_rating IS NOT NULL',
+        [s.id]
+      );
+      const ratingNote = trainingsWithRating.length > 0
+        ? ' 完成度：[' + trainingsWithRating.map((t: any) => `${t.description}:${t.completion_rating}/6`).join('，') + ']'
+        : '';
+      return `${dateStr} 训练${s.available_minutes}分钟 ${status}${s.session_target ? ' 目标："' + s.session_target + '"' : ''}${ratingNote}`;
+    }))).join('；');
 
     const now = new Date();
     const startDate = now.toLocaleDateString('zh-CN');
@@ -290,9 +309,16 @@ router.put('/trainings/:id/complete', authMiddleware, async (req: AuthRequest, r
     if (!training) return res.status(404).json({ error: 'Training not found' });
 
     const newCompleted = training.is_completed ? 0 : 1;
+    const { completion_rating } = req.body as { completion_rating?: number };
+
+    // Validate completion_rating (1-6) when provided and marking as complete
+    const safeRating = newCompleted && completion_rating && Number.isInteger(completion_rating) && completion_rating >= 1 && completion_rating <= 6
+      ? completion_rating
+      : null;
+
     await dbRun(
-      'UPDATE goal_task_trainings SET is_completed = ? WHERE id = ?',
-      [newCompleted, req.params.id]
+      'UPDATE goal_task_trainings SET is_completed = ?, completion_rating = COALESCE(?, completion_rating) WHERE id = ?',
+      [newCompleted, safeRating, req.params.id]
     );
 
     // Check if all trainings in the session are now complete

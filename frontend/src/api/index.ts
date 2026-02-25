@@ -316,8 +316,8 @@ export const goalTaskAPI = {
     return response.data;
   },
 
-  toggleTrainingComplete: async (trainingId: number) => {
-    const response = await api.put(`/goal-task/trainings/${trainingId}/complete`);
+  toggleTrainingComplete: async (trainingId: number, completion_rating?: number) => {
+    const response = await api.put(`/goal-task/trainings/${trainingId}/complete`, { completion_rating });
     return response.data;
   },
 

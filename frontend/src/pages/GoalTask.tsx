@@ -119,6 +119,19 @@ const buildPracticeGeneratePrompt = (
   const ageNote = age ? `，学习者年龄约${age}岁` : '';
   const levelNote = currentLevel ? `当前水平：${currentLevel}` : '水平未知';
   const context = `目标：${goalText}，${levelNote}${ageNote}`;
+
+  // Determine text length limit based on age
+  const ageLengthNote = age && age <= 6
+    ? '【重要】学习者年龄极小（≤6岁），题目文字量必须极少，总字数不超过20字，用最简单的词汇和最短的句子，不需要任何格式标题。'
+    : age && age <= 10
+    ? '【重要】学习者年龄较小（≤10岁），题目必须简短，总字数不超过60字，用简单词汇，避免复杂格式。'
+    : age && age <= 14
+    ? '【重要】题目应简洁，总字数控制在150字以内。'
+    : '题目内容应简洁，避免冗长。';
+
+  // Common instruction: never give the answer in the problem
+  const noAnswerNote = '【严禁】题目中绝对不能包含答案或完整的解题过程，题目仅供学习者作答，答案由学习者自行完成后提交批改。';
+
   const instructions: Record<string, string> = {
     coding: `请根据学习者的实际情况（${context}），为训练任务「${description}」生成一道**难度适合该水平**的编程练习题，用 Markdown 格式输出，结构如下：
 
@@ -134,7 +147,7 @@ const buildPracticeGeneratePrompt = (
 ## 提示
 （可选，给出思路提示，避免直接给出答案）
 
-要求：题目难度匹配学习者水平，代码示例用 \`\`\` 代码块包裹，语言清晰无歧义。`,
+要求：题目难度匹配学习者水平，代码示例用 \`\`\` 代码块包裹，语言清晰无歧义。${ageLengthNote} ${noAnswerNote}`,
 
     sql: `请根据学习者的实际情况（${context}），为训练任务「${description}」生成一道**难度适合该水平**的 SQL 练习题，用 Markdown 格式输出，结构如下：
 
@@ -150,9 +163,9 @@ const buildPracticeGeneratePrompt = (
 ## 期望结果
 （说明期望查询结果的格式）
 
-要求：难度匹配学习者水平，内容简洁友好。`,
+要求：难度匹配学习者水平，内容简洁友好。${ageLengthNote} ${noAnswerNote}`,
 
-    writing: `请根据学习者的实际情况（${context}），为训练任务「${description}」给出一个**难度适合该水平**的写作练习，用 Markdown 格式输出，包含写作主题、具体要求（100~300字）及写作提示，语言亲切鼓励。`,
+    writing: `请根据学习者的实际情况（${context}），为训练任务「${description}」给出一个**难度适合该水平**的写作练习，用 Markdown 格式输出，包含写作主题和具体要求，语言亲切鼓励。${ageLengthNote} ${noAnswerNote}`,
 
     math: `请根据学习者的实际情况（${context}），为训练任务「${description}」出一道**难度适合该水平**的数学题，用 Markdown 格式输出，结构如下：
 
@@ -168,27 +181,27 @@ const buildPracticeGeneratePrompt = (
 ## 提示
 （可选，思路提示但不给出答案）
 
-要求：题目难度匹配学习者水平，表述清晰无歧义，步骤要求合理。`,
+要求：题目难度匹配学习者水平，表述清晰无歧义，步骤要求合理。${ageLengthNote} ${noAnswerNote}`,
 
-    translation: `请根据学习者的实际情况（${context}），为训练任务「${description}」提供3~5句**难度适合该水平**的待翻译文本，注明翻译方向（中译英或英译中），用 Markdown 格式输出。`,
+    translation: `请根据学习者的实际情况（${context}），为训练任务「${description}」提供3~5句**难度适合该水平**的待翻译文本，注明翻译方向（中译英或英译中），用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
 
-    grammar: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计5道**难度适合该水平**的英语语法练习（填空或改错），每题标注考查点，用 Markdown 格式输出。`,
+    grammar: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计5道**难度适合该水平**的英语语法练习（填空或改错），每题标注考查点，用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
 
-    vocabulary: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计5道**难度适合该水平**的词汇题：给出释义或例句，让学习者写出对应单词，用 Markdown 格式输出。`,
+    vocabulary: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计5道**难度适合该水平**的词汇题：给出释义或例句，让学习者写出对应单词，用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
 
-    logic: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一道**难度适合该水平**的逻辑推理题，包含完整题干和必要条件，表达清晰易懂，用 Markdown 格式输出。`,
+    logic: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一道**难度适合该水平**的逻辑推理题，包含完整题干和必要条件，表达清晰易懂，用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
 
-    reading: `请根据学习者的实际情况（${context}），为训练任务「${description}」提供一篇**难度适合该水平**的80~120字短文，并提出2~3道理解题，用 Markdown 格式输出。`,
+    reading: `请根据学习者的实际情况（${context}），为训练任务「${description}」提供一篇**难度适合该水平**的短文（字数依据学习者年龄和水平决定），并提出2~3道理解题，用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
 
-    speaking: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一个**难度适合该水平**的情景练习：描述场景，给出对话开头，要求续写50~100字，用 Markdown 格式输出。`,
+    speaking: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一个**难度适合该水平**的情景练习：描述场景，给出对话开头，要求续写，用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
 
-    music: `请根据学习者的实际情况（${context}），为训练任务「${description}」出一道**难度适合该水平**的乐理题（识谱、节奏、和弦或音阶），配合文字说明，用 Markdown 格式输出。`,
+    music: `请根据学习者的实际情况（${context}），为训练任务「${description}」出一道**难度适合该水平**的乐理题（识谱、节奏、和弦或音阶），配合文字说明，用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
 
-    data: `请根据学习者的实际情况（${context}），为训练任务「${description}」给出一个**难度适合该水平**的数据分析练习：描述数据场景，提出2道分析问题，用 Markdown 格式输出。`,
+    data: `请根据学习者的实际情况（${context}），为训练任务「${description}」给出一个**难度适合该水平**的数据分析练习：描述数据场景，提出2道分析问题，用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
 
-    quiz: `请根据学习者的实际情况（${context}），为训练任务「${description}」出3道**难度适合该水平**的单选题，每题4个选项，覆盖核心知识点，语言表述清晰，用 Markdown 格式输出。`,
+    quiz: `请根据学习者的实际情况（${context}），为训练任务「${description}」出3道**难度适合该水平**的单选题，每题4个选项，覆盖核心知识点，语言表述清晰，用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
 
-    general: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一道**难度适合该水平**的综合练习题，用于检验学习成效，措辞友好，步骤清晰，用 Markdown 格式输出。`,
+    general: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一道**难度适合该水平**的综合练习题，用于检验学习成效，措辞友好，步骤清晰，用 Markdown 格式输出。${ageLengthNote} ${noAnswerNote}`,
   };
   return instructions[type] || instructions.general;
 };
@@ -336,7 +349,7 @@ const GoalItem: React.FC<GoalItemProps> = ({ goal, onDelete, onHistory, onClick 
         <div className="goal-item-content">
           <span className="goal-text">{goal.target_text}</span>
           {goal.status === 'done' && (
-            <div className="done-badge">DONE</div>
+            <div className="done-badge" title="今日已完成，可继续创建任务">今日已完成</div>
           )}
         </div>
       </div>
@@ -386,6 +399,9 @@ const GoalTask: React.FC = () => {
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [trainingItems, setTrainingItems] = useState<TrainingItem[]>([]);
   const [showCongrats, setShowCongrats] = useState(false);
+
+  // Completion rating modal
+  const [ratingItem, setRatingItem] = useState<TrainingItem | null>(null);
 
   // History
   const [historyGoal, setHistoryGoal] = useState<Goal | null>(null);
@@ -450,7 +466,7 @@ const GoalTask: React.FC = () => {
       } catch (err) {
         console.error(err);
       }
-    } else if (goal.status === 'not_started') {
+    } else if (goal.status === 'not_started' || goal.status === 'done') {
       // Check if another goal is in progress
       const inProgressGoal = goals.find(g => g.status === 'in_progress');
       if (inProgressGoal && inProgressGoal.id !== goal.id) {
@@ -598,8 +614,28 @@ const GoalTask: React.FC = () => {
   // ── Training completion ────────────────────────────────────────────────────
 
   const handleToggleTraining = async (item: TrainingItem) => {
+    // If marking as complete (currently incomplete), show rating modal first
+    if (!item.is_completed) {
+      setRatingItem(item);
+      return;
+    }
+    // If unchecking, just toggle directly without rating
     try {
       const result = await goalTaskAPI.toggleTrainingComplete(item.id);
+      setTrainingItems(prev =>
+        prev.map(t => t.id === item.id ? { ...t, is_completed: result.is_completed } : t)
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSubmitRating = async (rating: number) => {
+    const item = ratingItem;
+    setRatingItem(null);
+    if (!item) return;
+    try {
+      const result = await goalTaskAPI.toggleTrainingComplete(item.id, rating);
       setTrainingItems(prev =>
         prev.map(t => t.id === item.id ? { ...t, is_completed: result.is_completed } : t)
       );
@@ -949,6 +985,34 @@ const GoalTask: React.FC = () => {
               <button className="gt-confirm-btn" onClick={() => { setShowCongrats(false); setViewMode('main'); fetchGoals(); }}>
                 太棒了！
               </button>
+            </div>
+          </div>
+        )}
+        {ratingItem && (
+          <div className="gt-overlay">
+            <div className="gt-rating-card">
+              <div className="gt-rating-title">完成情况如何？</div>
+              <div className="gt-rating-desc">{ratingItem.description}</div>
+              <div className="gt-rating-options">
+                {[
+                  { value: 1, label: '完全未掌握', desc: '几乎没完成' },
+                  { value: 2, label: '勉强完成', desc: '很吃力，错误较多' },
+                  { value: 3, label: '基本完成', desc: '完成但不够熟练' },
+                  { value: 4, label: '较好完成', desc: '完成且较为熟练' },
+                  { value: 5, label: '完成良好', desc: '完成顺畅，少有失误' },
+                  { value: 6, label: '完美完成', desc: '轻松完成，超出预期' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    className="gt-rating-option"
+                    onClick={() => handleSubmitRating(opt.value)}
+                  >
+                    <span className="gt-rating-option-label">{opt.label}</span>
+                    <span className="gt-rating-option-desc">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+              <button className="gt-rating-skip" onClick={() => handleSubmitRating(0)}>跳过评级</button>
             </div>
           </div>
         )}

@@ -192,15 +192,16 @@
   top: 50%;
   right: 0;
   transform: translateY(-50%) rotate(-8deg);
-  background: #ff3b30;
+  background: #ff9500;
   color: #fff;
-  font-size: 14px;
-  font-weight: 900;
-  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
   border-radius: 6px;
-  letter-spacing: 2px;
-  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.4);
+  letter-spacing: 1px;
+  box-shadow: 0 2px 8px rgba(255, 149, 0, 0.4);
   pointer-events: none;
+  white-space: nowrap;
 }
 
 /* Goal status tints */
@@ -1057,6 +1058,92 @@
   font-weight: 700;
   color: var(--text-primary, #1c1c1e);
   text-align: center;
+}
+
+/* ─── Rating modal ────────────────────────────────────────────────────────── */
+
+.gt-rating-card {
+  background: #fff;
+  border-radius: 22px;
+  padding: 24px 20px 20px;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: bounce-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.gt-rating-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary, #1c1c1e);
+}
+
+.gt-rating-desc {
+  font-size: 13px;
+  color: var(--text-secondary, #8e8e93);
+  text-align: center;
+  max-width: 300px;
+  line-height: 1.4;
+}
+
+.gt-rating-options {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gt-rating-option {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f2f2f7;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  text-align: left;
+}
+
+.gt-rating-option:hover {
+  background: #e5e5ea;
+  transform: scale(1.01);
+}
+
+.gt-rating-option:active {
+  transform: scale(0.98);
+}
+
+.gt-rating-option-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #1c1c1e);
+}
+
+.gt-rating-option-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #8e8e93);
+}
+
+.gt-rating-skip {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #8e8e93);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+.gt-rating-skip:hover {
+  background: #f2f2f7;
 }
 
 /* ─── History view ────────────────────────────────────────────────────────── */
