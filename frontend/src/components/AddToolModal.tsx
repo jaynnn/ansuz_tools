@@ -6,6 +6,7 @@ interface AddToolModalProps {
   onClose: () => void;
   onAdd: (tool: Omit<Tool, 'id' | 'user_id' | 'created_at'>) => void;
   existingTools?: Tool[];
+  highlightToolName?: string;
 }
 
 // Predefined tools that users can quickly add
@@ -48,7 +49,7 @@ const PREDEFINED_TOOLS = [
   },
 ];
 
-const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [] }) => {
+const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [], highlightToolName }) => {
   // Filter out predefined tools that the user has already added
   const availablePredefinedTools = PREDEFINED_TOOLS.filter(
     (pt) => !existingTools.some((et) => et.name === pt.name && et.url === pt.url)
@@ -77,7 +78,7 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingToo
               {availablePredefinedTools.map((tool, index) => (
                 <div
                   key={index}
-                  className="predefined-tool-item"
+                  className={`predefined-tool-item${highlightToolName === tool.name ? ' predefined-tool-highlight' : ''}`}
                   onClick={() => handleSelectPredefined(tool)}
                 >
                   <h4>{tool.name}</h4>
