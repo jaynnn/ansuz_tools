@@ -125,7 +125,14 @@ const Dashboard: React.FC = () => {
     setMessageContent('');
 
     const allToolsContext = PREDEFINED_TOOLS.map(t => `- ${t.name}: ${t.description}`).join('\n');
-    const prompt = `用户想解决的问题：${query}\n\n工具箱中现有的工具列表：\n${allToolsContext}\n\n请判断哪个工具最能解决用户的问题。只能返回JSON格式，不要有任何其他文字。格式如下：\n{"found": true, "toolName": "工具名称"} 或 {"found": false}`;
+    const toolNames = PREDEFINED_TOOLS.map(t => `"${t.name}"`).join('、');
+    const prompt = `用户想解决的问题：${query}\n\n工具箱中现有的工具列表：\n${allToolsContext}\n\n可选工具名称（toolName必须从以下名称中原样选择）：${toolNames}\n\n请判断哪个工具最能解决用户的问题。只能返回JSON格式，不要有任何其他文字。格式如下：\n{"found": true, "toolName": "工具名称"} 或 {"found": false}`;
+
+    // Fuzzy match: exact first, then partial (handles LLM returning slightly different name)
+    const findToolFuzzy = <T extends { name: string }>(list: T[], name: string): T | undefined => {
+      const trimmed = name.trim();
+      return list.find(t => t.name === trimmed) ?? list.find(t => trimmed.includes(t.name) || t.name.includes(trimmed));
+    };
 
     try {
       const result = await llmAPI.chat([{ role: 'user', content: prompt }]);
@@ -141,13 +148,13 @@ const Dashboard: React.FC = () => {
       if (parsed.found && parsed.toolName) {
         const toolName = parsed.toolName;
         // Check if it's in user's added tools
-        const addedMatch = tools.find(t => t.name === toolName);
+        const addedMatch = findToolFuzzy(tools, toolName);
         if (addedMatch) {
           setFilteredTools([addedMatch]);
           setSearchState({ status: 'found_added' });
         } else {
           // Check if it's in predefined tools
-          const predefMatch = PREDEFINED_TOOLS.find(t => t.name === toolName);
+          const predefMatch = findToolFuzzy(PREDEFINED_TOOLS, toolName);
           if (predefMatch) {
             setSearchState({ status: 'found_not_added', matchedTool: predefMatch });
           } else {
