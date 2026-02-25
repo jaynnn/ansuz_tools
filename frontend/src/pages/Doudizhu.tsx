@@ -738,7 +738,16 @@ const Doudizhu: React.FC = () => {
   const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [matchCount, setMatchCount] = useState(1);
   const [matchMode, setMatchMode] = useState<'ai' | 'player' | null>(null);
+  const matchModeRef = useRef<'ai' | 'player' | null>(null);
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+
+  // Multiplayer WebSocket state
+  const wsRef = useRef<WebSocket | null>(null);
+  const myServerIndexRef = useRef<0 | 1 | 2>(0);
+  const [myServerIndex, setMyServerIndex] = useState<0 | 1 | 2>(0);
+  const multiPlayerNamesRef = useRef<string[]>([]);
+  const [multiPlayerNames, setMultiPlayerNames] = useState<string[]>([]);
+  const handleServerMsgRef = useRef<(msg: Record<string, unknown>) => void>(() => {});
 
   // Helper to update game state (both ref and render state)
   const updateGame = useCallback((updates: Partial<GameState>) => {
@@ -773,16 +782,297 @@ const Doudizhu: React.FC = () => {
     setSelectedCards(new Set());
   }, [updateGame]);
 
-  // ============ Matching Phase ============
+  // ============ Matching Phase (AI mode only – player mode uses WebSocket) ============
+  // The old fake-countdown useEffect is removed; AI mode calls startGame() directly.
+
+  // ============ WebSocket (player mode) ============
+  const connectToServer = useCallback(() => {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const host = import.meta.env.DEV ? 'localhost:4000' : window.location.host;
+    const ws = new WebSocket(`${proto}://${host}/ws`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        ws.close();
+        updateGame({ phase: 'selecting' });
+        return;
+      }
+      ws.send(JSON.stringify({ type: 'ddz:auth', token }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        handleServerMsgRef.current(JSON.parse(event.data));
+      } catch { /* ignore parse errors */ }
+    };
+
+    ws.onclose = () => {
+      wsRef.current = null;
+      const phase = gs.current.phase;
+      if (phase === 'matching') {
+        updateGame({ phase: 'selecting' });
+      } else if (phase !== 'selecting' && phase !== 'gameOver') {
+        updateGame({ phase: 'gameOver', gameResult: '连接已断开', message: '连接已断开' });
+      }
+    };
+
+    ws.onerror = () => { /* handled by onclose */ };
+  }, [updateGame]);
+
+  // Cleanup WebSocket on unmount
   useEffect(() => {
-    if (gameState.phase !== 'matching' || matchMode !== 'player') return;
-    const timers = [
-      setTimeout(() => setMatchCount(2), 1200),
-      setTimeout(() => setMatchCount(3), 2800),
-      setTimeout(() => startGame(), 3800),
-    ];
-    return () => timers.forEach(clearTimeout);
-  }, [gameState.phase, matchMode, startGame]);
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, []);
+
+  // Helper: make fake placeholder cards for opponents (only length matters for card-back display)
+  const makeFakeHand = (count: number, prefix: string): Card[] =>
+    Array.from({ length: count }, (_, i) => ({ suit: '?', rank: '?', value: 0, id: `${prefix}${i}` }));
+
+  // Convert server seat index → local display index (0=me, 1=left, 2=right)
+  const serverToLocal = (serverIdx: number): PlayerIndex =>
+    (((serverIdx - myServerIndexRef.current) + 3) % 3) as PlayerIndex;
+
+  // ============ Server Message Handler ============
+  const handleServerMsg = useCallback((msg: Record<string, unknown>) => {
+    const type = msg.type as string;
+
+    if (type === 'ddz:auth_ok') {
+      wsRef.current?.send(JSON.stringify({ type: 'ddz:join' }));
+      setMatchCount(1);
+      updateGame({ phase: 'matching' });
+      return;
+    }
+
+    if (type === 'ddz:waiting') {
+      setMatchCount(msg.total as number);
+      return;
+    }
+
+    if (type === 'ddz:game_start') {
+      const { myCards, landlordCards, myIndex, playerNames, firstBidder, handSizes } = msg as {
+        myCards: Card[]; landlordCards: Card[]; myIndex: 0|1|2;
+        playerNames: string[]; firstBidder: number; handSizes: number[];
+      };
+      myServerIndexRef.current = myIndex;
+      setMyServerIndex(myIndex);
+      multiPlayerNamesRef.current = playerNames;
+      setMultiPlayerNames(playerNames);
+
+      const leftServer = (myIndex + 1) % 3;
+      const rightServer = (myIndex + 2) % 3;
+      const localFirstBidder = serverToLocal(firstBidder);
+
+      updateGame({
+        phase: 'bidding',
+        hands: [sortCards(myCards), makeFakeHand(handSizes[leftServer], 'L'), makeFakeHand(handSizes[rightServer], 'R')],
+        landlordCards: sortCards(landlordCards),
+        landlordIndex: null,
+        currentBidder: localFirstBidder,
+        highestBid: 0,
+        highestBidder: null,
+        bidCount: 0,
+        message: localFirstBidder === 0 ? '请选择是否叫地主' : `等待 ${playerNames[firstBidder]} 叫地主...`,
+        playedCardsDisplay: [],
+        bombMultiplier: 1,
+        lastPlay: null,
+        passCount: 0,
+        gameResult: '',
+      });
+      setSelectedCards(new Set());
+      return;
+    }
+
+    if (type === 'ddz:bid_update') {
+      const { playerIndex, displayText, highestBid, done, nextBidder } = msg as {
+        playerIndex: number; displayText: string; highestBid: number;
+        done: boolean; nextBidder: number;
+      };
+      const localPlayer = serverToLocal(playerIndex);
+      const displayEntry = { playerIndex: localPlayer, cards: [] as Card[], text: displayText };
+
+      if (done) {
+        updateGame({
+          currentBidder: 1, // hide bid buttons
+          playedCardsDisplay: [displayEntry],
+          message: highestBid > 0 ? '地主已确定，准备开始...' : '无人叫地主，重新发牌...',
+        });
+        return;
+      }
+
+      const localNext = serverToLocal(nextBidder);
+      const names = multiPlayerNamesRef.current;
+      updateGame({
+        currentBidder: localNext,
+        highestBid,
+        playedCardsDisplay: [displayEntry],
+        message: localNext === 0
+          ? '请选择是否叫地主'
+          : `${names[nextBidder] || `玩家${nextBidder}`} 正在思考...`,
+      });
+      return;
+    }
+
+    if (type === 'ddz:bid_finalized') {
+      const { landlordIndex, handSizes, myCards } = msg as {
+        landlordIndex: number; landlordCards: Card[]; handSizes: number[]; myCards?: Card[];
+      };
+      const myIdx = myServerIndexRef.current;
+      const localLandlord = serverToLocal(landlordIndex);
+      const leftServer = (myIdx + 1) % 3;
+      const rightServer = (myIdx + 2) % 3;
+      const myNewCards = myCards ? sortCards(myCards) : gs.current.hands[0];
+      const names = multiPlayerNamesRef.current;
+
+      updateGame({
+        phase: 'playing',
+        hands: [myNewCards, makeFakeHand(handSizes[leftServer], 'L'), makeFakeHand(handSizes[rightServer], 'R')],
+        landlordIndex: localLandlord,
+        currentPlayer: localLandlord,
+        lastPlay: null,
+        passCount: 0,
+        playedCardsDisplay: [],
+        message: localLandlord === 0
+          ? '你是地主！请出牌'
+          : `${names[landlordIndex] || `玩家${landlordIndex}`} 是地主，正在出牌...`,
+      });
+      return;
+    }
+
+    if (type === 'ddz:play_update') {
+      const { playerIndex, cards, handType, handSize, nextPlayer, bombMultiplier } = msg as {
+        playerIndex: number; cards: Card[]; handType: string;
+        handSize: number; nextPlayer: number; bombMultiplier: number;
+      };
+      const localPlayer = serverToLocal(playerIndex);
+      const localNext = serverToLocal(nextPlayer);
+      const newHands = [...gs.current.hands] as Card[][];
+
+      if (localPlayer === 0) {
+        const playedIds = new Set(cards.map(c => c.id));
+        newHands[0] = gs.current.hands[0].filter(c => !playedIds.has(c.id));
+      } else if (localPlayer === 1) {
+        newHands[1] = makeFakeHand(handSize, 'L');
+      } else {
+        newHands[2] = makeFakeHand(handSize, 'R');
+      }
+
+      const names = multiPlayerNamesRef.current;
+      updateGame({
+        hands: newHands,
+        lastPlay: { cards, playerIndex: localPlayer, type: handType as HandType },
+        passCount: 0,
+        bombMultiplier,
+        currentPlayer: localNext,
+        message: localNext === 0
+          ? '轮到你出牌'
+          : `轮到 ${names[nextPlayer] || `玩家${nextPlayer}`} 出牌`,
+        playedCardsDisplay: [{ playerIndex: localPlayer, cards, text: HAND_TYPE_NAMES[handType] || '' }],
+      });
+      setSelectedCards(new Set());
+      return;
+    }
+
+    if (type === 'ddz:pass_update') {
+      const { playerIndex, nextPlayer, isNewRound, passCount } = msg as {
+        playerIndex: number; nextPlayer: number; isNewRound: boolean; passCount: number;
+      };
+      const localPlayer = serverToLocal(playerIndex);
+      const localNext = serverToLocal(nextPlayer);
+      const names = multiPlayerNamesRef.current;
+      const nextName = localNext === 0 ? '你' : (names[nextPlayer] || `玩家${nextPlayer}`);
+
+      updateGame({
+        passCount,
+        lastPlay: isNewRound ? null : gs.current.lastPlay,
+        currentPlayer: localNext,
+        message: isNewRound
+          ? (localNext === 0 ? '轮到你出牌（新一轮）' : `轮到 ${nextName} 出牌（新一轮）`)
+          : (localNext === 0 ? '轮到你出牌' : `轮到 ${nextName} 出牌`),
+        playedCardsDisplay: [{ playerIndex: localPlayer, cards: [], text: '不出' }],
+      });
+      return;
+    }
+
+    if (type === 'ddz:game_over') {
+      const { winnerIndex, landlordIndex, isLandlordWin, lastCards, lastHandType } = msg as {
+        winnerIndex: number; landlordIndex: number; isLandlordWin: boolean;
+        lastCards: Card[]; lastHandType: string;
+      };
+      const localWinner = serverToLocal(winnerIndex);
+      const localLandlord = serverToLocal(landlordIndex);
+      const names = multiPlayerNamesRef.current;
+      const winnerName = localWinner === 0 ? '你' : (names[winnerIndex] || `玩家${winnerIndex}`);
+
+      let result: string;
+      if (isLandlordWin) {
+        result = localLandlord === 0
+          ? '🎉 恭喜！你（地主）赢了！'
+          : `${winnerName}（地主）赢了！你输了...`;
+      } else {
+        result = localLandlord !== 0
+          ? '🎉 恭喜！农民赢了！'
+          : `农民赢了！你（地主）输了...`;
+      }
+
+      updateGame({
+        phase: 'gameOver',
+        gameResult: result,
+        message: result,
+        playedCardsDisplay: lastCards?.length > 0
+          ? [{ playerIndex: localWinner, cards: lastCards, text: HAND_TYPE_NAMES[lastHandType] || '' }]
+          : gs.current.playedCardsDisplay,
+      });
+      return;
+    }
+
+    if (type === 'ddz:redeal') {
+      const { myCards, landlordCards, handSizes } = msg as {
+        myCards: Card[]; landlordCards: Card[]; handSizes: number[];
+      };
+      const myIdx = myServerIndexRef.current;
+      const leftServer = (myIdx + 1) % 3;
+      const rightServer = (myIdx + 2) % 3;
+
+      updateGame({
+        phase: 'bidding',
+        hands: [sortCards(myCards), makeFakeHand(handSizes[leftServer], 'L'), makeFakeHand(handSizes[rightServer], 'R')],
+        landlordCards: sortCards(landlordCards),
+        landlordIndex: null,
+        currentBidder: 0,
+        highestBid: 0,
+        highestBidder: null,
+        bidCount: 0,
+        message: '无人叫地主，重新发牌...',
+        playedCardsDisplay: [],
+        bombMultiplier: 1,
+        lastPlay: null,
+        passCount: 0,
+        gameResult: '',
+      });
+      setSelectedCards(new Set());
+      return;
+    }
+
+    if (type === 'ddz:player_left') {
+      updateGame({ phase: 'gameOver', gameResult: '对手已断线，游戏结束', message: '对手已断线' });
+      return;
+    }
+
+    if (type === 'ddz:error') {
+      updateGame({ message: msg.message as string });
+    }
+  }, [updateGame]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep handleServerMsg ref in sync
+  useEffect(() => { handleServerMsgRef.current = handleServerMsg; }, [handleServerMsg]);
 
   // Use a ref for AI play to break circular callback dependencies
   const doAiPlayRef = useRef<(playerIdx: PlayerIndex) => void>(() => {});
@@ -959,9 +1249,16 @@ const Doudizhu: React.FC = () => {
   }, [gameState.phase]);
 
   const handleBid = useCallback((bid: boolean) => {
+    if (matchModeRef.current === 'player') {
+      if (gs.current.phase !== 'bidding' || gs.current.currentBidder !== 0) return;
+      // Optimistically hide bid buttons to prevent double-send
+      updateGame({ currentBidder: 1 });
+      wsRef.current?.send(JSON.stringify({ type: 'ddz:bid', bid }));
+      return;
+    }
     if (gs.current.phase !== 'bidding' || gs.current.currentBidder !== 0) return;
     processBid(0, bid);
-  }, [processBid]);
+  }, [processBid, updateGame]);
 
   const toggleCardSelection = useCallback((cardId: string) => {
     if (gs.current.phase !== 'playing' || gs.current.currentPlayer !== 0) return;
@@ -995,6 +1292,13 @@ const Doudizhu: React.FC = () => {
       }
     }
 
+    if (matchModeRef.current === 'player') {
+      // Optimistically hide play buttons
+      updateGame({ currentPlayer: 1 });
+      wsRef.current?.send(JSON.stringify({ type: 'ddz:play', cardIds: selected.map(c => c.id) }));
+      return;
+    }
+
     doExecutePlay(0, selected, handInfo);
   }, [selectedCards, updateGame, doExecutePlay]);
 
@@ -1006,6 +1310,13 @@ const Doudizhu: React.FC = () => {
       updateGame({ message: '你必须出牌（新一轮）！' });
       return;
     }
+
+    if (matchModeRef.current === 'player') {
+      updateGame({ currentPlayer: 1 }); // optimistically hide pass button
+      wsRef.current?.send(JSON.stringify({ type: 'ddz:pass' }));
+      return;
+    }
+
     doExecutePass(0);
   }, [updateGame, doExecutePass]);
 
@@ -1030,14 +1341,48 @@ const Doudizhu: React.FC = () => {
   // ============ New Game ============
   const handleNewGame = useCallback(() => {
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    // Close WebSocket if in player mode
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    matchModeRef.current = null;
+    setMatchMode(null);
     Object.assign(gs.current, { ...initialGameState });
     setGameState({ ...initialGameState });
     setMatchCount(1);
     setSelectedCards(new Set());
+    setMyServerIndex(0);
+    setMultiPlayerNames([]);
+    myServerIndexRef.current = 0;
+    multiPlayerNamesRef.current = [];
   }, []);
 
   // ============ Render ============
   const g = gameState;
+
+  // Helper: get display name for local seat (0=me, 1=left, 2=right)
+  const getPlayerName = (localIdx: number): string => {
+    if (matchMode === 'player' && multiPlayerNames.length > 0) {
+      if (localIdx === 0) return '你';
+      return multiPlayerNames[(myServerIndex + localIdx) % 3] || PLAYER_NAMES[localIdx];
+    }
+    return PLAYER_NAMES[localIdx];
+  };
+
+  const cancelMatching = () => {
+    wsRef.current?.send(JSON.stringify({ type: 'ddz:leave' }));
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    matchModeRef.current = null;
+    setMatchMode(null);
+    setMatchCount(1);
+    updateGame({ phase: 'selecting' });
+  };
 
   const renderCard = (card: Card, selectable: boolean = false, isSelected: boolean = false) => {
     const display = getCardDisplay(card);
@@ -1086,9 +1431,9 @@ const Doudizhu: React.FC = () => {
               <button
                 className="ddz-mode-btn ddz-mode-btn-player"
                 onClick={() => {
+                  matchModeRef.current = 'player';
                   setMatchMode('player');
-                  setMatchCount(1);
-                  updateGame({ phase: 'matching' });
+                  connectToServer();
                 }}
               >
                 👥 匹配玩家
@@ -1096,6 +1441,7 @@ const Doudizhu: React.FC = () => {
               <button
                 className="ddz-mode-btn ddz-mode-btn-ai"
                 onClick={() => {
+                  matchModeRef.current = 'ai';
                   setMatchMode('ai');
                   startGame();
                 }}
@@ -1114,7 +1460,7 @@ const Doudizhu: React.FC = () => {
     return (
       <div className="ddz-page">
         <div className="ddz-header">
-          <button className="btn-back" onClick={() => navigate('/')}>← 返回</button>
+          <button className="btn-back" onClick={cancelMatching}>← 取消匹配</button>
           <h1>🃏 斗地主</h1>
           <div />
         </div>
@@ -1155,7 +1501,7 @@ const Doudizhu: React.FC = () => {
         {/* Opponent areas */}
         <div className="ddz-opponents">
           <div className="ddz-opponent ddz-opponent-left">
-            {renderCardBack(g.hands[1].length, `${PLAYER_NAMES[1]}${g.landlordIndex === 1 ? ' 👑地主' : ' 🌾农民'}`)}
+            {renderCardBack(g.hands[1].length, `${getPlayerName(1)}${g.landlordIndex === 1 ? ' 👑地主' : ' 🌾农民'}`)}
             {g.playedCardsDisplay.length > 0 && g.playedCardsDisplay[0].playerIndex === 1 && (
               <div className="ddz-played-section ddz-played-opponent">
                 {g.playedCardsDisplay[0].cards.length > 0 ? (
@@ -1170,7 +1516,7 @@ const Doudizhu: React.FC = () => {
           </div>
 
           <div className="ddz-opponent ddz-opponent-right">
-            {renderCardBack(g.hands[2].length, `${PLAYER_NAMES[2]}${g.landlordIndex === 2 ? ' 👑地主' : ' 🌾农民'}`)}
+            {renderCardBack(g.hands[2].length, `${getPlayerName(2)}${g.landlordIndex === 2 ? ' 👑地主' : ' 🌾农民'}`)}
             {g.playedCardsDisplay.length > 0 && g.playedCardsDisplay[0].playerIndex === 2 && (
               <div className="ddz-played-section ddz-played-opponent">
                 {g.playedCardsDisplay[0].cards.length > 0 ? (
@@ -1214,7 +1560,7 @@ const Doudizhu: React.FC = () => {
         {/* Player hand */}
         <div className="ddz-player-area">
           <div className="ddz-player-label">
-            {PLAYER_NAMES[0]}{g.landlordIndex === 0 ? ' 👑地主' : g.landlordIndex !== null ? ' 🌾农民' : ''}
+            {getPlayerName(0)}{g.landlordIndex === 0 ? ' 👑地主' : g.landlordIndex !== null ? ' 🌾农民' : ''}
             {' · '}剩余 {g.hands[0].length} 张
           </div>
           <div className="ddz-hand">
