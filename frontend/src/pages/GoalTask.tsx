@@ -847,9 +847,9 @@ const GoalTask: React.FC = () => {
           <div className="gt-level-cards">
             {levelOptions.map((opt, i) => {
               const keys = Object.keys(opt);
-              const optKey = keys.find(k => k.startsWith('option'));
-              const detailKey = keys.find(k => k.startsWith('detail'));
-              const label = optKey ? opt[optKey] : `选项${i + 1}`;
+              const optKey = keys.find(k => k.startsWith('option') || k === 'label' || k === 'title' || k === 'name' || k === 'level');
+              const detailKey = keys.find(k => k.startsWith('detail') || k === 'description' || k === 'desc');
+              const label = optKey ? opt[optKey] : (Object.values(opt).find(v => typeof v === 'string') as string) || `选项${i + 1}`;
               const detail = detailKey ? opt[detailKey] : '';
               return (
                 <button
@@ -1135,8 +1135,7 @@ const GoalTask: React.FC = () => {
   return (
     <div className="gt-page gt-main">
       <div className="gt-nav-bar">
-          <button className="gt-back-btn" onClick={() => navigate('/')}>‹ 工具箱</button>
-          <h1 className="gt-nav-title gt-main-title">我的目标</h1>
+          <button className="gt-back-btn" onClick={() => navigate('/')}>‹ 返回</button>
         </div>
 
       {loading ? (
