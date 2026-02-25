@@ -1674,11 +1674,169 @@
   animation: gt-slide-up 0.3s ease both;
 }
 
-.gt-practice-problem-text {
+/* ─── Markdown rendering inside practice cards ──────────────────────────── */
+
+.gt-practice-md,
+.gt-practice-result-md {
   font-size: 15px;
   color: #1c1c1e;
-  line-height: 1.65;
-  white-space: pre-wrap;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.gt-practice-md h1,
+.gt-practice-md h2,
+.gt-practice-md h3,
+.gt-practice-result-md h1,
+.gt-practice-result-md h2,
+.gt-practice-result-md h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1c1c1e;
+  margin: 14px 0 6px;
+}
+
+.gt-practice-md h2,
+.gt-practice-result-md h2 {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  padding-bottom: 4px;
+}
+
+.gt-practice-md p,
+.gt-practice-result-md p {
+  margin: 6px 0;
+}
+
+.gt-practice-md ul,
+.gt-practice-md ol,
+.gt-practice-result-md ul,
+.gt-practice-result-md ol {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.gt-practice-md li,
+.gt-practice-result-md li {
+  margin: 3px 0;
+}
+
+.gt-practice-md code,
+.gt-practice-result-md code {
+  font-family: 'SF Mono', 'Menlo', 'Courier New', monospace;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.055);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #c0392b;
+}
+
+.gt-practice-md pre,
+.gt-practice-result-md pre {
+  background: #1c1c1e;
+  border-radius: 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+
+.gt-practice-md pre code,
+.gt-practice-result-md pre code {
+  background: transparent;
+  padding: 0;
+  color: #e8e8e8;
+  font-size: 13px;
+}
+
+.gt-practice-md table,
+.gt-practice-result-md table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.gt-practice-md th,
+.gt-practice-md td,
+.gt-practice-result-md th,
+.gt-practice-result-md td {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.gt-practice-md th,
+.gt-practice-result-md th {
+  background: rgba(0, 0, 0, 0.04);
+  font-weight: 600;
+}
+
+.gt-practice-md blockquote,
+.gt-practice-result-md blockquote {
+  border-left: 3px solid #007aff;
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: #6e6e73;
+  font-style: italic;
+}
+
+/* ─── Field labels in answer section ───────────────────────────────────── */
+
+.gt-practice-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6e6e73;
+  margin-bottom: -4px;
+}
+
+/* ─── Math final answer input ──────────────────────────────────────────── */
+
+.gt-practice-final-answer {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px 16px;
+  border-radius: 12px;
+  border: 2px solid #007aff;
+  font-size: 16px;
+  font-family: 'SF Mono', 'Menlo', 'Courier New', monospace;
+  background: #fff;
+  color: #1c1c1e;
+  outline: none;
+  transition: box-shadow 0.2s;
+}
+
+.gt-practice-final-answer:focus {
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+/* ─── Math answer preview ──────────────────────────────────────────────── */
+
+.gt-practice-math-work {
+  border-left: 3px solid #e5e5ea;
+  padding-left: 10px;
+  margin-bottom: 10px;
+  font-style: italic;
+}
+
+.gt-practice-math-final {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: 'SF Mono', 'Menlo', 'Courier New', monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1c1c1e;
+}
+
+.gt-practice-final-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: #007aff;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: -apple-system, sans-serif;
+  flex-shrink: 0;
 }
 
 .gt-practice-answer-section {
@@ -1797,13 +1955,6 @@
   box-shadow: 0 1px 4px rgba(0, 122, 255, 0.07);
 }
 
-.gt-practice-result-text {
-  font-size: 15px;
-  color: #1c1c1e;
-  line-height: 1.65;
-  white-space: pre-wrap;
-}
-
 @media (min-width: 1024px) {
   .gt-practice-container {
     max-width: 700px;
@@ -1819,9 +1970,42 @@
     background: #2c2c2e;
   }
 
-  .gt-practice-problem-text,
+  .gt-practice-md,
+  .gt-practice-result-md,
   .gt-practice-answer-content {
     color: #e8e8e8;
+  }
+
+  .gt-practice-md h1,
+  .gt-practice-md h2,
+  .gt-practice-md h3,
+  .gt-practice-result-md h1,
+  .gt-practice-result-md h2,
+  .gt-practice-result-md h3 {
+    color: #e8e8e8;
+  }
+
+  .gt-practice-md code,
+  .gt-practice-result-md code {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ff9f7f;
+  }
+
+  .gt-practice-md pre,
+  .gt-practice-result-md pre {
+    background: #0a0a0a;
+  }
+
+  .gt-practice-md th,
+  .gt-practice-result-md th {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .gt-practice-md td,
+  .gt-practice-md th,
+  .gt-practice-result-md td,
+  .gt-practice-result-md th {
+    border-color: rgba(255, 255, 255, 0.1);
   }
 
   .gt-practice-result-card {
@@ -1829,14 +2013,16 @@
     border-color: rgba(0, 122, 255, 0.2);
   }
 
-  .gt-practice-result-text {
-    color: #e8e8e8;
-  }
-
   .gt-practice-text-editor {
     background: #2c2c2e;
     color: #e8e8e8;
     border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .gt-practice-final-answer {
+    background: #2c2c2e;
+    color: #e8e8e8;
+    border-color: #007aff;
   }
 
   .gt-practice-lang-select {
@@ -1847,6 +2033,14 @@
 
   .gt-practice-answer-content.code {
     background: #3a3a3c;
+  }
+
+  .gt-practice-math-work {
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+
+  .gt-practice-math-final {
+    color: #e8e8e8;
   }
 
   .gt-chat-action {
