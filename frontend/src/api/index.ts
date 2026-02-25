@@ -332,9 +332,38 @@ export const guitarPracticeAPI = {
     difficulty: 'beginner' | 'intermediate' | 'advanced';
     chords: string[];
     lyricsWithChords: string;
-    annotations: Array<{ time: number; chord: string; lyrics: string }>;
+    annotations: Array<{ time: number; chord: string; lyrics: string; duration?: number }>;
   }> => {
     const response = await api.post('/guitar-practice/analyze', { title, artist });
+    return response.data;
+  },
+
+  getCommunitySongs: async (): Promise<Array<{
+    id: string;
+    song_key: string;
+    title: string;
+    artist: string;
+    difficulty: 'beginner' | 'intermediate' | 'advanced';
+    chords: string[];
+    lyricsWithChords: string;
+    annotations: Array<{ time: number; chord: string; lyrics: string; duration?: number }>;
+    uploadedBy: string;
+    createdAt: string;
+    submissionCount: number;
+  }>> => {
+    const response = await api.get('/guitar-practice/songs');
+    return response.data;
+  },
+
+  submitSong: async (song: {
+    title: string;
+    artist: string;
+    difficulty: string;
+    chords: string[];
+    lyricsWithChords: string;
+    annotations: Array<{ time: number; chord: string; lyrics: string; duration?: number }>;
+  }): Promise<{ message: string; isPublic: boolean; submissionCount: number }> => {
+    const response = await api.post('/guitar-practice/songs', song);
     return response.data;
   },
 };
