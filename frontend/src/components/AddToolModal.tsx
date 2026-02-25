@@ -47,6 +47,12 @@ const PREDEFINED_TOOLS = [
     url: '/goal-task',
     tags: ['AI', '目标', '任务', '训练'],
   },
+  {
+    name: '吉他练习助手',
+    description: '吉他练习工具，内置和弦指法图、歌词和弦标注、音频播放器，支持自定义歌曲和导入导出',
+    url: '/guitar-practice',
+    tags: ['音乐', '吉他', '练习', '和弦'],
+  },
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [], highlightToolName }) => {
