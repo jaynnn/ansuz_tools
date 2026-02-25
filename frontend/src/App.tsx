@@ -14,6 +14,7 @@ const MBTITest = React.lazy(() => import('./pages/MBTITest'));
 const FriendMatch = React.lazy(() => import('./pages/FriendMatch'));
 const Doudizhu = React.lazy(() => import('./pages/Doudizhu'));
 const Sudoku = React.lazy(() => import('./pages/Sudoku'));
+const GoalTask = React.lazy(() => import('./pages/GoalTask'));
 
 const LoadingFallback: React.FC = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }} role="status" aria-live="polite">
@@ -90,6 +91,14 @@ const App: React.FC = () => {
                     element={
                       <PrivateRoute>
                         <Sudoku />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/goal-task"
+                    element={
+                      <PrivateRoute>
+                        <GoalTask />
                       </PrivateRoute>
                     }
                   />

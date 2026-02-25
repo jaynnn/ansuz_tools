@@ -40,6 +40,12 @@ const PREDEFINED_TOOLS = [
     url: '/doudizhu',
     tags: ['游戏', '扑克', '斗地主'],
   },
+  {
+    name: '目标任务',
+    description: 'AI驱动的目标拆分与训练计划生成工具，输入目标后自动评估当前水平并逐步生成可执行的训练任务',
+    url: '/goal-task',
+    tags: ['AI', '目标', '任务', '训练'],
+  },
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [] }) => {
