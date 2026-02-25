@@ -195,6 +195,28 @@ const migrateAnnouncementsTable = async () => {
   }
 };
 
+// Migration function to add age column to goal_task_goals table
+const migrateGoalTaskGoalsTable = async () => {
+  try {
+    const tableInfo: any = await dbGet(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='goal_task_goals'"
+    );
+    if (!tableInfo) return;
+
+    const columns: any[] = await dbAll("PRAGMA table_info(goal_task_goals)");
+    const columnNames = columns.map((col: any) => col.name);
+
+    if (!columnNames.includes('age')) {
+      logInfo('goal_task_goals_migration_start', { reason: 'add_age_column' });
+      await dbRun('ALTER TABLE goal_task_goals ADD COLUMN age INTEGER');
+      logInfo('goal_task_goals_migration_success', { reason: 'added_age_column' });
+    }
+  } catch (error) {
+    logError('goal_task_goals_migration_error', error as Error);
+    throw error;
+  }
+};
+
 export const initDatabase = async () => {
   try {
     logInfo('database_init_start', { dbPath });
@@ -379,6 +401,7 @@ export const initDatabase = async () => {
         user_id INTEGER NOT NULL,
         target_text TEXT NOT NULL,
         current_level TEXT,
+        age INTEGER,
         status TEXT NOT NULL DEFAULT 'not_started',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -445,6 +468,7 @@ export const initDatabase = async () => {
     await migrateUsersTable();
     await migrateUserImpressionsTable();
     await migrateAnnouncementsTable();
+    await migrateGoalTaskGoalsTable();
 
     console.log('Database initialized successfully');
     logInfo('database_init_success', { dbPath });

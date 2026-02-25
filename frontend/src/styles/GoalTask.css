@@ -404,6 +404,53 @@
   box-shadow: none;
 }
 
+/* ─── Age input row (add-goal view) ──────────────────────────────────────── */
+
+.gt-age-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gt-age-label {
+  font-size: 15px;
+  color: var(--text-secondary, #6e6e73);
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.gt-age-input {
+  width: 80px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(0, 0, 0, 0.12);
+  font-size: 16px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--text-primary, #1c1c1e);
+  outline: none;
+  text-align: center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  -moz-appearance: textfield;
+}
+
+.gt-age-input::-webkit-inner-spin-button,
+.gt-age-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.gt-age-input:focus {
+  border-color: #007aff;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+}
+
+.gt-age-unit {
+  font-size: 15px;
+  color: var(--text-secondary, #6e6e73);
+  font-weight: 500;
+}
+
 /* ─── Level cards (add-level view) ───────────────────────────────────────── */
 
 .gt-level-hint {
@@ -1512,6 +1559,7 @@
   }
 
   .gt-goal-input,
+  .gt-age-input,
   .gt-chat-input {
     color: #fff;
     border-color: rgba(255, 255, 255, 0.15);

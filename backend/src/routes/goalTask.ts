@@ -32,15 +32,18 @@ router.get('/goals', authMiddleware, async (req: AuthRequest, res: Response) => 
 // POST /api/goal-task/goals  –  create a new goal
 router.post('/goals', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const { target_text, current_level } = req.body;
+    const { target_text, current_level, age } = req.body;
     if (!target_text) return res.status(400).json({ error: 'target_text is required' });
 
     const safeTarget = sanitizeString(target_text, 500);
     const safeLevel = sanitizeString(current_level || '', 500);
+    const safeAge = age && Number.isInteger(Number(age)) && Number(age) > 0 && Number(age) < 150
+      ? Number(age)
+      : null;
 
     const result = await dbRun(
-      'INSERT INTO goal_task_goals (user_id, target_text, current_level, status) VALUES (?, ?, ?, ?)',
-      [req.userId, safeTarget, safeLevel || null, 'not_started']
+      'INSERT INTO goal_task_goals (user_id, target_text, current_level, age, status) VALUES (?, ?, ?, ?, ?)',
+      [req.userId, safeTarget, safeLevel || null, safeAge, 'not_started']
     );
 
     const goal = await dbGet('SELECT * FROM goal_task_goals WHERE id = ?', [(result as any).lastID]);
@@ -73,13 +76,16 @@ router.delete('/goals/:id', authMiddleware, async (req: AuthRequest, res: Respon
 // POST /api/goal-task/level-options  –  ask LLM for level options for a target
 router.post('/level-options', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const { target } = req.body;
+    const { target, age } = req.body;
     if (!target) return res.status(400).json({ error: 'target is required' });
 
     const safeTarget = sanitizeString(target, 500);
+    const ageNote = age && Number.isInteger(Number(age)) && Number(age) > 0 && Number(age) < 150
+      ? `，学习者年龄约${Number(age)}岁`
+      : '';
 
     // Extract keyword from target (use the whole target as context)
-    const prompt = `请为【${safeTarget}】这个目标，生成6~8个不同水平阶段的选项，覆盖从完全零基础到顶尖高手的完整范围。每个选项需要包含简洁的标题和具体的描述，描述应包含该水平的典型特征、量化能力指标（如时间、次数、距离、掌握程度等）和常见表现，以便用户准确对号入座。相邻选项之间的差距要均匀适中。以JSON数组格式输出，例如：[{"option1": "完全零基础", "detail1": "从未接触过，没有任何相关经验，对基本概念完全陌生，需要从最基础的知识开始学起"}, {"option2": "入门初学者", "detail2": "了解基本概念，有1~3个月练习经验，能完成基础动作但不熟练，经常需要回忆步骤"}]。只输出json，不要有其他文字。`;
+    const prompt = `请为【${safeTarget}】这个目标${ageNote}，生成6~8个不同水平阶段的选项，覆盖从完全零基础到顶尖高手的完整范围。每个选项需要包含简洁的标题和具体的描述，描述应包含该水平的典型特征、量化能力指标（如时间、次数、距离、掌握程度等）和常见表现，以便用户准确对号入座。相邻选项之间的差距要均匀适中。以JSON数组格式输出，例如：[{"option1": "完全零基础", "detail1": "从未接触过，没有任何相关经验，对基本概念完全陌生，需要从最基础的知识开始学起"}, {"option2": "入门初学者", "detail2": "了解基本概念，有1~3个月练习经验，能完成基础动作但不熟练，经常需要回忆步骤"}]。只输出json，不要有其他文字。`;
 
     const result = await chatCompletion([
       { role: 'user', content: prompt }
@@ -183,7 +189,8 @@ router.post('/goals/:goalId/sessions', authMiddleware, async (req: AuthRequest, 
     const now = new Date();
     const startDate = now.toLocaleDateString('zh-CN');
 
-    const prompt = `我想要【${goal.target_text}】，我当前的水平是【${goal.current_level || '未设置'}】，我当前拥有的时间是【${available_minutes}分钟】，我的训练起始时间为【${startDate}】。${historyText ? '我的历史训练记录为：【' + historyText + '】。' : ''}请在此基础上帮我设计合理的具体的训练条目，以及我本阶段训练的目标，以json格式给出，如：{"trainings": ["做高抬腿热身1分钟","做左右压腿20个"], "target": "在均速5.5min/km以内跑完5km"}。只输出json，不要有其他文字。`;
+    const ageNote = goal.age ? `，学习者年龄约${goal.age}岁` : '';
+    const prompt = `我想要【${goal.target_text}】，我当前的水平是【${goal.current_level || '未设置'}】${ageNote}，我当前拥有的时间是【${available_minutes}分钟】，我的训练起始时间为【${startDate}】。${historyText ? '我的历史训练记录为：【' + historyText + '】。' : ''}请在此基础上帮我设计合理的具体的训练条目，以及我本阶段训练的目标，以json格式给出，如：{"trainings": ["做高抬腿热身1分钟","做左右压腿20个"], "target": "在均速5.5min/km以内跑完5km"}。只输出json，不要有其他文字。`;
 
     const result = await chatCompletion([
       { role: 'user', content: prompt }
@@ -328,7 +335,7 @@ router.post('/trainings/:id/chat', authMiddleware, async (req: AuthRequest, res:
     }
 
     const training = await dbGet(
-      `SELECT t.*, s.session_target, g.target_text, g.current_level
+      `SELECT t.*, s.session_target, g.target_text, g.current_level, g.age
        FROM goal_task_trainings t
        JOIN goal_task_sessions s ON s.id = t.session_id
        JOIN goal_task_goals g ON g.id = s.goal_id
@@ -337,7 +344,8 @@ router.post('/trainings/:id/chat', authMiddleware, async (req: AuthRequest, res:
     );
     if (!training) return res.status(404).json({ error: 'Training not found' });
 
-    const systemPrompt = `你是一位专业的训练教练，用户正在进行目标：「${training.target_text}」，当前水平：「${training.current_level || '未知'}」，本次训练项目：「${training.description}」。请详细回答用户关于该训练项目的问题，提供专业、实用的建议。`;
+    const ageNote = training.age ? `，年龄约${training.age}岁` : '';
+    const systemPrompt = `你是一位专业的训练教练，用户正在进行目标：「${training.target_text}」，当前水平：「${training.current_level || '未知'}」${ageNote}，本次训练项目：「${training.description}」。请根据用户的实际水平和年龄特点，详细回答用户关于该训练项目的问题，提供专业、实用、易懂的建议。`;
 
     const llmMessages = [
       { role: 'system' as const, content: systemPrompt },

@@ -10,6 +10,7 @@ interface Goal {
   user_id: number;
   target_text: string;
   current_level: string | null;
+  age: number | null;
   status: 'not_started' | 'in_progress' | 'done';
   created_at: string;
 }
@@ -106,22 +107,31 @@ const detectPracticeType = (description: string): string => {
   return 'general';
 };
 
-const buildPracticeGeneratePrompt = (type: string, description: string): string => {
+const buildPracticeGeneratePrompt = (
+  type: string,
+  description: string,
+  goalText: string,
+  currentLevel: string | null,
+  age: number | null
+): string => {
+  const ageNote = age ? `，学习者年龄约${age}岁` : '';
+  const levelNote = currentLevel ? `当前水平：${currentLevel}` : '水平未知';
+  const context = `目标：${goalText}，${levelNote}${ageNote}`;
   const instructions: Record<string, string> = {
-    coding: `请根据训练任务「${description}」生成一道编程练习题。包含：问题描述、输入输出示例、约束条件，难度中等。`,
-    sql: `请根据训练任务「${description}」生成一道SQL练习题：描述表结构（简短CREATE TABLE示例）和查询需求。`,
-    writing: `请根据训练任务「${description}」给出一个写作练习：写作主题、具体要求（100~300字）及写作提示。`,
-    math: `请根据训练任务「${description}」出一道数学练习题，题目完整，数据清晰，难度中等。`,
-    translation: `请根据训练任务「${description}」提供3~5句待翻译文本，注明翻译方向（中译英或英译中）。`,
-    grammar: `请根据训练任务「${description}」设计5道英语语法练习（填空或改错），每题标注考查点。`,
-    vocabulary: `请根据训练任务「${description}」设计5道词汇题：给出释义或例句，让学习者写出对应单词。`,
-    logic: `请根据训练任务「${description}」设计一道逻辑推理题，包含完整题干和必要条件，难度中等。`,
-    reading: `请根据训练任务「${description}」提供一篇80~120字短文，并提出2~3道理解题。`,
-    speaking: `请根据训练任务「${description}」设计一个情景写作练习：描述场景，给出对话开头，要求续写50~100字。`,
-    music: `请根据训练任务「${description}」出一道乐理题（识谱、节奏、和弦或音阶），难度中等。`,
-    data: `请根据训练任务「${description}」给出一个数据分析练习：描述数据场景，提出2道分析问题。`,
-    quiz: `请根据训练任务「${description}」出3道单选题，每题4个选项，覆盖核心知识点。`,
-    general: `请根据训练任务「${description}」设计一道综合练习题，用于检验学习成效，难度适中。`,
+    coding: `请根据学习者的实际情况（${context}），为训练任务「${description}」生成一道**难度适合该水平**的编程练习题。包含：问题描述、输入输出示例、约束条件，措辞通俗易懂，题目难度与当前水平匹配。`,
+    sql: `请根据学习者的实际情况（${context}），为训练任务「${description}」生成一道**难度适合该水平**的SQL练习题：描述表结构（简短CREATE TABLE示例）和查询需求，内容简洁友好。`,
+    writing: `请根据学习者的实际情况（${context}），为训练任务「${description}」给出一个**难度适合该水平**的写作练习：写作主题、具体要求（100~300字）及写作提示，语言亲切鼓励。`,
+    math: `请根据学习者的实际情况（${context}），为训练任务「${description}」出一道**难度适合该水平**的数学题，题目完整，步骤清晰，适合练习者自行作答。`,
+    translation: `请根据学习者的实际情况（${context}），为训练任务「${description}」提供3~5句**难度适合该水平**的待翻译文本，注明翻译方向（中译英或英译中）。`,
+    grammar: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计5道**难度适合该水平**的英语语法练习（填空或改错），每题标注考查点。`,
+    vocabulary: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计5道**难度适合该水平**的词汇题：给出释义或例句，让学习者写出对应单词。`,
+    logic: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一道**难度适合该水平**的逻辑推理题，包含完整题干和必要条件，表达清晰易懂。`,
+    reading: `请根据学习者的实际情况（${context}），为训练任务「${description}」提供一篇**难度适合该水平**的80~120字短文，并提出2~3道理解题。`,
+    speaking: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一个**难度适合该水平**的情景练习：描述场景，给出对话开头，要求续写50~100字。`,
+    music: `请根据学习者的实际情况（${context}），为训练任务「${description}」出一道**难度适合该水平**的乐理题（识谱、节奏、和弦或音阶），配合文字说明。`,
+    data: `请根据学习者的实际情况（${context}），为训练任务「${description}」给出一个**难度适合该水平**的数据分析练习：描述数据场景，提出2道分析问题。`,
+    quiz: `请根据学习者的实际情况（${context}），为训练任务「${description}」出3道**难度适合该水平**的单选题，每题4个选项，覆盖核心知识点，语言表述清晰。`,
+    general: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一道**难度适合该水平**的综合练习题，用于检验学习成效，措辞友好，步骤清晰。`,
   };
   return instructions[type] || instructions.general;
 };
@@ -215,6 +225,7 @@ const GoalTask: React.FC = () => {
 
   // Add goal flow
   const [goalInput, setGoalInput] = useState('');
+  const [ageInput, setAgeInput] = useState('');
   const [presetGoals, setPresetGoals] = useState<string[]>([]);
   const [loadingLevelOptions, setLoadingLevelOptions] = useState(false);
   const [levelOptions, setLevelOptions] = useState<LevelOption[]>([]);
@@ -323,6 +334,7 @@ const GoalTask: React.FC = () => {
 
   const handleOpenAddGoal = () => {
     setGoalInput('');
+    setAgeInput('');
     setPresetGoals(getRandomPresets(4));
     setViewMode('add-goal');
   };
@@ -352,7 +364,8 @@ const GoalTask: React.FC = () => {
     setLoadingLevelOptions(true);
     startBuildingAnimation();
     try {
-      const data = await goalTaskAPI.getLevelOptions(goalInput.trim());
+      const age = ageInput.trim() ? parseInt(ageInput, 10) : undefined;
+      const data = await goalTaskAPI.getLevelOptions(goalInput.trim(), age);
       setLevelOptions(data.options || []);
       setSelectedLevel('');
       setLevelInput('');
@@ -370,7 +383,8 @@ const GoalTask: React.FC = () => {
     const level = levelInput.trim() || selectedLevel;
     if (!goalInput.trim()) return;
     try {
-      await goalTaskAPI.createGoal(goalInput.trim(), level);
+      const age = ageInput.trim() ? parseInt(ageInput, 10) : undefined;
+      await goalTaskAPI.createGoal(goalInput.trim(), level, age);
       await fetchGoals();
       setViewMode('main');
     } catch (err) {
@@ -500,7 +514,13 @@ const GoalTask: React.FC = () => {
     setPracticeResult('');
     setViewMode('practice');
     try {
-      const prompt = buildPracticeGeneratePrompt(type, item.description);
+      const prompt = buildPracticeGeneratePrompt(
+        type,
+        item.description,
+        selectedGoal?.target_text || '',
+        selectedGoal?.current_level || null,
+        selectedGoal?.age || null
+      );
       const data = await goalTaskAPI.chatAboutTraining(item.id, [{ role: 'user', content: prompt }]);
       setPracticeProblem(data.content);
       setPracticePhase('problem');
@@ -533,7 +553,13 @@ const GoalTask: React.FC = () => {
     setPracticeAnswer('');
     setPracticeResult('');
     try {
-      const prompt = buildPracticeGeneratePrompt(practiceType, practiceTraining.description);
+      const prompt = buildPracticeGeneratePrompt(
+        practiceType,
+        practiceTraining.description,
+        selectedGoal?.target_text || '',
+        selectedGoal?.current_level || null,
+        selectedGoal?.age || null
+      );
       const data = await goalTaskAPI.chatAboutTraining(practiceTraining.id, [{ role: 'user', content: prompt }]);
       setPracticeProblem(data.content);
       setPracticePhase('problem');
@@ -626,6 +652,19 @@ const GoalTask: React.FC = () => {
             value={goalInput}
             onChange={e => setGoalInput(e.target.value)}
           />
+          <div className="gt-age-row">
+            <label className="gt-age-label">你的年龄</label>
+            <input
+              className="gt-age-input"
+              type="number"
+              min={1}
+              max={120}
+              placeholder="例如：25"
+              value={ageInput}
+              onChange={e => setAgeInput(e.target.value)}
+            />
+            <span className="gt-age-unit">岁</span>
+          </div>
           <div className="gt-presets">
             {presetGoals.map((p, i) => (
               <button

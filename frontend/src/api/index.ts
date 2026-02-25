@@ -286,8 +286,8 @@ export const goalTaskAPI = {
     return response.data;
   },
 
-  createGoal: async (target_text: string, current_level: string) => {
-    const response = await api.post('/goal-task/goals', { target_text, current_level });
+  createGoal: async (target_text: string, current_level: string, age?: number) => {
+    const response = await api.post('/goal-task/goals', { target_text, current_level, age });
     return response.data;
   },
 
@@ -296,8 +296,8 @@ export const goalTaskAPI = {
     return response.data;
   },
 
-  getLevelOptions: async (target: string) => {
-    const response = await api.post('/goal-task/level-options', { target });
+  getLevelOptions: async (target: string, age?: number) => {
+    const response = await api.post('/goal-task/level-options', { target, age });
     return response.data;
   },
 
