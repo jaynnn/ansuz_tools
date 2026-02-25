@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { goalTaskAPI } from '../api';
 import '../styles/GoalTask.css';
 
@@ -10,6 +12,7 @@ interface Goal {
   user_id: number;
   target_text: string;
   current_level: string | null;
+  age: number | null;
   status: 'not_started' | 'in_progress' | 'done';
   created_at: string;
 }
@@ -42,7 +45,8 @@ type ViewMode =
   | 'add-level'
   | 'history'
   | 'task-details'
-  | 'training-chat';
+  | 'training-chat'
+  | 'practice';
 
 // ─── Preset goal suggestions ──────────────────────────────────────────────────
 
@@ -66,6 +70,208 @@ const ALL_PRESET_GOALS = [
 const getRandomPresets = (count: number) => {
   const shuffled = [...ALL_PRESET_GOALS].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
+};
+
+// ─── Practice helpers ─────────────────────────────────────────────────────────
+
+const PRACTICE_TYPE_MAP: Record<string, string> = {
+  coding: '编程',
+  sql: 'SQL',
+  writing: '写作',
+  math: '数学',
+  translation: '翻译',
+  grammar: '英语语法',
+  vocabulary: '词汇',
+  logic: '逻辑推理',
+  reading: '阅读理解',
+  speaking: '口语表达',
+  music: '乐理',
+  data: '数据分析',
+  quiz: '知识问答',
+  general: '综合练习',
+};
+
+const detectPracticeType = (description: string): string => {
+  const d = description.toLowerCase();
+  if (/编程|代码|python|javascript|java|html|css|算法|程序|函数|变量|接口|api/.test(d)) return 'coding';
+  if (/sql|数据库|查询|database|select|insert|table/.test(d)) return 'sql';
+  if (/写作|作文|文章|散文|随笔|叙事|议论文|记叙文/.test(d)) return 'writing';
+  if (/数学|计算|方程|几何|代数|微积分|概率|积分|导数|二次/.test(d)) return 'math';
+  if (/翻译|英译中|中译英|汉译英/.test(d)) return 'translation';
+  if (/英语语法|grammar|时态|句型|从句|虚拟语气/.test(d)) return 'grammar';
+  if (/单词|词汇|vocabulary|拼写|词组|词义/.test(d)) return 'vocabulary';
+  if (/逻辑|推理|悖论|谜题|规律|演绎/.test(d)) return 'logic';
+  if (/阅读理解|reading|文章分析|passage/.test(d)) return 'reading';
+  if (/演讲|口语|朗读|表达|对话/.test(d)) return 'speaking';
+  if (/音乐|乐理|节奏|和弦|音阶|五线谱|简谱/.test(d)) return 'music';
+  if (/数据分析|统计|图表|excel/.test(d)) return 'data';
+  if (/历史|地理|政治|生物|化学|物理|知识点|考点/.test(d)) return 'quiz';
+  return 'general';
+};
+
+const buildPracticeGeneratePrompt = (
+  type: string,
+  description: string,
+  goalText: string,
+  currentLevel: string | null,
+  age: number | null
+): string => {
+  const ageNote = age ? `，学习者年龄约${age}岁` : '';
+  const levelNote = currentLevel ? `当前水平：${currentLevel}` : '水平未知';
+  const context = `目标：${goalText}，${levelNote}${ageNote}`;
+  const instructions: Record<string, string> = {
+    coding: `请根据学习者的实际情况（${context}），为训练任务「${description}」生成一道**难度适合该水平**的编程练习题，用 Markdown 格式输出，结构如下：
+
+## 题目描述
+（清晰说明需要实现的功能，语言简洁）
+
+## 示例
+（至少 2 组测试用例，格式：**输入：** \`xxx\`  →  **输出：** \`xxx\`，换行展示每组）
+
+## 约束条件
+（数据范围、边界限制，用项目列表）
+
+## 提示
+（可选，给出思路提示，避免直接给出答案）
+
+要求：题目难度匹配学习者水平，代码示例用 \`\`\` 代码块包裹，语言清晰无歧义。`,
+
+    sql: `请根据学习者的实际情况（${context}），为训练任务「${description}」生成一道**难度适合该水平**的 SQL 练习题，用 Markdown 格式输出，结构如下：
+
+## 表结构
+（用 \`\`\`sql 代码块展示 CREATE TABLE 语句，字段注释清楚）
+
+## 题目
+（清晰说明查询需求）
+
+## 示例数据
+（用表格或代码块展示示例数据）
+
+## 期望结果
+（说明期望查询结果的格式）
+
+要求：难度匹配学习者水平，内容简洁友好。`,
+
+    writing: `请根据学习者的实际情况（${context}），为训练任务「${description}」给出一个**难度适合该水平**的写作练习，用 Markdown 格式输出，包含写作主题、具体要求（100~300字）及写作提示，语言亲切鼓励。`,
+
+    math: `请根据学习者的实际情况（${context}），为训练任务「${description}」出一道**难度适合该水平**的数学题，用 Markdown 格式输出，结构如下：
+
+## 题目
+（完整题目表述，数学符号用文字+ASCII混合，如 x^2 + 3x - 4 = 0，分数写作 3/4，根号写作 sqrt(x)）
+
+## 已知条件
+（列出所有已知量，用项目列表）
+
+## 求
+（明确要求解的目标）
+
+## 提示
+（可选，思路提示但不给出答案）
+
+要求：题目难度匹配学习者水平，表述清晰无歧义，步骤要求合理。`,
+
+    translation: `请根据学习者的实际情况（${context}），为训练任务「${description}」提供3~5句**难度适合该水平**的待翻译文本，注明翻译方向（中译英或英译中），用 Markdown 格式输出。`,
+
+    grammar: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计5道**难度适合该水平**的英语语法练习（填空或改错），每题标注考查点，用 Markdown 格式输出。`,
+
+    vocabulary: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计5道**难度适合该水平**的词汇题：给出释义或例句，让学习者写出对应单词，用 Markdown 格式输出。`,
+
+    logic: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一道**难度适合该水平**的逻辑推理题，包含完整题干和必要条件，表达清晰易懂，用 Markdown 格式输出。`,
+
+    reading: `请根据学习者的实际情况（${context}），为训练任务「${description}」提供一篇**难度适合该水平**的80~120字短文，并提出2~3道理解题，用 Markdown 格式输出。`,
+
+    speaking: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一个**难度适合该水平**的情景练习：描述场景，给出对话开头，要求续写50~100字，用 Markdown 格式输出。`,
+
+    music: `请根据学习者的实际情况（${context}），为训练任务「${description}」出一道**难度适合该水平**的乐理题（识谱、节奏、和弦或音阶），配合文字说明，用 Markdown 格式输出。`,
+
+    data: `请根据学习者的实际情况（${context}），为训练任务「${description}」给出一个**难度适合该水平**的数据分析练习：描述数据场景，提出2道分析问题，用 Markdown 格式输出。`,
+
+    quiz: `请根据学习者的实际情况（${context}），为训练任务「${description}」出3道**难度适合该水平**的单选题，每题4个选项，覆盖核心知识点，语言表述清晰，用 Markdown 格式输出。`,
+
+    general: `请根据学习者的实际情况（${context}），为训练任务「${description}」设计一道**难度适合该水平**的综合练习题，用于检验学习成效，措辞友好，步骤清晰，用 Markdown 格式输出。`,
+  };
+  return instructions[type] || instructions.general;
+};
+
+const buildPracticeEvaluatePrompt = (
+  type: string,
+  problem: string,
+  answer: string,
+  mathFinalAnswer?: string,
+  language?: string
+): string => {
+  if (type === 'coding' || type === 'sql') {
+    const langNote = language ? `（编程语言：${language}）` : '';
+    return `请严格评估以下编程作答${langNote}，用 Markdown 格式输出：
+
+【练习题】
+${problem}
+
+【学习者的代码】
+\`\`\`
+${answer}
+\`\`\`
+
+请按以下步骤逐一评估：
+
+## 1. 逻辑正确性
+逐行分析代码逻辑，判断算法思路是否正确。
+
+## 2. 测试用例验证
+对题目中每个示例输入，手动追踪代码执行过程，写出实际输出，对比预期输出，判断是否通过（✅ 通过 / ❌ 未通过）。
+
+## 3. 错误定位
+如果有错误，精确指出是哪一行/哪个逻辑有问题，并说明原因。
+
+## 4. 改进建议
+给出具体的修改建议或正确代码片段。
+
+## 5. 综合评分
+xx/100（仅根据逻辑正确性和测试通过率打分，不考虑风格）`;
+  }
+
+  if (type === 'math') {
+    const workPart = answer.trim() ? `【解题过程】\n${answer}` : '';
+    const finalPart = mathFinalAnswer?.trim() ? `【最终答案】\n${mathFinalAnswer}` : '';
+    const combined = [workPart, finalPart].filter(Boolean).join('\n\n');
+    return `请严格评估以下数学作答，用 Markdown 格式输出：
+
+【题目】
+${problem}
+
+${combined}
+
+请按以下步骤评估：
+
+## 1. 最终答案验证
+判断最终答案是否正确（✅ 正确 / ❌ 错误），如有数值则给出精确计算结果。
+
+## 2. 解题步骤检查
+逐步检查解题过程的逻辑和计算是否正确，指出具体错误位置（如有）。
+
+## 3. 完整正确解答
+无论答案是否正确，给出完整的规范解题过程和最终答案。
+
+## 4. 综合评分
+xx/100`;
+  }
+
+  return `请评估以下练习的作答，用 Markdown 格式输出：
+
+【练习题】
+${problem}
+
+【学习者的答案】
+${answer}
+
+## 1. 综合评分
+xx/100
+
+## 2. 正确之处
+
+## 3. 需要改进的地方
+
+## 4. 具体建议`;
 };
 
 // ─── GoalItem component ───────────────────────────────────────────────────────
@@ -152,6 +358,7 @@ const GoalTask: React.FC = () => {
 
   // Add goal flow
   const [goalInput, setGoalInput] = useState('');
+  const [ageInput, setAgeInput] = useState('');
   const [presetGoals, setPresetGoals] = useState<string[]>([]);
   const [loadingLevelOptions, setLoadingLevelOptions] = useState(false);
   const [levelOptions, setLevelOptions] = useState<LevelOption[]>([]);
@@ -190,6 +397,16 @@ const GoalTask: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Practice
+  const [practiceTraining, setPracticeTraining] = useState<TrainingItem | null>(null);
+  const [practiceType, setPracticeType] = useState<string>('general');
+  const [practicePhase, setPracticePhase] = useState<'loading' | 'problem' | 'evaluating' | 'result'>('loading');
+  const [practiceProblem, setPracticeProblem] = useState<string>('');
+  const [practiceAnswer, setPracticeAnswer] = useState<string>('');
+  const [mathFinalAnswer, setMathFinalAnswer] = useState<string>('');
+  const [practiceLanguage, setPracticeLanguage] = useState<string>('python');
+  const [practiceResult, setPracticeResult] = useState<string>('');
 
   useEffect(() => {
     document.title = '目标任务';
@@ -251,6 +468,7 @@ const GoalTask: React.FC = () => {
 
   const handleOpenAddGoal = () => {
     setGoalInput('');
+    setAgeInput('');
     setPresetGoals(getRandomPresets(4));
     setViewMode('add-goal');
   };
@@ -280,7 +498,8 @@ const GoalTask: React.FC = () => {
     setLoadingLevelOptions(true);
     startBuildingAnimation();
     try {
-      const data = await goalTaskAPI.getLevelOptions(goalInput.trim());
+      const age = ageInput.trim() ? parseInt(ageInput, 10) : undefined;
+      const data = await goalTaskAPI.getLevelOptions(goalInput.trim(), age);
       setLevelOptions(data.options || []);
       setSelectedLevel('');
       setLevelInput('');
@@ -298,7 +517,8 @@ const GoalTask: React.FC = () => {
     const level = levelInput.trim() || selectedLevel;
     if (!goalInput.trim()) return;
     try {
-      await goalTaskAPI.createGoal(goalInput.trim(), level);
+      const age = ageInput.trim() ? parseInt(ageInput, 10) : undefined;
+      await goalTaskAPI.createGoal(goalInput.trim(), level, age);
       await fetchGoals();
       setViewMode('main');
     } catch (err) {
@@ -418,6 +638,84 @@ const GoalTask: React.FC = () => {
     setViewMode('training-chat');
   };
 
+  const handleOpenPractice = async (item: TrainingItem) => {
+    const type = detectPracticeType(item.description);
+    setPracticeTraining(item);
+    setPracticeType(type);
+    setPracticePhase('loading');
+    setPracticeProblem('');
+    setPracticeAnswer('');
+    setMathFinalAnswer('');
+    setPracticeResult('');
+    setViewMode('practice');
+    try {
+      const prompt = buildPracticeGeneratePrompt(
+        type,
+        item.description,
+        selectedGoal?.target_text || '',
+        selectedGoal?.current_level || null,
+        selectedGoal?.age || null
+      );
+      const data = await goalTaskAPI.chatAboutTraining(item.id, [{ role: 'user', content: prompt }]);
+      setPracticeProblem(data.content);
+      setPracticePhase('problem');
+    } catch (err) {
+      console.error(err);
+      setPracticeProblem('生成练习题失败，请返回重试。');
+      setPracticePhase('problem');
+    }
+  };
+
+  const handleSubmitPractice = async () => {
+    const isMath = practiceType === 'math';
+    const hasAnswer = isMath
+      ? (practiceAnswer.trim() || mathFinalAnswer.trim())
+      : practiceAnswer.trim();
+    if (!hasAnswer || !practiceTraining) return;
+    setPracticePhase('evaluating');
+    try {
+      const evalPrompt = buildPracticeEvaluatePrompt(
+        practiceType,
+        practiceProblem,
+        practiceAnswer,
+        isMath ? mathFinalAnswer : undefined,
+        practiceLanguage
+      );
+      const data = await goalTaskAPI.chatAboutTraining(practiceTraining.id, [{ role: 'user', content: evalPrompt }]);
+      setPracticeResult(data.content);
+      setPracticePhase('result');
+    } catch (err) {
+      console.error(err);
+      setPracticeResult('评估失败，请重试。');
+      setPracticePhase('result');
+    }
+  };
+
+  const handlePracticeAgain = async () => {
+    if (!practiceTraining) return;
+    setPracticePhase('loading');
+    setPracticeProblem('');
+    setPracticeAnswer('');
+    setMathFinalAnswer('');
+    setPracticeResult('');
+    try {
+      const prompt = buildPracticeGeneratePrompt(
+        practiceType,
+        practiceTraining.description,
+        selectedGoal?.target_text || '',
+        selectedGoal?.current_level || null,
+        selectedGoal?.age || null
+      );
+      const data = await goalTaskAPI.chatAboutTraining(practiceTraining.id, [{ role: 'user', content: prompt }]);
+      setPracticeProblem(data.content);
+      setPracticePhase('problem');
+    } catch (err) {
+      console.error(err);
+      setPracticeProblem('生成练习题失败，请返回重试。');
+      setPracticePhase('problem');
+    }
+  };
+
   const handleSendChat = useCallback(async () => {
     if (!chatInput.trim() || !chatTraining) return;
     const userMsg = { role: 'user' as const, content: chatInput.trim() };
@@ -500,6 +798,19 @@ const GoalTask: React.FC = () => {
             value={goalInput}
             onChange={e => setGoalInput(e.target.value)}
           />
+          <div className="gt-age-row">
+            <label className="gt-age-label">你的年龄</label>
+            <input
+              className="gt-age-input"
+              type="number"
+              min={1}
+              max={120}
+              placeholder="例如：25"
+              value={ageInput}
+              onChange={e => setAgeInput(e.target.value)}
+            />
+            <span className="gt-age-unit">岁</span>
+          </div>
           <div className="gt-presets">
             {presetGoals.map((p, i) => (
               <button
@@ -597,12 +908,29 @@ const GoalTask: React.FC = () => {
                 >
                   {item.is_completed ? '✓' : ''}
                 </button>
-                <span
-                  className="gt-training-desc"
-                  onClick={() => handleOpenTrainingChat(item)}
-                >
-                  {item.description}
-                </span>
+                <span className="gt-training-desc">{item.description}</span>
+                <div className="gt-training-actions">
+                  <button
+                    className="gt-training-action-btn gt-chat-action"
+                    onClick={() => handleOpenTrainingChat(item)}
+                    title="AI 对话"
+                    aria-label="AI 对话"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor">
+                      <path d="M1.5 2A1.5 1.5 0 000 3.5v7A1.5 1.5 0 001.5 12H3v2.25l3-2.25H13.5A1.5 1.5 0 0015 10.5v-7A1.5 1.5 0 0013.5 2h-12z"/>
+                    </svg>
+                  </button>
+                  <button
+                    className="gt-training-action-btn gt-practice-action"
+                    onClick={() => handleOpenPractice(item)}
+                    title="开始练习"
+                    aria-label="开始练习"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor">
+                      <path d="M3 2.5v10l9-5-9-5z"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -628,9 +956,139 @@ const GoalTask: React.FC = () => {
     );
   }
 
-  // Training Chat view
-  if (viewMode === 'training-chat') {
+  // Practice view
+  if (viewMode === 'practice') {
+    const typeName = PRACTICE_TYPE_MAP[practiceType] || '综合练习';
+    const isCodeEditor = practiceType === 'coding' || practiceType === 'sql';
+    const isMath = practiceType === 'math';
+    const isMathAnswered = isMath && (practiceAnswer.trim() || mathFinalAnswer.trim());
+    const isSubmitDisabled = isCodeEditor
+      ? !practiceAnswer.trim()
+      : isMath
+        ? !isMathAnswered
+        : !practiceAnswer.trim();
     return (
+      <div className="gt-page gt-practice-page">
+        <div className="gt-nav-bar">
+          <button className="gt-back-btn" onClick={() => setViewMode('task-details')}>‹ 返回</button>
+          <h1 className="gt-nav-title">{typeName}练习</h1>
+        </div>
+        <div className="gt-practice-container">
+          <div className="gt-practice-header">
+            <span className="gt-practice-type-tag">{typeName}</span>
+            <p className="gt-practice-context">{practiceTraining?.description}</p>
+          </div>
+
+          {practicePhase === 'loading' && (
+            <div className="gt-practice-loading">
+              <div className="gt-practice-spinner" />
+              <p>正在生成练习题…</p>
+            </div>
+          )}
+
+          {practicePhase !== 'loading' && (
+            <div className="gt-practice-problem-card">
+              <div className="gt-practice-md">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{practiceProblem}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+
+          {practicePhase === 'problem' && (
+            <div className="gt-practice-answer-section">
+              {isCodeEditor && (
+                <select
+                  className="gt-practice-lang-select"
+                  value={practiceLanguage}
+                  onChange={e => setPracticeLanguage(e.target.value)}
+                >
+                  {['Python','JavaScript','TypeScript','Java','C++','C','Go','Rust','Swift','Kotlin','SQL'].map(lang => (
+                    <option key={lang} value={lang.toLowerCase()}>{lang}</option>
+                  ))}
+                </select>
+              )}
+              {isMath ? (
+                <>
+                  <div className="gt-practice-field-label">解题过程</div>
+                  <textarea
+                    className="gt-practice-text-editor"
+                    placeholder="写出你的解题步骤…（可选）"
+                    value={practiceAnswer}
+                    onChange={e => setPracticeAnswer(e.target.value)}
+                    rows={5}
+                  />
+                  <div className="gt-practice-field-label">最终答案</div>
+                  <input
+                    className="gt-practice-final-answer"
+                    placeholder="在此填写最终答案，例如：x = 3"
+                    value={mathFinalAnswer}
+                    onChange={e => setMathFinalAnswer(e.target.value)}
+                  />
+                </>
+              ) : (
+                <textarea
+                  className={isCodeEditor ? 'gt-practice-code-editor' : 'gt-practice-text-editor'}
+                  placeholder={isCodeEditor ? '在此输入代码…' : '在此输入你的答案…'}
+                  value={practiceAnswer}
+                  onChange={e => setPracticeAnswer(e.target.value)}
+                  spellCheck={!isCodeEditor}
+                />
+              )}
+              <button
+                className="gt-confirm-btn"
+                onClick={handleSubmitPractice}
+                disabled={isSubmitDisabled}
+              >
+                提交答案
+              </button>
+            </div>
+          )}
+
+          {practicePhase === 'evaluating' && (
+            <div className="gt-practice-loading">
+              <div className="gt-practice-spinner" />
+              <p>AI 正在批改…</p>
+            </div>
+          )}
+
+          {practicePhase === 'result' && (
+            <div className="gt-practice-result-section">
+              <div className="gt-practice-answer-preview">
+                <div className="gt-practice-answer-label">{isMath ? '你的解答' : '你的答案'}</div>
+                {isMath ? (
+                  <>
+                    {practiceAnswer.trim() && (
+                      <div className="gt-practice-answer-content gt-practice-math-work">{practiceAnswer}</div>
+                    )}
+                    {mathFinalAnswer.trim() && (
+                      <div className="gt-practice-answer-content gt-practice-math-final">
+                        <span className="gt-practice-final-badge">最终答案</span>
+                        {mathFinalAnswer}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className={`gt-practice-answer-content${isCodeEditor ? ' code' : ''}`}>{practiceAnswer}</div>
+                )}
+              </div>
+              <div className="gt-practice-result-card">
+                <div className="gt-practice-result-label">AI 批改</div>
+                <div className="gt-practice-result-md">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{practiceResult}</ReactMarkdown>
+                </div>
+              </div>
+              <button className="gt-confirm-btn" onClick={handlePracticeAgain}>
+                再练一题
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Training Chat view
+  if (viewMode === 'training-chat') {    return (
       <div className="gt-page gt-chat-page">
         <div className="gt-nav-bar">
           <button className="gt-back-btn" onClick={() => setViewMode('task-details')}>‹ 返回</button>
@@ -741,6 +1199,10 @@ const GoalTask: React.FC = () => {
       {showPrinting && (
         <div className="gt-printing-overlay">
           <div className="gt-task-machine">
+            <div className="gt-machine-header">
+              <div className="gt-machine-led" />
+              <span className="gt-machine-brand-text">ANSUZ PLANNER</span>
+            </div>
             <div className="gt-machine-screen">
               {printingLines.map((line, i) => (
                 <div key={i} className="gt-machine-line">{line}</div>
@@ -754,13 +1216,16 @@ const GoalTask: React.FC = () => {
           >
             <div className="gt-paper-content">
               {printDone && sessionData?.trainingItems.map((t, i) => (
-                <div key={t.id} className="gt-paper-item">☐ {i + 1}. {t.description}</div>
+                <div key={t.id} className="gt-paper-item">
+                  <span className="gt-paper-check">○</span>
+                  <span>{i + 1}. {t.description}</span>
+                </div>
               ))}
             </div>
           </div>
           {printDone && (
             <button className="gt-take-paper-btn" onClick={handleTakeTask}>
-              抽出任务纸
+              取出任务纸
             </button>
           )}
         </div>
