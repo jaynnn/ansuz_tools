@@ -16,6 +16,7 @@ import impressionRoutes from './routes/impression';
 import friendMatchRoutes from './routes/friendMatch';
 import announcementRoutes from './routes/announcements';
 import messageRoutes from './routes/messages';
+import goalTaskRoutes from './routes/goalTask';
 
 // Load environment variables
 dotenv.config();
@@ -79,6 +80,7 @@ app.use('/api/impression', impressionRoutes);
 app.use('/api/friend-match', friendMatchRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/goal-task', goalTaskRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

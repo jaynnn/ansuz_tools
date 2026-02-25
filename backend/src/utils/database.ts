@@ -372,6 +372,47 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create goal_task_goals table - stores user goals
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS goal_task_goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        target_text TEXT NOT NULL,
+        current_level TEXT,
+        status TEXT NOT NULL DEFAULT 'not_started',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create goal_task_sessions table - stores training sessions for each goal
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS goal_task_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        goal_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        available_minutes INTEGER NOT NULL DEFAULT 60,
+        session_target TEXT,
+        trainings TEXT,
+        is_complete INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
+        FOREIGN KEY (goal_id) REFERENCES goal_task_goals(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create goal_task_trainings table - stores individual training items
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS goal_task_trainings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        description TEXT NOT NULL,
+        is_completed INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (session_id) REFERENCES goal_task_sessions(id) ON DELETE CASCADE
+      )
+    `);
+
     // Create token_usage table - tracks LLM token consumption per user
     await dbRun(`
       CREATE TABLE IF NOT EXISTS token_usage (

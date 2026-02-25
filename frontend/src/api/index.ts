@@ -278,3 +278,51 @@ export const messagesAPI = {
     return response.data;
   },
 };
+
+// Goal Task APIs
+export const goalTaskAPI = {
+  getGoals: async () => {
+    const response = await api.get('/goal-task/goals');
+    return response.data;
+  },
+
+  createGoal: async (target_text: string, current_level: string) => {
+    const response = await api.post('/goal-task/goals', { target_text, current_level });
+    return response.data;
+  },
+
+  deleteGoal: async (id: number) => {
+    const response = await api.delete(`/goal-task/goals/${id}`);
+    return response.data;
+  },
+
+  getLevelOptions: async (target: string) => {
+    const response = await api.post('/goal-task/level-options', { target });
+    return response.data;
+  },
+
+  getSessions: async (goalId: number) => {
+    const response = await api.get(`/goal-task/goals/${goalId}/sessions`);
+    return response.data;
+  },
+
+  getActiveSession: async (goalId: number) => {
+    const response = await api.get(`/goal-task/goals/${goalId}/active-session`);
+    return response.data;
+  },
+
+  createSession: async (goalId: number, available_minutes: number) => {
+    const response = await api.post(`/goal-task/goals/${goalId}/sessions`, { available_minutes });
+    return response.data;
+  },
+
+  toggleTrainingComplete: async (trainingId: number) => {
+    const response = await api.put(`/goal-task/trainings/${trainingId}/complete`);
+    return response.data;
+  },
+
+  chatAboutTraining: async (trainingId: number, messages: Array<{ role: string; content: string }>) => {
+    const response = await api.post(`/goal-task/trainings/${trainingId}/chat`, { messages });
+    return response.data;
+  },
+};
