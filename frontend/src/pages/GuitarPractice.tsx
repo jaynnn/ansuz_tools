@@ -16,6 +16,7 @@ interface ChordAnnotation {
   time: number;
   chord: string;
   lyrics: string;
+  duration?: number;
 }
 
 interface Song {
@@ -579,6 +580,17 @@ const LyricsViewer: React.FC<LyricsViewerProps> = ({ song, currentTime, isPlayin
     return acc;
   }, -1);
 
+  const activeAnn = currentAnnotationIdx >= 0 ? song.annotations[currentAnnotationIdx] : null;
+  const nextAnn = currentAnnotationIdx + 1 < song.annotations.length
+    ? song.annotations[currentAnnotationIdx + 1]
+    : null;
+  const annDuration = activeAnn
+    ? (activeAnn.duration ?? (nextAnn ? nextAnn.time - activeAnn.time : 4))
+    : 4;
+  const fillPercent = activeAnn
+    ? Math.min(100, Math.max(0, ((currentTime - activeAnn.time) / annDuration) * 100))
+    : 0;
+
   useEffect(() => {
     if (!autoScroll || !isPlaying || !containerRef.current) return;
     const active = containerRef.current.querySelector('.lyrics-line.active');
@@ -602,6 +614,23 @@ const LyricsViewer: React.FC<LyricsViewerProps> = ({ song, currentTime, isPlayin
 
   return (
     <div className="lyrics-viewer">
+      {/* Karaoke current-line display */}
+      <div className="karaoke-display">
+        {activeAnn ? (
+          <>
+            <div className="karaoke-chord-label">{activeAnn.chord}</div>
+            <div className="karaoke-text-wrapper">
+              <span className="karaoke-base">{activeAnn.lyrics || '\u00A0'}</span>
+              <span className="karaoke-fill" style={{ width: `${fillPercent}%` }}>
+                {activeAnn.lyrics || '\u00A0'}
+              </span>
+            </div>
+          </>
+        ) : (
+          <div className="karaoke-placeholder">♪ 等待播放...</div>
+        )}
+      </div>
+
       <div className="lyrics-toolbar">
         <div className="font-size-control">
           <button onClick={() => setFontSize(s => Math.max(12, s - 2))}>A-</button>
@@ -650,9 +679,10 @@ interface SongEditorProps {
   initial?: Partial<Song>;
   onSave: (song: Song) => void;
   onCancel: () => void;
+  isLocalEdit?: boolean;
 }
 
-const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel }) => {
+const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLocalEdit }) => {
   const [title, setTitle] = useState(initial?.title || '');
   const [artist, setArtist] = useState(initial?.artist || '');
   const [difficulty, setDifficulty] = useState<Song['difficulty']>(initial?.difficulty || 'beginner');
@@ -664,6 +694,7 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel }) =>
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState('');
   const [annotations, setAnnotations] = useState<Song['annotations']>(initial?.annotations || []);
+  const [showTimelineEditor, setShowTimelineEditor] = useState(false);
   const audioFileRef = useRef<HTMLInputElement>(null);
 
   const parseChords = (input: string) =>
@@ -748,11 +779,36 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel }) =>
     reader.readAsText(file);
   };
 
+  const handleAnnotationChange = (idx: number, field: keyof ChordAnnotation, value: string) => {
+    setAnnotations(prev => prev.map((ann, i) => {
+      if (i !== idx) return ann;
+      if (field === 'time' || field === 'duration') {
+        const num = parseFloat(value);
+        return { ...ann, [field]: isNaN(num) ? ann[field] : num };
+      }
+      return { ...ann, [field]: value };
+    }));
+  };
+
+  const handleAddAnnotation = () => {
+    const lastTime = annotations.length > 0 ? annotations[annotations.length - 1].time + 4 : 0;
+    setAnnotations(prev => [...prev, { time: lastTime, chord: 'C', lyrics: '', duration: 4 }]);
+  };
+
+  const handleRemoveAnnotation = (idx: number) => {
+    setAnnotations(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const knownChords = parseChords(chordsInput).filter(c => !CHORD_LIBRARY[c]);
 
   return (
     <div className="song-editor">
-      <h3>编辑歌曲</h3>
+      <h3>{isLocalEdit ? '本地编辑（仅保存在本地）' : '编辑歌曲'}</h3>
+      {isLocalEdit && (
+        <div className="local-edit-notice">
+          📝 本地编辑仅保存在您的设备上，不会影响公共曲库。可使用「提交公共区域」按钮分享给社区。
+        </div>
+      )}
       {error && <div className="editor-error">{error}</div>}
 
       {/* AI 识别区域 */}
@@ -831,10 +887,81 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel }) =>
             rows={12}
           />
         </div>
+
+        {/* Timeline Editor */}
+        <div className="form-row">
+          <div className="timeline-editor-header">
+            <label>滚动同步时间轴</label>
+            <button
+              type="button"
+              className="btn-toggle-timeline"
+              onClick={() => setShowTimelineEditor(v => !v)}
+            >
+              {showTimelineEditor ? '收起' : `编辑 (${annotations.length} 条)`}
+            </button>
+          </div>
+          {showTimelineEditor && (
+            <div className="timeline-editor">
+              <div className="timeline-hint">
+                调整每句歌词的开始时间（秒）和演唱时长（秒），使歌词滚动与音频同步。
+              </div>
+              <div className="timeline-table">
+                <div className="timeline-row timeline-header">
+                  <span>时间(s)</span>
+                  <span>时长(s)</span>
+                  <span>和弦</span>
+                  <span>歌词</span>
+                  <span></span>
+                </div>
+                {annotations.map((ann, i) => (
+                  <div key={i} className="timeline-row">
+                    <input
+                      type="number"
+                      className="timeline-input"
+                      value={ann.time}
+                      min={0}
+                      step={0.5}
+                      onChange={e => handleAnnotationChange(i, 'time', e.target.value)}
+                    />
+                    <input
+                      type="number"
+                      className="timeline-input"
+                      value={ann.duration ?? ''}
+                      min={0.5}
+                      step={0.5}
+                      placeholder="自动"
+                      onChange={e => handleAnnotationChange(i, 'duration', e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      className="timeline-input timeline-chord"
+                      value={ann.chord}
+                      onChange={e => handleAnnotationChange(i, 'chord', e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      className="timeline-input timeline-lyrics"
+                      value={ann.lyrics}
+                      onChange={e => handleAnnotationChange(i, 'lyrics', e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn-remove-annotation"
+                      onClick={() => handleRemoveAnnotation(i)}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="btn-add-annotation" onClick={handleAddAnnotation}>
+                + 添加行
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="editor-actions">
-        <button className="btn-save" onClick={handleSave}>保存</button>
+        <button className="btn-save" onClick={handleSave}>{isLocalEdit ? '保存到本地' : '保存'}</button>
         <button className="btn-cancel" onClick={onCancel}>取消</button>
         <label className="btn-import">
           导入 JSON
@@ -935,6 +1062,7 @@ const SongLibrary: React.FC<SongLibraryProps> = ({ songs, onSelect, onEdit, onDe
 // ─── Main Guitar Practice Component ──────────────────────────────────────────
 
 const STORAGE_KEY = 'guitar_practice_songs';
+const LOCAL_EDITS_KEY = 'guitar_local_edits';
 
 const GuitarPractice: React.FC = () => {
   const navigate = useNavigate();
@@ -957,32 +1085,73 @@ const GuitarPractice: React.FC = () => {
     }
   });
 
+  // Local edits: { [songId]: Song }
+  const [localEdits, setLocalEdits] = useState<Record<string, Song>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(LOCAL_EDITS_KEY) || '{}');
+    } catch {
+      return {};
+    }
+  });
+
   const [view, setView] = useState<'library' | 'player' | 'editor'>('library');
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [editingSong, setEditingSong] = useState<Partial<Song> | undefined>(undefined);
+  const [isLocalEditMode, setIsLocalEditMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Load community songs on mount
+  useEffect(() => {
+    guitarPracticeAPI.getCommunitySongs().then(communitySongs => {
+      setSongs(prev => {
+        const existingIds = new Set(prev.map(s => s.id));
+        const newOnes = communitySongs.filter(s => !existingIds.has(s.id));
+        return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+      });
+    }).catch(() => {/* silently ignore if API unavailable */});
+  }, []);
 
   const saveUserSongs = (all: Song[]) => {
     const sampleIds = new Set(SAMPLE_SONGS.map(s => s.id));
-    const userSongs = all.filter(s => !sampleIds.has(s.id));
+    const userSongs = all.filter(s => !sampleIds.has(s.id) && !s.id.startsWith('community-'));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(userSongs));
   };
+
+  const saveLocalEdits = (edits: Record<string, Song>) => {
+    setLocalEdits(edits);
+    localStorage.setItem(LOCAL_EDITS_KEY, JSON.stringify(edits));
+  };
+
+  // Get effective song (with local edits applied if any)
+  const getEffectiveSong = (song: Song): Song => localEdits[song.id] ?? song;
 
   const handleSelectSong = (song: Song) => {
     setSelectedSong(song);
     setCurrentTime(0);
     setIsPlaying(false);
+    setSubmitStatus('');
     setView('player');
   };
 
   const handleAddSong = () => {
     setEditingSong(undefined);
+    setIsLocalEditMode(false);
     setView('editor');
   };
 
   const handleEditSong = (song: Song) => {
     setEditingSong(song);
+    setIsLocalEditMode(false);
+    setView('editor');
+  };
+
+  const handleLocalEditSong = (song: Song) => {
+    // Open editor with effective song (local edit if exists, else original)
+    setEditingSong(getEffectiveSong(song));
+    setIsLocalEditMode(true);
     setView('editor');
   };
 
@@ -991,19 +1160,40 @@ const GuitarPractice: React.FC = () => {
     const updated = songs.filter(s => s.id !== id);
     setSongs(updated);
     saveUserSongs(updated);
+    // Also remove local edit
+    const newEdits = { ...localEdits };
+    delete newEdits[id];
+    saveLocalEdits(newEdits);
   };
 
   const handleSaveSong = (song: Song) => {
-    const existing = songs.findIndex(s => s.id === song.id);
-    let updated: Song[];
-    if (existing >= 0) {
-      updated = songs.map(s => s.id === song.id ? song : s);
+    if (isLocalEditMode && selectedSong) {
+      // Save as local edit for the original song id
+      const edits = { ...localEdits, [selectedSong.id]: { ...song, id: selectedSong.id } };
+      saveLocalEdits(edits);
+      // Update selectedSong to reflect local edit
+      setSelectedSong({ ...song, id: selectedSong.id });
+      setView('player');
     } else {
-      updated = [...songs, song];
+      const existing = songs.findIndex(s => s.id === song.id);
+      let updated: Song[];
+      if (existing >= 0) {
+        updated = songs.map(s => s.id === song.id ? song : s);
+      } else {
+        updated = [...songs, song];
+      }
+      setSongs(updated);
+      saveUserSongs(updated);
+      setView('library');
     }
-    setSongs(updated);
-    saveUserSongs(updated);
-    setView('library');
+  };
+
+  const handleCancelEdit = () => {
+    if (isLocalEditMode) {
+      setView('player');
+    } else {
+      setView('library');
+    }
   };
 
   const handleExportSong = (song: Song) => {
@@ -1017,8 +1207,35 @@ const GuitarPractice: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const songChords = selectedSong
-    ? selectedSong.chords.map(name => CHORD_LIBRARY[name]).filter(Boolean)
+  const handleSubmitToPublic = async (song: Song) => {
+    setIsSubmitting(true);
+    setSubmitStatus('');
+    try {
+      const result = await guitarPracticeAPI.submitSong({
+        title: song.title,
+        artist: song.artist,
+        difficulty: song.difficulty,
+        chords: song.chords,
+        lyricsWithChords: song.lyricsWithChords,
+        annotations: song.annotations,
+      });
+      if (result.isPublic) {
+        setSubmitStatus(`✅ 提交成功！已有 ${result.submissionCount} 人提交，歌曲已发布到公共区域。`);
+      } else {
+        setSubmitStatus(`✅ 提交成功！已有 ${result.submissionCount} 人提交，再有 ${2 - result.submissionCount} 人提交后将发布到公共区域。`);
+      }
+    } catch (err: any) {
+      setSubmitStatus(`❌ 提交失败：${err?.response?.data?.error || err?.message || '请稍后重试'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const effectiveSong = selectedSong ? getEffectiveSong(selectedSong) : null;
+  const hasLocalEdit = selectedSong ? !!localEdits[selectedSong.id] : false;
+
+  const songChords = effectiveSong
+    ? effectiveSong.chords.map(name => CHORD_LIBRARY[name]).filter(Boolean)
     : [];
 
   return (
@@ -1035,7 +1252,7 @@ const GuitarPractice: React.FC = () => {
             <button className={`view-tab${view === 'player' ? ' active' : ''}`} onClick={() => setView('player')}>练习</button>
           )}
           {view === 'editor' && (
-            <button className="view-tab active">编辑</button>
+            <button className="view-tab active">{isLocalEditMode ? '本地编辑' : '编辑'}</button>
           )}
         </div>
       </div>
@@ -1051,19 +1268,35 @@ const GuitarPractice: React.FC = () => {
           />
         )}
 
-        {view === 'player' && selectedSong && (
+        {view === 'player' && selectedSong && effectiveSong && (
           <div className="player-view">
             <div className="player-top">
               <div className="song-info-header">
-                <h2>{selectedSong.title}</h2>
-                <span className="song-artist-name">{selectedSong.artist}</span>
-                <span className={`difficulty-badge diff-${selectedSong.difficulty}`}>
-                  {DIFFICULTY_LABELS[selectedSong.difficulty]}
+                <h2>{effectiveSong.title}</h2>
+                <span className="song-artist-name">{effectiveSong.artist}</span>
+                <span className={`difficulty-badge diff-${effectiveSong.difficulty}`}>
+                  {DIFFICULTY_LABELS[effectiveSong.difficulty]}
                 </span>
-                <button className="export-btn" onClick={() => handleExportSong(selectedSong)}>↓ 导出</button>
+                {hasLocalEdit && <span className="local-edit-badge">✏ 本地已编辑</span>}
+                <div className="song-header-actions">
+                  <button className="btn-local-edit" onClick={() => handleLocalEditSong(selectedSong)}>
+                    ✏ 本地编辑
+                  </button>
+                  <button
+                    className="btn-submit-public"
+                    onClick={() => handleSubmitToPublic(effectiveSong)}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? '提交中...' : '🌐 提交公共区域'}
+                  </button>
+                  <button className="export-btn" onClick={() => handleExportSong(effectiveSong)}>↓ 导出</button>
+                </div>
               </div>
+              {submitStatus && (
+                <div className="submit-status">{submitStatus}</div>
+              )}
               <AudioPlayer
-                audioUrl={selectedSong.audioUrl}
+                audioUrl={effectiveSong.audioUrl}
                 onTimeUpdate={t => setCurrentTime(t)}
                 onAudioLoad={() => {}}
               />
@@ -1081,7 +1314,7 @@ const GuitarPractice: React.FC = () => {
             )}
 
             <LyricsViewer
-              song={selectedSong}
+              song={effectiveSong}
               currentTime={currentTime}
               isPlaying={isPlaying}
             />
@@ -1092,7 +1325,8 @@ const GuitarPractice: React.FC = () => {
           <SongEditor
             initial={editingSong}
             onSave={handleSaveSong}
-            onCancel={() => setView('library')}
+            onCancel={handleCancelEdit}
+            isLocalEdit={isLocalEditMode}
           />
         )}
       </div>

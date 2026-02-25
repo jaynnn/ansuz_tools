@@ -1,9 +1,10 @@
-import { Router, Response } from 'express';
+import { Router, Response, Request } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { chatCompletion } from '../utils/llmService';
 import { recordTokenUsage } from '../utils/asyncLlmService';
 import { sanitizeString } from '../utils/sanitize';
 import { logInfo, logError } from '../utils/logger';
+import { dbRun, dbGet, dbAll } from '../utils/database';
 
 const router = Router();
 
@@ -30,8 +31,8 @@ router.post('/analyze', authMiddleware, async (req: AuthRequest, res: Response) 
   "chords": ["C", "G", "Am", "F"],
   "lyricsWithChords": "带和弦标注的完整歌词（包含主歌、副歌等所有段落），和弦写在对应歌词上方，以空格对齐，换行分隔，用[verse]、[chorus]、[bridge]等标记段落",
   "annotations": [
-    {"time": 0, "chord": "C", "lyrics": "第一句歌词"},
-    {"time": 4, "chord": "G", "lyrics": "第二句歌词"}
+    {"time": 0, "chord": "C", "lyrics": "第一句歌词", "duration": 4},
+    {"time": 4, "chord": "G", "lyrics": "第二句歌词", "duration": 4}
   ]
 }
 
@@ -39,7 +40,7 @@ router.post('/analyze', authMiddleware, async (req: AuthRequest, res: Response) 
 - difficulty 取值：beginner（初级）、intermediate（中级）或 advanced（高级），根据和弦难度判断
 - chords：列出歌曲主要和弦，使用标准吉他和弦名（如 C、G、Am、F、Em、Dm、D、A、E、B7 等）
 - lyricsWithChords：包含完整歌词（尽量覆盖主歌、副歌、桥段等所有段落），每行歌词上方标注对应和弦，使用空格对齐，用[verse]、[chorus]、[bridge]等标记段落开始
-- annotations：至少 12 条，尽量覆盖完整歌曲，time 为该句在歌曲中的大致秒数（估算），chord 为该时刻和弦，lyrics 为对应歌词
+- annotations：至少 12 条，尽量覆盖完整歌曲，time 为该句在歌曲中的大致秒数（估算），chord 为该时刻和弦，lyrics 为对应歌词，duration 为该句歌词演唱时长（秒，估算）
 
 只输出 JSON，不要有其他文字。`;
 
@@ -53,7 +54,7 @@ router.post('/analyze', authMiddleware, async (req: AuthRequest, res: Response) 
       difficulty?: string;
       chords?: string[];
       lyricsWithChords?: string;
-      annotations?: Array<{ time: number; chord: string; lyrics: string }>;
+      annotations?: Array<{ time: number; chord: string; lyrics: string; duration?: number }>;
     } = {};
 
     try {
@@ -79,6 +80,110 @@ router.post('/analyze', authMiddleware, async (req: AuthRequest, res: Response) 
   } catch (error: any) {
     logError('guitar_analyze_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: error.message || 'AI 分析失败，请重试' });
+  }
+});
+
+// GET /api/guitar-practice/songs - Get public community songs
+router.get('/songs', async (_req: Request, res: Response) => {
+  try {
+    const songs = await dbAll(
+      'SELECT * FROM guitar_community_songs WHERE is_public = 1 ORDER BY updated_at DESC'
+    );
+    res.json(songs.map((s: any) => ({
+      id: `community-${s.id}`,
+      song_key: s.song_key,
+      title: s.title,
+      artist: s.artist,
+      difficulty: s.difficulty,
+      chords: JSON.parse(s.chords || '[]'),
+      lyricsWithChords: s.lyrics_with_chords,
+      annotations: JSON.parse(s.annotations || '[]'),
+      uploadedBy: '社区',
+      createdAt: s.updated_at ? s.updated_at.slice(0, 10) : '',
+      submissionCount: s.submission_count,
+    })));
+  } catch (error: any) {
+    logError('guitar_songs_get_error', error as Error);
+    res.status(500).json({ error: '获取社区歌曲失败' });
+  }
+});
+
+// POST /api/guitar-practice/songs - Submit a song to community
+router.post('/songs', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, artist, difficulty, chords, lyricsWithChords, annotations } = req.body as {
+      title?: string;
+      artist?: string;
+      difficulty?: string;
+      chords?: string[];
+      lyricsWithChords?: string;
+      annotations?: Array<{ time: number; chord: string; lyrics: string; duration?: number }>;
+    };
+
+    if (!title || !artist) {
+      return res.status(400).json({ error: '请提供歌曲名称和艺术家' });
+    }
+
+    const safeTitle = sanitizeString(title, 200);
+    const safeArtist = sanitizeString(artist, 200);
+    const songKey = `${safeTitle}_${safeArtist}`.toLowerCase().replace(/\s+/g, '_');
+
+    logInfo('guitar_song_submit', { userId: req.userId, title: safeTitle, artist: safeArtist });
+
+    // Record this user as a submitter (ignore if already submitted)
+    await dbRun(
+      'INSERT OR IGNORE INTO guitar_song_submitters (song_key, user_id) VALUES (?, ?)',
+      [songKey, req.userId]
+    );
+
+    // Count unique submitters for this song
+    const row = await dbGet(
+      'SELECT COUNT(*) as count FROM guitar_song_submitters WHERE song_key = ?',
+      [songKey]
+    );
+    const submissionCount: number = row?.count ?? 1;
+    const isPublic = submissionCount >= 2 ? 1 : 0;
+
+    const existing = await dbGet(
+      'SELECT id FROM guitar_community_songs WHERE song_key = ?',
+      [songKey]
+    );
+
+    const chordsJson = JSON.stringify(Array.isArray(chords) ? chords : []);
+    const annotationsJson = JSON.stringify(Array.isArray(annotations) ? annotations : []);
+    const safelyrics = typeof lyricsWithChords === 'string' ? lyricsWithChords : '';
+    const safeDifficulty = ['beginner', 'intermediate', 'advanced'].includes(difficulty || '')
+      ? difficulty
+      : 'beginner';
+
+    if (existing) {
+      await dbRun(
+        `UPDATE guitar_community_songs
+         SET title=?, artist=?, difficulty=?, chords=?, lyrics_with_chords=?, annotations=?,
+             submitted_by=?, submission_count=?, is_public=?, updated_at=CURRENT_TIMESTAMP
+         WHERE song_key=?`,
+        [safeTitle, safeArtist, safeDifficulty, chordsJson, safelyrics, annotationsJson,
+         req.userId, submissionCount, isPublic, songKey]
+      );
+    } else {
+      await dbRun(
+        `INSERT INTO guitar_community_songs
+         (song_key, title, artist, difficulty, chords, lyrics_with_chords, annotations,
+          submitted_by, submission_count, is_public)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [songKey, safeTitle, safeArtist, safeDifficulty, chordsJson, safelyrics, annotationsJson,
+         req.userId, submissionCount, isPublic]
+      );
+    }
+
+    res.json({
+      message: '提交成功',
+      isPublic: isPublic === 1,
+      submissionCount,
+    });
+  } catch (error: any) {
+    logError('guitar_song_submit_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || '提交失败，请重试' });
   }
 });
 

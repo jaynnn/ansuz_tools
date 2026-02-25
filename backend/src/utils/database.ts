@@ -486,6 +486,37 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create guitar_community_songs table - stores community-submitted song data
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS guitar_community_songs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        song_key TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        artist TEXT NOT NULL,
+        difficulty TEXT NOT NULL DEFAULT 'beginner',
+        chords TEXT NOT NULL DEFAULT '[]',
+        lyrics_with_chords TEXT NOT NULL DEFAULT '',
+        annotations TEXT NOT NULL DEFAULT '[]',
+        submitted_by INTEGER NOT NULL,
+        submission_count INTEGER NOT NULL DEFAULT 1,
+        is_public INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create guitar_song_submitters table - tracks which users submitted each song
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS guitar_song_submitters (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        song_key TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(song_key, user_id)
+      )
+    `);
+
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
     await migrateUsersTable();
