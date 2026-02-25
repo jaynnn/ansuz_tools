@@ -132,6 +132,42 @@
   animation: ddz-pulse 0.8s infinite;
 }
 
+.ddz-mode-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.ddz-mode-btn {
+  padding: 16px 32px;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ddz-mode-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.ddz-mode-btn:active {
+  transform: translateY(0);
+}
+
+.ddz-mode-btn-player {
+  background: linear-gradient(135deg, #4caf50, #2e7d32);
+  color: white;
+}
+
+.ddz-mode-btn-ai {
+  background: linear-gradient(135deg, #ff6b35, #e64a19);
+  color: white;
+}
+
 /* ============ Game Table ============ */
 .ddz-table {
   flex: 1;

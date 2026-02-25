@@ -10,7 +10,7 @@ interface Card {
   id: string;
 }
 
-type GamePhase = 'matching' | 'bidding' | 'playing' | 'gameOver';
+type GamePhase = 'selecting' | 'matching' | 'bidding' | 'playing' | 'gameOver';
 type PlayerIndex = 0 | 1 | 2; // 0 = human, 1 = AI left, 2 = AI right
 
 interface PlayedCards {
@@ -711,7 +711,7 @@ interface GameState {
 }
 
 const initialGameState: GameState = {
-  phase: 'matching',
+  phase: 'selecting',
   hands: [[], [], []],
   landlordCards: [],
   landlordIndex: null,
@@ -737,6 +737,7 @@ const Doudizhu: React.FC = () => {
 
   const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [matchCount, setMatchCount] = useState(1);
+  const [matchMode, setMatchMode] = useState<'ai' | 'player' | null>(null);
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
 
   // Helper to update game state (both ref and render state)
@@ -774,14 +775,14 @@ const Doudizhu: React.FC = () => {
 
   // ============ Matching Phase ============
   useEffect(() => {
-    if (gameState.phase !== 'matching') return;
+    if (gameState.phase !== 'matching' || matchMode !== 'player') return;
     const timers = [
       setTimeout(() => setMatchCount(2), 1200),
       setTimeout(() => setMatchCount(3), 2800),
       setTimeout(() => startGame(), 3800),
     ];
     return () => timers.forEach(clearTimeout);
-  }, [gameState.phase, startGame]);
+  }, [gameState.phase, matchMode, startGame]);
 
   // Use a ref for AI play to break circular callback dependencies
   const doAiPlayRef = useRef<(playerIdx: PlayerIndex) => void>(() => {});
@@ -921,9 +922,7 @@ const Doudizhu: React.FC = () => {
       } else {
         updateGame({ message: '无人叫地主，重新发牌...', playedCardsDisplay: [displayEntry] });
         setTimeout(() => {
-          setMatchCount(3);
-          updateGame({ phase: 'matching' });
-          setTimeout(() => startGame(), 1000);
+          startGame();
         }, 1500);
       }
       return;
@@ -1069,6 +1068,46 @@ const Doudizhu: React.FC = () => {
       </div>
     </div>
   );
+
+  // Selecting phase
+  if (g.phase === 'selecting') {
+    return (
+      <div className="ddz-page">
+        <div className="ddz-header">
+          <button className="btn-back" onClick={() => navigate('/')}>← 返回</button>
+          <h1>🃏 斗地主</h1>
+          <div />
+        </div>
+        <div className="ddz-matching">
+          <div className="ddz-matching-card">
+            <div className="ddz-matching-icon">🃏</div>
+            <h2>选择游戏模式</h2>
+            <div className="ddz-mode-buttons">
+              <button
+                className="ddz-mode-btn ddz-mode-btn-player"
+                onClick={() => {
+                  setMatchMode('player');
+                  setMatchCount(1);
+                  updateGame({ phase: 'matching' });
+                }}
+              >
+                👥 匹配玩家
+              </button>
+              <button
+                className="ddz-mode-btn ddz-mode-btn-ai"
+                onClick={() => {
+                  setMatchMode('ai');
+                  startGame();
+                }}
+              >
+                🤖 匹配电脑
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Matching phase
   if (g.phase === 'matching') {
