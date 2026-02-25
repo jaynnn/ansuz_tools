@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/GuitarPractice.css';
+import { guitarPracticeAPI } from '../api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -638,9 +639,54 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel }) =>
   const [chordsInput, setChordsInput] = useState((initial?.chords || []).join(', '));
   const [lyricsWithChords, setLyricsWithChords] = useState(initial?.lyricsWithChords || '');
   const [error, setError] = useState('');
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | undefined>(undefined);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState('');
+  const [annotations, setAnnotations] = useState<Song['annotations']>(initial?.annotations || []);
+  const audioFileRef = useRef<HTMLInputElement>(null);
 
   const parseChords = (input: string) =>
     input.split(/[,\s]+/).map(c => c.trim()).filter(Boolean);
+
+  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAudioFile(file);
+    const url = URL.createObjectURL(file);
+    setAudioUrl(url);
+    // Auto-fill title from filename if not set
+    if (!title) {
+      const nameParts = file.name.replace(/\.[^.]+$/, '').split(/[-_]/);
+      if (nameParts.length >= 2) {
+        setTitle(nameParts[0].trim());
+        setArtist(nameParts.slice(1).join(' ').trim());
+      } else {
+        setTitle(nameParts[0].trim());
+      }
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!title.trim() || !artist.trim()) {
+      setAnalyzeError('请先填写歌曲名称和艺术家再进行 AI 识别');
+      return;
+    }
+    setIsAnalyzing(true);
+    setAnalyzeError('');
+    try {
+      const result = await guitarPracticeAPI.analyze(title.trim(), artist.trim());
+      setDifficulty(result.difficulty);
+      setChordsInput(result.chords.join(', '));
+      setLyricsWithChords(result.lyricsWithChords);
+      setAnnotations(result.annotations);
+      setError('');
+    } catch (err: any) {
+      setAnalyzeError(err?.response?.data?.error || err?.message || 'AI 分析失败，请重试');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const handleSave = () => {
     if (!title.trim()) { setError('请输入歌曲名称'); return; }
@@ -652,8 +698,9 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel }) =>
       artist: artist.trim(),
       difficulty,
       chords,
-      annotations: initial?.annotations || [],
+      annotations,
       lyricsWithChords,
+      audioUrl,
       createdAt: initial?.createdAt || new Date().toISOString().slice(0, 10),
       uploadedBy: initial?.uploadedBy || '我',
     };
@@ -672,6 +719,7 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel }) =>
         setDifficulty(data.difficulty || 'beginner');
         setChordsInput((data.chords || []).join(', '));
         setLyricsWithChords(data.lyricsWithChords || '');
+        setAnnotations(data.annotations || []);
         setError('');
       } catch {
         setError('JSON 格式错误');
@@ -686,6 +734,45 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel }) =>
     <div className="song-editor">
       <h3>编辑歌曲</h3>
       {error && <div className="editor-error">{error}</div>}
+
+      {/* AI 识别区域 */}
+      <div className="ai-analyze-section">
+        <div className="ai-analyze-header">
+          <span className="ai-icon">🎵</span>
+          <span className="ai-title">上传音频 · AI 识别和弦</span>
+        </div>
+        <div className="ai-analyze-body">
+          <div className="audio-upload-row">
+            <button
+              className="btn-upload-audio"
+              onClick={() => audioFileRef.current?.click()}
+              type="button"
+            >
+              📁 {audioFile ? audioFile.name : '选择音频文件'}
+            </button>
+            <input
+              ref={audioFileRef}
+              type="file"
+              accept="audio/*"
+              style={{ display: 'none' }}
+              onChange={handleAudioUpload}
+            />
+            {audioUrl && <span className="audio-ready">✓ 已加载</span>}
+          </div>
+          <div className="ai-analyze-hint">
+            填写歌曲名称和艺术家后，点击「AI 生成」自动识别和弦、歌词与难度。
+          </div>
+          {analyzeError && <div className="editor-error">{analyzeError}</div>}
+          <button
+            className="btn-ai-generate"
+            onClick={handleAnalyze}
+            disabled={isAnalyzing}
+            type="button"
+          >
+            {isAnalyzing ? '🔄 AI 分析中...' : '✨ AI 生成'}
+          </button>
+        </div>
+      </div>
 
       <div className="editor-form">
         <div className="form-row">
