@@ -28,7 +28,7 @@ router.post('/analyze', authMiddleware, async (req: AuthRequest, res: Response) 
 {
   "difficulty": "beginner",
   "chords": ["C", "G", "Am", "F"],
-  "lyricsWithChords": "带和弦标注的经典段落歌词（副歌或主歌），和弦写在对应歌词上方，以空格对齐，换行分隔",
+  "lyricsWithChords": "带和弦标注的完整歌词（包含主歌、副歌等所有段落），和弦写在对应歌词上方，以空格对齐，换行分隔，用[verse]、[chorus]、[bridge]等标记段落",
   "annotations": [
     {"time": 0, "chord": "C", "lyrics": "第一句歌词"},
     {"time": 4, "chord": "G", "lyrics": "第二句歌词"}
@@ -38,8 +38,8 @@ router.post('/analyze', authMiddleware, async (req: AuthRequest, res: Response) 
 要求：
 - difficulty 取值：beginner（初级）、intermediate（中级）或 advanced（高级），根据和弦难度判断
 - chords：列出歌曲主要和弦，使用标准吉他和弦名（如 C、G、Am、F、Em、Dm、D、A、E、B7 等）
-- lyricsWithChords：至少包含一段完整段落（主歌或副歌）的带和弦歌词
-- annotations：至少 6 条，time 为该句在歌曲中的大致秒数（估算），chord 为该时刻和弦，lyrics 为对应歌词
+- lyricsWithChords：包含完整歌词（尽量覆盖主歌、副歌、桥段等所有段落），每行歌词上方标注对应和弦，使用空格对齐，用[verse]、[chorus]、[bridge]等标记段落开始
+- annotations：至少 12 条，尽量覆盖完整歌曲，time 为该句在歌曲中的大致秒数（估算），chord 为该时刻和弦，lyrics 为对应歌词
 
 只输出 JSON，不要有其他文字。`;
 
