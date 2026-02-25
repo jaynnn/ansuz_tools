@@ -24,6 +24,8 @@ export interface LLMResponse {
   };
 }
 
+const DEFAULT_TIMEOUT_MS = 120000; // 120 seconds
+
 const getDefaultConfig = (): Required<LLMConfig> => ({
   apiKey: process.env.LLM_API_KEY || '',
   baseUrl: process.env.LLM_API_BASE_URL || 'https://api.deepseek.com',
@@ -67,7 +69,9 @@ export const chatCompletion = async (
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${finalConfig.apiKey}`,
+          'Content-Length': Buffer.byteLength(requestBody),
         },
+        timeout: DEFAULT_TIMEOUT_MS,
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -98,6 +102,10 @@ export const chatCompletion = async (
         });
       }
     );
+
+    req.on('timeout', () => {
+      req.destroy(new Error('LLM API request timed out'));
+    });
 
     req.on('error', (err) => {
       logError('llm_request_error', err);
