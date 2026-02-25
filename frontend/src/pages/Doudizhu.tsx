@@ -1433,6 +1433,7 @@ const Doudizhu: React.FC = () => {
                 onClick={() => {
                   matchModeRef.current = 'player';
                   setMatchMode('player');
+                  updateGame({ phase: 'matching' });
                   connectToServer();
                 }}
               >
