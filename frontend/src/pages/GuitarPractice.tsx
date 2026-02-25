@@ -331,6 +331,19 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, onTimeUpdate, onAud
 
   useEffect(() => {
     setLocalAudioUrl(audioUrl);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    cancelAnimationFrame(animFrameRef.current);
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+    }
+    analyserRef.current = null;
   }, [audioUrl]);
 
   const setupAudioContext = useCallback(() => {
@@ -375,9 +388,14 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, onTimeUpdate, onAud
     if (audioCtxRef.current?.state === 'suspended') {
       await audioCtxRef.current.resume();
     }
-    audioRef.current.play();
-    setIsPlaying(true);
-    drawWaveform();
+    try {
+      await audioRef.current.play();
+      setIsPlaying(true);
+      drawWaveform();
+    } catch (err) {
+      console.error('播放失败:', err);
+      setIsPlaying(false);
+    }
   };
 
   const handlePause = () => {
@@ -525,9 +543,11 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, onTimeUpdate, onAud
       </div>
 
       <div className="audio-upload">
-        <button className="upload-audio-btn" onClick={() => fileInputRef.current?.click()}>
-          📁 上传音频
-        </button>
+        {!localAudioUrl && (
+          <button className="upload-audio-btn" onClick={() => fileInputRef.current?.click()}>
+            📁 上传音频
+          </button>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -924,7 +944,13 @@ const GuitarPractice: React.FC = () => {
       const saved = localStorage.getItem(STORAGE_KEY);
       const userSongs: Song[] = saved ? JSON.parse(saved) : [];
       const sampleIds = new Set(SAMPLE_SONGS.map(s => s.id));
-      const filtered = userSongs.filter((s: Song) => !sampleIds.has(s.id));
+      const filtered = userSongs
+        .filter((s: Song) => !sampleIds.has(s.id))
+        .map((s: Song) => ({
+          ...s,
+          // Blob URLs expire on page reload, clear them to avoid broken playback
+          audioUrl: s.audioUrl?.startsWith('blob:') ? undefined : s.audioUrl,
+        }));
       return [...SAMPLE_SONGS, ...filtered];
     } catch {
       return SAMPLE_SONGS;
