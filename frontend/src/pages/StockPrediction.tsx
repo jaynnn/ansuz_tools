@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { StockPrediction, StockAnalysis } from '../types/stock';
 import { stockPredictionsAPI } from '../api';
 import '../styles/StockPrediction.css';
 
 const StockPredictionPage: React.FC = () => {
+  const navigate = useNavigate();
   const [predictions, setPredictions] = useState<StockPrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +179,7 @@ const StockPredictionPage: React.FC = () => {
     <div className="stock-prediction-page">
       <header className="stock-header">
         <h1>📈 我的股票预测记录</h1>
-        <button onClick={() => window.history.back()} className="btn-back">
+        <button onClick={() => navigate('/')} className="btn-back">
           返回主页
         </button>
       </header>

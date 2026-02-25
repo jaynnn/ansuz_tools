@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { goalTaskAPI } from '../api';
 import '../styles/GoalTask.css';
 
@@ -117,7 +118,7 @@ const GoalItem: React.FC<GoalItemProps> = ({ goal, onDelete, onHistory, onClick 
   };
 
   return (
-    <div className="goal-item-wrapper">
+    <div className={`goal-item-wrapper ${goal.status === 'in_progress' ? 'ring-active' : ''}`}>
       <div
         className={`goal-item ${swiped ? 'swiped' : ''} status-${goal.status}`}
         ref={itemRef}
@@ -128,13 +129,6 @@ const GoalItem: React.FC<GoalItemProps> = ({ goal, onDelete, onHistory, onClick 
       >
         <div className="goal-item-content">
           <span className="goal-text">{goal.target_text}</span>
-          {goal.status === 'in_progress' && (
-            <div className="progress-arrows" aria-hidden="true">
-              {'>>>>>>>>>>>'.split('').map((c, i) => (
-                <span key={i} className="arrow-char" style={{ animationDelay: `${i * 0.1}s` }}>{c}</span>
-              ))}
-            </div>
-          )}
           {goal.status === 'done' && (
             <div className="done-badge">DONE</div>
           )}
@@ -151,6 +145,7 @@ const GoalItem: React.FC<GoalItemProps> = ({ goal, onDelete, onHistory, onClick 
 // ─── Main GoalTask page ───────────────────────────────────────────────────────
 
 const GoalTask: React.FC = () => {
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('main');
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -162,7 +157,6 @@ const GoalTask: React.FC = () => {
   const [levelOptions, setLevelOptions] = useState<LevelOption[]>([]);
   const [selectedLevel, setSelectedLevel] = useState('');
   const [levelInput, setLevelInput] = useState('');
-  const [longPressOption, setLongPressOption] = useState<LevelOption | null>(null);
   const [buildingText, setBuildingText] = useState('');
   const buildingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -298,20 +292,6 @@ const GoalTask: React.FC = () => {
       setLoadingLevelOptions(false);
       stopBuildingAnimation();
     }
-  };
-
-  const handleLevelOptionClick = (opt: LevelOption) => {
-    const keys = Object.keys(opt);
-    const optionKey = keys.find(k => k.startsWith('option'));
-    if (optionKey) {
-      const val = opt[optionKey];
-      setSelectedLevel(val);
-      setLevelInput(val);
-    }
-  };
-
-  const handleLongPress = (opt: LevelOption) => {
-    setLongPressOption(opt);
   };
 
   const handleConfirmLevel = async () => {
@@ -552,28 +532,32 @@ const GoalTask: React.FC = () => {
           <h1 className="gt-nav-title">当前水平</h1>
         </div>
         <div className="gt-add-goal-content">
-          <input
-            className="gt-goal-input"
-            placeholder="输入或选择你的当前水平…"
-            value={levelInput}
-            onChange={e => setLevelInput(e.target.value)}
-          />
-          <div className="gt-presets">
+          <p className="gt-level-hint">请选择最贴近你当前实际水平的选项，或在下方直接输入</p>
+          <div className="gt-level-cards">
             {levelOptions.map((opt, i) => {
               const keys = Object.keys(opt);
               const optKey = keys.find(k => k.startsWith('option'));
+              const detailKey = keys.find(k => k.startsWith('detail'));
               const label = optKey ? opt[optKey] : `选项${i + 1}`;
+              const detail = detailKey ? opt[detailKey] : '';
               return (
-                <LevelBubble
+                <button
                   key={i}
-                  label={label}
-                  selected={levelInput === label}
-                  onClick={() => handleLevelOptionClick(opt)}
-                  onLongPress={() => handleLongPress(opt)}
-                />
+                  className={`gt-level-card ${levelInput === label ? 'selected' : ''}`}
+                  onClick={() => { setSelectedLevel(label); setLevelInput(label); }}
+                >
+                  <span className="gt-level-card-label">{label}</span>
+                  {detail && <span className="gt-level-card-detail">{detail}</span>}
+                </button>
               );
             })}
           </div>
+          <input
+            className="gt-goal-input"
+            placeholder="或手动输入你的当前水平…"
+            value={levelInput}
+            onChange={e => setLevelInput(e.target.value)}
+          />
           <button
             className="gt-confirm-btn"
             onClick={handleConfirmLevel}
@@ -582,19 +566,6 @@ const GoalTask: React.FC = () => {
             确定
           </button>
         </div>
-        {longPressOption && (
-          <div className="gt-overlay" onClick={() => setLongPressOption(null)}>
-            <div className="gt-tooltip-card" onClick={e => e.stopPropagation()}>
-              {Object.entries(longPressOption).map(([k, v]) => (
-                <div key={k} className="gt-tooltip-row">
-                  <span className="gt-tooltip-key">{k.startsWith('detail') ? '说明' : '选项'}：</span>
-                  <span>{v}</span>
-                </div>
-              ))}
-              <button className="gt-tooltip-close" onClick={() => setLongPressOption(null)}>关闭</button>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -706,8 +677,9 @@ const GoalTask: React.FC = () => {
   return (
     <div className="gt-page gt-main">
       <div className="gt-nav-bar">
-        <h1 className="gt-nav-title gt-main-title">我的目标</h1>
-      </div>
+          <button className="gt-back-btn" onClick={() => navigate('/')}>‹ 工具箱</button>
+          <h1 className="gt-nav-title gt-main-title">我的目标</h1>
+        </div>
 
       {loading ? (
         <div className="gt-loading">加载中…</div>
@@ -798,43 +770,5 @@ const GoalTask: React.FC = () => {
 };
 
 // ─── Level Bubble with long press ─────────────────────────────────────────────
-
-interface LevelBubbleProps {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-  onLongPress: () => void;
-}
-
-const LevelBubble: React.FC<LevelBubbleProps> = ({ label, selected, onClick, onLongPress }) => {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handlePressStart = () => {
-    timerRef.current = setTimeout(() => {
-      onLongPress();
-    }, 600);
-  };
-
-  const handlePressEnd = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  return (
-    <button
-      className={`gt-bubble ${selected ? 'selected' : ''}`}
-      onClick={onClick}
-      onMouseDown={handlePressStart}
-      onMouseUp={handlePressEnd}
-      onMouseLeave={handlePressEnd}
-      onTouchStart={handlePressStart}
-      onTouchEnd={e => { handlePressEnd(); e.preventDefault(); onClick(); }}
-    >
-      {label}
-    </button>
-  );
-};
 
 export default GoalTask;

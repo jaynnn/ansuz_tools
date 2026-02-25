@@ -79,7 +79,7 @@ router.post('/level-options', authMiddleware, async (req: AuthRequest, res: Resp
     const safeTarget = sanitizeString(target, 500);
 
     // Extract keyword from target (use the whole target as context)
-    const prompt = `请生成不同阶段的【${safeTarget}】追求者的水平选项及其选项的提示，以json形式呈现，数组长度为4~6个选项。格式如：[{"option1": "初级跑者", "detail1": "能跑5公里，均速6min/km"}, {"option2":"中级跑者", "detail2":"能跑半马，均速5.5min/km"}]。只输出json，不要有其他文字。`;
+    const prompt = `请为【${safeTarget}】这个目标，生成6~8个不同水平阶段的选项，覆盖从完全零基础到顶尖高手的完整范围。每个选项需要包含简洁的标题和具体的描述，描述应包含该水平的典型特征、量化能力指标（如时间、次数、距离、掌握程度等）和常见表现，以便用户准确对号入座。相邻选项之间的差距要均匀适中。以JSON数组格式输出，例如：[{"option1": "完全零基础", "detail1": "从未接触过，没有任何相关经验，对基本概念完全陌生，需要从最基础的知识开始学起"}, {"option2": "入门初学者", "detail2": "了解基本概念，有1~3个月练习经验，能完成基础动作但不熟练，经常需要回忆步骤"}]。只输出json，不要有其他文字。`;
 
     const result = await chatCompletion([
       { role: 'user', content: prompt }
