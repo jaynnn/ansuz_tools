@@ -29,6 +29,7 @@ interface Song {
   audioUrl?: string;
   coverUrl?: string;
   lyricsWithChords: string;
+  preludeTime?: number;
   uploadedBy?: string;
   createdAt?: string;
 }
@@ -44,7 +45,7 @@ const CHORD_LIBRARY: Record<string, GuitarChord> = {
   E:    { name: 'E',    positions: [0, 2, 2, 1, 0, 0], fingers: [0, 2, 3, 1, 0, 0] },
   Em:   { name: 'Em',   positions: [0, 2, 2, 0, 0, 0], fingers: [0, 2, 3, 0, 0, 0] },
   E7:   { name: 'E7',   positions: [0, 2, 0, 1, 0, 0], fingers: [0, 2, 0, 1, 0, 0] },
-  F:    { name: 'F',    positions: [1, 1, 2, 3, 3, 1], fingers: [1, 1, 2, 4, 3, 1] },
+  F:    { name: 'F',    positions: [1, 3, 3, 2, 1, 1], fingers: [1, 3, 4, 2, 1, 1] },
   Fm:   { name: 'Fm',   positions: [1, 1, 3, 3, 2, 1], fingers: [1, 1, 3, 4, 2, 1] },
   G:    { name: 'G',    positions: [3, 2, 0, 0, 0, 3], fingers: [2, 1, 0, 0, 0, 3] },
   Gm:   { name: 'Gm',   positions: [3, 5, 5, 3, 3, 3], fingers: [1, 3, 4, 1, 1, 1], baseFret: 3 },
@@ -441,6 +442,288 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, onTimeUpdate, onAud
   );
 };
 
+// ─── Lyrics Chord Visual Editor ───────────────────────────────────────────────
+
+interface ChordedChar {
+  char: string;
+  chord?: string;
+}
+
+interface VizLine {
+  chars: ChordedChar[];
+  isSection: boolean;
+  isEmpty: boolean;
+}
+
+const CHORD_TOKEN_RE = /([A-G][#b]?(maj7|maj|m7|m|7|sus4|sus2|add9|dim|aug|2|4|9)?)/g;
+const IS_CHORD_LINE_RE = /^[\s]*([A-G][#b]?(maj7|maj|m7|m|7|sus4|sus2|add9|dim|aug|2|4|9)?[\s]*)+$/;
+
+function charDisplayWidth(ch: string): number {
+  const code = ch.codePointAt(0) ?? 0;
+  return (code >= 0x1100 && code <= 0x115F) ||
+    (code >= 0x2E80 && code <= 0x303F) ||
+    (code >= 0x3040 && code <= 0x33FF) ||
+    (code >= 0x3400 && code <= 0x4DBF) ||
+    (code >= 0x4E00 && code <= 0x9FFF) ||
+    (code >= 0xF900 && code <= 0xFAFF) ||
+    (code >= 0xFF01 && code <= 0xFF60) ||
+    (code >= 0xFFE0 && code <= 0xFFE6) ? 2 : 1;
+}
+
+function parseLyricsTextToViz(text: string): VizLine[] {
+  const rawLines = text.split('\n');
+  const result: VizLine[] = [];
+  let i = 0;
+  while (i < rawLines.length) {
+    const line = rawLines[i];
+    const trimmed = line.trim();
+    if (trimmed.startsWith('[')) {
+      result.push({ chars: [{ char: trimmed }], isSection: true, isEmpty: false });
+      i++;
+      continue;
+    }
+    if (trimmed === '') {
+      result.push({ chars: [], isSection: false, isEmpty: true });
+      i++;
+      continue;
+    }
+    if (IS_CHORD_LINE_RE.test(trimmed) && i + 1 < rawLines.length && rawLines[i + 1].trim() !== '') {
+      const chordLineStr = line;
+      const lyricLineStr = rawLines[i + 1];
+      const chordMatches: { col: number; name: string }[] = [];
+      CHORD_TOKEN_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = CHORD_TOKEN_RE.exec(chordLineStr)) !== null) {
+        chordMatches.push({ col: m.index, name: m[0] });
+      }
+      const chars = Array.from(lyricLineStr.trimEnd());
+      let col = 0;
+      const assignedNames = new Set<string>();
+      const tokens: ChordedChar[] = chars.map(ch => {
+        const c = chordMatches.find(cm => cm.col >= col && cm.col < col + charDisplayWidth(ch));
+        if (c) assignedNames.add(c.name + ':' + c.col);
+        const token: ChordedChar = { char: ch, chord: c?.name };
+        col += charDisplayWidth(ch);
+        return token;
+      });
+      for (const cm of chordMatches) {
+        if (!assignedNames.has(cm.name + ':' + cm.col)) {
+          tokens.push({ char: '\u3000', chord: cm.name });
+        }
+      }
+      result.push({ chars: tokens, isSection: false, isEmpty: false });
+      i += 2;
+    } else {
+      const chars = Array.from(trimmed);
+      result.push({ chars: chars.map(ch => ({ char: ch })), isSection: false, isEmpty: false });
+      i++;
+    }
+  }
+  return result;
+}
+
+function serializeVizToText(lines: VizLine[]): string {
+  return lines.map(line => {
+    if (line.isSection) return line.chars[0]?.char ?? '';
+    if (line.isEmpty || line.chars.length === 0) return '';
+    const hasChords = line.chars.some(c => c.chord);
+    const lyricText = line.chars.map(c => c.char).join('');
+    if (!hasChords) return lyricText;
+    let chordRow = '';
+    let col = 0;
+    for (const c of line.chars) {
+      if (c.chord) {
+        while (chordRow.length < col) chordRow += ' ';
+        chordRow += c.chord;
+      }
+      col += charDisplayWidth(c.char);
+    }
+    return chordRow + '\n' + lyricText;
+  }).join('\n');
+}
+
+interface LyricsChordEditorProps {
+  value: string;
+  onChange: (v: string) => void;
+  availableChords: string[];
+}
+
+interface LcePopup {
+  lineIdx: number;
+  charIdx: number;
+  x: number;
+  y: number;
+}
+
+const LyricsChordEditor: React.FC<LyricsChordEditorProps> = ({ value, onChange, availableChords }) => {
+  const [lines, setLines] = useState<VizLine[]>(() => parseLyricsTextToViz(value));
+  const [popup, setPopup] = useState<LcePopup | null>(null);
+  const [dragSrc, setDragSrc] = useState<{ lineIdx: number; charIdx: number } | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastValueRef = useRef<string>(serializeVizToText(parseLyricsTextToViz(value)));
+
+  // Lines → onChange
+  useEffect(() => {
+    const text = serializeVizToText(lines);
+    if (text !== lastValueRef.current) {
+      lastValueRef.current = text;
+      onChange(text);
+    }
+  }, [lines]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // External value → re-parse lines
+  useEffect(() => {
+    if (value !== lastValueRef.current) {
+      lastValueRef.current = value;
+      setLines(parseLyricsTextToViz(value));
+    }
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateChord = (li: number, ci: number, chord: string | undefined) => {
+    setLines(prev => prev.map((line, i) =>
+      i !== li ? line : { ...line, chars: line.chars.map((c, j) => j === ci ? { ...c, chord } : c) }
+    ));
+    setPopup(null);
+  };
+
+  const handleChordClick = (e: React.MouseEvent, li: number, ci: number) => {
+    e.stopPropagation();
+    if (popup?.lineIdx === li && popup?.charIdx === ci) {
+      setPopup(null);
+      return;
+    }
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    if (!containerRect) return;
+    setPopup({ lineIdx: li, charIdx: ci, x: rect.left - containerRect.left, y: rect.top - containerRect.top });
+  };
+
+  const handleDragStart = (e: React.DragEvent, li: number, ci: number) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', `${li},${ci}`);
+    setDragSrc({ lineIdx: li, charIdx: ci });
+  };
+
+  const handleDrop = (e: React.DragEvent, li: number, ci: number) => {
+    e.preventDefault();
+    const src = dragSrc;
+    setDragSrc(null);
+    if (!src) return;
+    const { lineIdx: fromL, charIdx: fromC } = src;
+    if (fromL === li && fromC === ci) return;
+    const chord = lines[fromL]?.chars[fromC]?.chord;
+    if (!chord) return;
+    setLines(prev => prev.map((line, i) => {
+      if (i !== fromL && i !== li) return line;
+      if (fromL === li) {
+        return {
+          ...line,
+          chars: line.chars.map((c, j) => {
+            if (j === fromC) return { ...c, chord: undefined };
+            if (j === ci) return { ...c, chord };
+            return c;
+          }),
+        };
+      }
+      if (i === fromL) return { ...line, chars: line.chars.map((c, j) => j === fromC ? { ...c, chord: undefined } : c) };
+      return { ...line, chars: line.chars.map((c, j) => j === ci ? { ...c, chord } : c) };
+    }));
+  };
+
+  const chordList = availableChords.length > 0 ? availableChords : Object.keys(CHORD_LIBRARY);
+
+  return (
+    <div className="lyrics-chord-editor" ref={containerRef} onClick={() => setPopup(null)}>
+      <div className="lce-toolbar">
+        <span className="lce-hint">点击和弦可更换；拖拽和弦可移位（下划线跟随）</span>
+        <button
+          type="button"
+          className="lce-raw-btn"
+          onClick={e => { e.stopPropagation(); setShowRaw(v => !v); }}
+        >
+          {showRaw ? '📊 可视模式' : '✏ 文本模式'}
+        </button>
+      </div>
+      {showRaw ? (
+        <textarea
+          className="editor-textarea"
+          rows={12}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={`    C           G           Am          F\n天空好想下雨  我好想住你隔壁`}
+        />
+      ) : (
+        <div className="lce-lines">
+          {lines.length === 0 && (
+            <div className="lce-placeholder">暂无歌词 — 请切换到文本模式输入歌词</div>
+          )}
+          {lines.map((line, li) => {
+            if (line.isSection) return <div key={li} className="lce-section-row">{line.chars[0]?.char}</div>;
+            if (line.isEmpty) return <div key={li} className="lce-blank-row" />;
+            return (
+              <div key={li} className="lce-line">
+                {line.chars.map((c, ci) => (
+                  <div
+                    key={ci}
+                    className={`lce-cell${c.chord ? ' has-chord' : ''}${dragSrc?.lineIdx === li && dragSrc?.charIdx === ci ? ' dragging-src' : ''}`}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => handleDrop(e, li, ci)}
+                  >
+                    <div className="lce-chord-area">
+                      {c.chord ? (
+                        <span
+                          className="lce-chord-label"
+                          draggable
+                          title="点击更换和弦；拖拽移动位置"
+                          onClick={e => handleChordClick(e, li, ci)}
+                          onDragStart={e => handleDragStart(e, li, ci)}
+                          onDragEnd={() => setDragSrc(null)}
+                        >
+                          {c.chord}
+                        </span>
+                      ) : null}
+                    </div>
+                    <span className={`lce-char${c.chord ? ' underlined' : ''}`}>
+                      {c.char === '\u3000' ? '\u00A0' : c.char}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {popup && (
+        <div
+          className="lce-popup"
+          style={{ left: popup.x, top: popup.y, transform: 'translateY(-100%) translateY(-6px)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="lce-popup-header">
+            <span>选择和弦</span>
+            <button
+              className="lce-popup-clear"
+              onClick={() => updateChord(popup.lineIdx, popup.charIdx, undefined)}
+            >✕ 清除</button>
+          </div>
+          <div className="lce-popup-grid">
+            {chordList.map(name => (
+              <button
+                key={name}
+                className={`lce-popup-btn${lines[popup.lineIdx]?.chars[popup.charIdx]?.chord === name ? ' active' : ''}`}
+                onClick={() => updateChord(popup.lineIdx, popup.charIdx, name)}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Lyrics Viewer Component ──────────────────────────────────────────────────
 
 interface LyricsViewerProps {
@@ -454,12 +737,16 @@ const LyricsViewer: React.FC<LyricsViewerProps> = ({ song, currentTime, isPlayin
   const [autoScroll, setAutoScroll] = useState(true);
   const [fontSize, setFontSize] = useState(16);
 
+  const preludeTime = song.preludeTime ?? 0;
+  const adjustedTime = Math.max(0, currentTime - preludeTime);
+  const isInPrelude = preludeTime > 0 && currentTime < preludeTime;
+
   const currentAnnotationIdx = song.annotations.reduce((acc, ann, i) => {
-    if (ann.time <= currentTime) return i;
+    if (ann.time <= adjustedTime) return i;
     return acc;
   }, -1);
 
-  const activeAnn = currentAnnotationIdx >= 0 ? song.annotations[currentAnnotationIdx] : null;
+  const activeAnn = !isInPrelude && currentAnnotationIdx >= 0 ? song.annotations[currentAnnotationIdx] : null;
   const nextAnn = currentAnnotationIdx + 1 < song.annotations.length
     ? song.annotations[currentAnnotationIdx + 1]
     : null;
@@ -467,7 +754,7 @@ const LyricsViewer: React.FC<LyricsViewerProps> = ({ song, currentTime, isPlayin
     ? (activeAnn.duration ?? (nextAnn ? nextAnn.time - activeAnn.time : 4))
     : 4;
   const fillPercent = activeAnn
-    ? Math.min(100, Math.max(0, ((currentTime - activeAnn.time) / annDuration) * 100))
+    ? Math.min(100, Math.max(0, ((adjustedTime - activeAnn.time) / annDuration) * 100))
     : 0;
 
   useEffect(() => {
@@ -495,7 +782,11 @@ const LyricsViewer: React.FC<LyricsViewerProps> = ({ song, currentTime, isPlayin
     <div className="lyrics-viewer">
       {/* Karaoke current-line display */}
       <div className="karaoke-display">
-        {activeAnn ? (
+        {isInPrelude ? (
+          <div className="karaoke-prelude">
+            🎵 前奏中... {Math.ceil(preludeTime - currentTime)}s
+          </div>
+        ) : activeAnn ? (
           <>
             <div className="karaoke-chord-label">{activeAnn.chord}</div>
             <div className="karaoke-text-wrapper">
@@ -573,6 +864,7 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLo
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState('');
   const [annotations, setAnnotations] = useState<Song['annotations']>(initial?.annotations || []);
+  const [preludeTime, setPreludeTime] = useState<number>(initial?.preludeTime ?? 0);
   const [showTimelineEditor, setShowTimelineEditor] = useState(false);
   const audioFileRef = useRef<HTMLInputElement>(null);
 
@@ -631,6 +923,7 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLo
       annotations,
       lyricsWithChords,
       audioUrl,
+      preludeTime: preludeTime > 0 ? preludeTime : undefined,
       createdAt: initial?.createdAt || new Date().toISOString().slice(0, 10),
       uploadedBy: initial?.uploadedBy || '我',
     };
@@ -650,6 +943,7 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLo
         setChordsInput((data.chords || []).join(', '));
         setLyricsWithChords(data.lyricsWithChords || '');
         setAnnotations(data.annotations || []);
+        setPreludeTime(data.preludeTime ?? 0);
         setError('');
       } catch {
         setError('JSON 格式错误');
@@ -755,15 +1049,10 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLo
         </div>
         <div className="form-row">
           <label>歌词与和弦标注</label>
-          <div className="lyrics-hint">
-            格式示例：在歌词行上方写和弦名（以空格分隔）
-          </div>
-          <textarea
+          <LyricsChordEditor
             value={lyricsWithChords}
-            onChange={e => setLyricsWithChords(e.target.value)}
-            placeholder={`    C           G           Am          F\n天空好想下雨  我好想住你隔壁`}
-            className="editor-textarea"
-            rows={12}
+            onChange={setLyricsWithChords}
+            availableChords={parseChords(chordsInput)}
           />
         </div>
 
@@ -782,7 +1071,20 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLo
           {showTimelineEditor && (
             <div className="timeline-editor">
               <div className="timeline-hint">
-                调整每句歌词的开始时间（秒）和演唱时长（秒），使歌词滚动与音频同步。
+                调整每句歌词的开始时间（秒）和演唱时长（秒），使歌词滚动与音频同步。注意：时间轴的时间为去除前奏后的相对时间。
+              </div>
+              <div className="prelude-row">
+                <label className="prelude-label">🎵 前奏 / 间奏时长（秒）</label>
+                <input
+                  type="number"
+                  className="timeline-input prelude-input"
+                  value={preludeTime}
+                  min={0}
+                  step={0.5}
+                  onChange={e => setPreludeTime(Math.max(0, parseFloat(e.target.value) || 0))}
+                  title="歌曲开头前奏时长，歌词将在此时间后开始滚动"
+                />
+                <span className="prelude-unit">秒</span>
               </div>
               <div className="timeline-table">
                 <div className="timeline-row timeline-header">
