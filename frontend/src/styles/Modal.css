@@ -134,6 +134,12 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+.predefined-tool-highlight {
+  border-color: var(--primary) !important;
+  background: var(--hover-bg) !important;
+  box-shadow: 0 0 0 2px var(--primary) !important;
+}
+
 .predefined-tool-item h4 {
   margin: 0 0 0.5rem 0;
   color: var(--text-primary);

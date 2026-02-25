@@ -174,3 +174,124 @@
 .add-tool-card:hover .add-tool-cross {
   color: var(--primary);
 }
+
+.search-section {
+  margin-bottom: 1.5rem;
+}
+
+.search-bar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.search-input {
+  flex: 1;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 1rem;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  border-color: var(--primary);
+}
+
+.search-btn {
+  padding: 0.65rem 1.25rem;
+  white-space: nowrap;
+}
+
+.search-clear-btn {
+  padding: 0.65rem 0.9rem;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.search-result-tip {
+  margin-top: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.search-result-found {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.search-result-suggest {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--primary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.search-result-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.search-result-notfound {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.search-result-notfound p {
+  margin: 0 0 0.75rem 0;
+}
+
+.search-message-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.search-message-input {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.search-message-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.message-sent-tip {
+  color: #27ae60;
+  font-weight: 500;
+}
