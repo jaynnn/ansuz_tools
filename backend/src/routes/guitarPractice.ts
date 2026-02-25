@@ -27,12 +27,12 @@ router.post('/analyze', authMiddleware, async (req: AuthRequest, res: Response) 
 
 请以JSON格式输出以下内容：
 {
-  "difficulty": "beginner",
-  "chords": ["C", "G", "Am", "F"],
+  "difficulty": "<难度>",
+  "chords": ["<该歌曲实际使用的和弦1>", "<和弦2>", "..."],
   "lyricsWithChords": "带和弦标注的完整歌词（包含主歌、副歌等所有段落），和弦写在对应歌词上方，以空格对齐，换行分隔，用[verse]、[chorus]、[bridge]等标记段落",
   "annotations": [
-    {"time": 0, "chord": "C", "lyrics": "第一句歌词", "duration": 4},
-    {"time": 4, "chord": "G", "lyrics": "第二句歌词", "duration": 4}
+    {"time": 0, "chord": "<和弦>", "lyrics": "第一句歌词", "duration": 4},
+    {"time": 4, "chord": "<和弦>", "lyrics": "第二句歌词", "duration": 4}
   ]
 }
 
