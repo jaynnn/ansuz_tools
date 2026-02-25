@@ -125,7 +125,14 @@ const Dashboard: React.FC = () => {
     setMessageContent('');
 
     const allToolsContext = PREDEFINED_TOOLS.map(t => `- ${t.name}: ${t.description}`).join('\n');
-    const prompt = `用户想解决的问题：${query}\n\n工具箱中现有的工具列表：\n${allToolsContext}\n\n请判断哪个工具最能解决用户的问题。只能返回JSON格式，不要有任何其他文字。格式如下：\n{"found": true, "toolName": "工具名称"} 或 {"found": false}`;
+    const toolNames = PREDEFINED_TOOLS.map(t => `"${t.name}"`).join('、');
+    const prompt = `用户想解决的问题：${query}\n\n工具箱中现有的工具列表：\n${allToolsContext}\n\n可选工具名称（toolName必须从以下名称中原样选择）：${toolNames}\n\n请判断哪个工具最能解决用户的问题。只能返回JSON格式，不要有任何其他文字。格式如下：\n{"found": true, "toolName": "工具名称"} 或 {"found": false}`;
+
+    // Fuzzy match: exact first, then partial (handles LLM returning slightly different name)
+    const findToolFuzzy = <T extends { name: string }>(list: T[], name: string): T | undefined => {
+      const trimmed = name.trim();
+      return list.find(t => t.name === trimmed) ?? list.find(t => trimmed.includes(t.name) || t.name.includes(trimmed));
+    };
 
     try {
       const result = await llmAPI.chat([{ role: 'user', content: prompt }]);
@@ -141,13 +148,13 @@ const Dashboard: React.FC = () => {
       if (parsed.found && parsed.toolName) {
         const toolName = parsed.toolName;
         // Check if it's in user's added tools
-        const addedMatch = tools.find(t => t.name === toolName);
+        const addedMatch = findToolFuzzy(tools, toolName);
         if (addedMatch) {
           setFilteredTools([addedMatch]);
           setSearchState({ status: 'found_added' });
         } else {
           // Check if it's in predefined tools
-          const predefMatch = PREDEFINED_TOOLS.find(t => t.name === toolName);
+          const predefMatch = findToolFuzzy(PREDEFINED_TOOLS, toolName);
           if (predefMatch) {
             setSearchState({ status: 'found_not_added', matchedTool: predefMatch });
           } else {
@@ -217,6 +224,26 @@ const Dashboard: React.FC = () => {
           </button>
           <h1>工具箱</h1>
         </div>
+        <div className="header-search">
+          <input
+            type="text"
+            className="search-input"
+            placeholder="输入你想解决的问题，AI 为你推荐…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+          />
+          <button
+            className="btn btn-primary search-btn"
+            onClick={handleSearch}
+            disabled={searchState.status === 'searching' || !searchQuery.trim()}
+          >
+            {searchState.status === 'searching' ? '搜索中…' : '搜索'}
+          </button>
+          {searchState.status !== 'idle' && searchState.status !== 'searching' && (
+            <button className="btn btn-secondary search-clear-btn" onClick={handleClearSearch}>清除</button>
+          )}
+        </div>
         <div className="header-actions">
           <button onClick={toggleTheme} className="btn btn-icon" title="切换主题">
             {theme === 'light' ? '🌙' : '☀️'}
@@ -229,70 +256,51 @@ const Dashboard: React.FC = () => {
       </header>
 
       <div className="dashboard-content">
-        <div className="search-section">
-          <div className="search-bar">
-            <input
-              type="text"
-              className="search-input"
-              placeholder="输入你想解决的问题，AI 为你推荐合适的工具…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            />
-            <button
-              className="btn btn-primary search-btn"
-              onClick={handleSearch}
-              disabled={searchState.status === 'searching' || !searchQuery.trim()}
-            >
-              {searchState.status === 'searching' ? '搜索中…' : '搜索'}
-            </button>
-            {searchState.status !== 'idle' && searchState.status !== 'searching' && (
-              <button className="btn btn-secondary search-clear-btn" onClick={handleClearSearch}>清除</button>
+        {(searchState.status === 'found_added' || searchState.status === 'found_not_added' || searchState.status === 'not_found') && (
+          <div className="search-section">
+            {searchState.status === 'found_added' && (
+              <div className="search-result-tip search-result-found">
+                🎯 已为你筛选出相关工具，点击"清除"可恢复全部工具列表。
+              </div>
+            )}
+
+            {searchState.status === 'found_not_added' && searchState.matchedTool && (
+              <div className="search-result-tip search-result-suggest">
+                <span>💡 推荐工具：<strong>{searchState.matchedTool.name}</strong> — {searchState.matchedTool.description}</span>
+                <div className="search-result-actions">
+                  <button className="btn btn-primary" onClick={handleAddSuggestedTool}>一键添加</button>
+                  <button className="btn btn-secondary" onClick={handleOpenAddModal}>查看添加工具</button>
+                </div>
+              </div>
+            )}
+
+            {searchState.status === 'not_found' && (
+              <div className="search-result-tip search-result-notfound">
+                <p>😔 暂时没有找到相关工具，你可以给站长留言，告诉我们你的需求：</p>
+                {messageSent ? (
+                  <p className="message-sent-tip">✅ 留言已发送，感谢你的反馈！</p>
+                ) : (
+                  <div className="search-message-form">
+                    <textarea
+                      className="search-message-input"
+                      placeholder="描述你的需求…"
+                      value={messageContent}
+                      onChange={(e) => setMessageContent(e.target.value)}
+                      rows={3}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleSendMessage}
+                      disabled={!messageContent.trim()}
+                    >
+                      发送留言
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-
-          {searchState.status === 'found_added' && (
-            <div className="search-result-tip search-result-found">
-              🎯 已为你筛选出相关工具，点击"清除"可恢复全部工具列表。
-            </div>
-          )}
-
-          {searchState.status === 'found_not_added' && searchState.matchedTool && (
-            <div className="search-result-tip search-result-suggest">
-              <span>💡 推荐工具：<strong>{searchState.matchedTool.name}</strong> — {searchState.matchedTool.description}</span>
-              <div className="search-result-actions">
-                <button className="btn btn-primary" onClick={handleAddSuggestedTool}>一键添加</button>
-                <button className="btn btn-secondary" onClick={handleOpenAddModal}>查看添加工具</button>
-              </div>
-            </div>
-          )}
-
-          {searchState.status === 'not_found' && (
-            <div className="search-result-tip search-result-notfound">
-              <p>😔 暂时没有找到相关工具，你可以给站长留言，告诉我们你的需求：</p>
-              {messageSent ? (
-                <p className="message-sent-tip">✅ 留言已发送，感谢你的反馈！</p>
-              ) : (
-                <div className="search-message-form">
-                  <textarea
-                    className="search-message-input"
-                    placeholder="描述你的需求…"
-                    value={messageContent}
-                    onChange={(e) => setMessageContent(e.target.value)}
-                    rows={3}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleSendMessage}
-                    disabled={!messageContent.trim()}
-                  >
-                    发送留言
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        )}
 
         <div className="filter-section">
           <h3>标签筛选</h3>
