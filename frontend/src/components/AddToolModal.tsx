@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { Tool } from '../types/index';
 import '../styles/Modal.css';
 
@@ -43,23 +43,6 @@ const PREDEFINED_TOOLS = [
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [] }) => {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [url, setUrl] = useState('');
-  const [tagInput, setTagInput] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
-
-  const handleAddTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()]);
-      setTagInput('');
-    }
-  };
-
-  const handleRemoveTag = (tag: string) => {
-    setTags(tags.filter((t) => t !== tag));
-  };
-
   // Filter out predefined tools that the user has already added
   const availablePredefinedTools = PREDEFINED_TOOLS.filter(
     (pt) => !existingTools.some((et) => et.name === pt.name && et.url === pt.url)
@@ -74,11 +57,6 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingToo
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onAdd({ name, description, tags, url });
-  };
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -86,10 +64,9 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingToo
           <h2>添加工具</h2>
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
-        
-        {availablePredefinedTools.length > 0 && (
-          <div className="predefined-tools-section">
-            <h3>快速添加内置工具</h3>
+
+        <div className="predefined-tools-section">
+          {availablePredefinedTools.length > 0 ? (
             <div className="predefined-tools-list">
               {availablePredefinedTools.map((tool, index) => (
                 <div
@@ -107,76 +84,16 @@ const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingToo
                 </div>
               ))}
             </div>
-            <div className="section-divider">
-              <span>或</span>
-            </div>
-          </div>
-        )}
-        
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>工具名称 *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label>描述</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </div>
-          <div className="form-group">
-            <label>URL</label>
-            <input
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com 或 /internal-route"
-            />
-          </div>
-          <div className="form-group">
-            <label>标签</label>
-            <div className="tag-input">
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddTag();
-                  }
-                }}
-                placeholder="输入标签后按回车"
-              />
-              <button type="button" onClick={handleAddTag} className="btn btn-secondary">
-                添加
-              </button>
-            </div>
-            <div className="tags-list">
-              {tags.map((tag) => (
-                <span key={tag} className="tag">
-                  {tag}
-                  <button type="button" onClick={() => handleRemoveTag(tag)}>×</button>
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="modal-actions">
-            <button type="button" onClick={onClose} className="btn btn-secondary">
-              取消
-            </button>
-            <button type="submit" className="btn btn-primary">
-              添加
-            </button>
-          </div>
-        </form>
+          ) : (
+            <p className="no-tools-tip">暂无未添加工具</p>
+          )}
+        </div>
+
+        <div className="modal-actions" style={{ padding: '1rem 1.5rem' }}>
+          <button onClick={onClose} className="btn btn-secondary">
+            关闭
+          </button>
+        </div>
       </div>
     </div>
   );
