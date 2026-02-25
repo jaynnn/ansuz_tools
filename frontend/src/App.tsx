@@ -15,6 +15,7 @@ const FriendMatch = React.lazy(() => import('./pages/FriendMatch'));
 const Doudizhu = React.lazy(() => import('./pages/Doudizhu'));
 const Sudoku = React.lazy(() => import('./pages/Sudoku'));
 const GoalTask = React.lazy(() => import('./pages/GoalTask'));
+const GuitarPractice = React.lazy(() => import('./pages/GuitarPractice'));
 
 const LoadingFallback: React.FC = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }} role="status" aria-live="polite">
@@ -99,6 +100,14 @@ const App: React.FC = () => {
                     element={
                       <PrivateRoute>
                         <GoalTask />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/guitar-practice"
+                    element={
+                      <PrivateRoute>
+                        <GuitarPractice />
                       </PrivateRoute>
                     }
                   />

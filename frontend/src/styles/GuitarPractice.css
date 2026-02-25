@@ -1,0 +1,984 @@
+/* ─── Guitar Practice Tool Styles ──────────────────────────────────────────── */
+
+:root {
+  --guitar-bg: #fdf6ee;
+  --guitar-surface: #fff9f2;
+  --guitar-accent: #b45e28;
+  --guitar-accent-light: #e8956a;
+  --guitar-text: #3d2b1a;
+  --guitar-muted: #8c6b52;
+  --guitar-border: #ddc9b5;
+  --guitar-fret: #c8a882;
+  --guitar-string: #a0856b;
+  --guitar-section: #f5ead8;
+}
+
+[data-theme='dark'] {
+  --guitar-bg: #2a1e14;
+  --guitar-surface: #352518;
+  --guitar-accent: #e07840;
+  --guitar-accent-light: #f0a070;
+  --guitar-text: #f0dcc8;
+  --guitar-muted: #b08060;
+  --guitar-border: #5a3e2a;
+  --guitar-fret: #7a5a40;
+  --guitar-string: #9a7a60;
+  --guitar-section: #3d2e1e;
+}
+
+.guitar-practice-page {
+  min-height: 100vh;
+  background: var(--guitar-bg);
+  color: var(--guitar-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────────── */
+
+.guitar-header {
+  background: var(--guitar-surface);
+  border-bottom: 2px solid var(--guitar-border);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(100, 60, 20, 0.1);
+}
+
+.back-btn {
+  background: none;
+  border: 1px solid var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  background: var(--guitar-section);
+  color: var(--guitar-accent);
+}
+
+.guitar-title-area {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.guitar-icon {
+  font-size: 1.6rem;
+}
+
+.guitar-title-area h1 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--guitar-accent);
+  margin: 0;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.view-tab {
+  background: none;
+  border: 1px solid var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.35rem 1rem;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.view-tab:hover {
+  background: var(--guitar-section);
+  color: var(--guitar-accent);
+}
+
+.view-tab.active {
+  background: var(--guitar-accent);
+  border-color: var(--guitar-accent);
+  color: white;
+}
+
+/* ─── Body ─────────────────────────────────────────────────────────────────── */
+
+.guitar-body {
+  flex: 1;
+  padding: 1.5rem;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* ─── Song Library ──────────────────────────────────────────────────────────── */
+
+.song-library {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.library-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.library-header h3 {
+  font-size: 1.2rem;
+  color: var(--guitar-accent);
+  margin: 0;
+}
+
+.btn-add-song {
+  background: var(--guitar-accent);
+  color: white;
+  border: none;
+  padding: 0.5rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.btn-add-song:hover {
+  background: var(--guitar-accent-light);
+}
+
+.library-filters {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.search-input,
+.filter-select {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--guitar-border);
+  border-radius: 8px;
+  background: var(--guitar-surface);
+  color: var(--guitar-text);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.search-input:focus,
+.filter-select:focus {
+  border-color: var(--guitar-accent);
+}
+
+.song-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.no-songs {
+  text-align: center;
+  color: var(--guitar-muted);
+  padding: 2rem;
+}
+
+.song-item {
+  background: var(--guitar-surface);
+  border: 1px solid var(--guitar-border);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto auto;
+  gap: 0.4rem 1rem;
+}
+
+.song-item:hover {
+  border-color: var(--guitar-accent);
+  box-shadow: 0 2px 12px rgba(180, 94, 40, 0.12);
+  transform: translateY(-1px);
+}
+
+.song-item-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.song-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--guitar-text);
+}
+
+.song-artist {
+  font-size: 0.9rem;
+  color: var(--guitar-muted);
+}
+
+.difficulty-badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.diff-beginner {
+  background: #d4edda;
+  color: #155724;
+}
+
+.diff-intermediate {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.diff-advanced {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+[data-theme='dark'] .diff-beginner {
+  background: #1a3d26;
+  color: #6dcf8c;
+}
+
+[data-theme='dark'] .diff-intermediate {
+  background: #3d3010;
+  color: #d4aa40;
+}
+
+[data-theme='dark'] .diff-advanced {
+  background: #3d1a1e;
+  color: #d46070;
+}
+
+.song-item-chords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.chord-tag {
+  font-size: 0.78rem;
+  background: var(--guitar-section);
+  color: var(--guitar-accent);
+  border: 1px solid var(--guitar-border);
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.song-item-meta {
+  font-size: 0.78rem;
+  color: var(--guitar-muted);
+  display: flex;
+  gap: 0.75rem;
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.song-item-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  grid-column: 2;
+  grid-row: 1 / 4;
+}
+
+.btn-edit-song,
+.btn-delete-song {
+  border: 1px solid var(--guitar-border);
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-edit-song {
+  background: var(--guitar-surface);
+  color: var(--guitar-muted);
+}
+
+.btn-edit-song:hover {
+  background: var(--guitar-section);
+  color: var(--guitar-accent);
+  border-color: var(--guitar-accent);
+}
+
+.btn-delete-song {
+  background: none;
+  color: #c0392b;
+  border-color: #e0a0a0;
+}
+
+.btn-delete-song:hover {
+  background: #fde8e8;
+}
+
+/* ─── Player View ────────────────────────────────────────────────────────────── */
+
+.player-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.player-top {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.song-info-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.song-info-header h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--guitar-accent);
+  margin: 0;
+}
+
+.song-artist-name {
+  font-size: 1rem;
+  color: var(--guitar-muted);
+}
+
+.export-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.export-btn:hover {
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+/* ─── Audio Player ────────────────────────────────────────────────────────────── */
+
+.audio-player {
+  background: var(--guitar-surface);
+  border: 1px solid var(--guitar-border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.waveform-canvas {
+  width: 100%;
+  height: 60px;
+  background: var(--guitar-section);
+  border-radius: 8px;
+  display: block;
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.player-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: var(--guitar-accent);
+  color: white;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.player-btn:hover:not(:disabled) {
+  background: var(--guitar-accent-light);
+}
+
+.player-btn:disabled {
+  background: var(--guitar-border);
+  cursor: not-allowed;
+}
+
+.progress-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progress-bar {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--guitar-border);
+  outline: none;
+  cursor: pointer;
+}
+
+.progress-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--guitar-accent);
+  cursor: pointer;
+}
+
+.progress-bar:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.time-display {
+  font-size: 0.82rem;
+  color: var(--guitar-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+}
+
+.player-secondary-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.volume-slider {
+  width: 80px;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--guitar-border);
+  outline: none;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--guitar-accent);
+  cursor: pointer;
+}
+
+.rate-control {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.rate-btn {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--guitar-border);
+  border-radius: 6px;
+  background: var(--guitar-surface);
+  color: var(--guitar-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.rate-btn:hover {
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+.rate-btn.active {
+  background: var(--guitar-accent);
+  border-color: var(--guitar-accent);
+  color: white;
+}
+
+.loop-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.loop-btn,
+.loop-point-btn {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--guitar-border);
+  border-radius: 6px;
+  background: var(--guitar-surface);
+  color: var(--guitar-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.loop-btn:hover,
+.loop-point-btn:hover:not(:disabled) {
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+.loop-btn.active {
+  background: var(--guitar-accent);
+  border-color: var(--guitar-accent);
+  color: white;
+}
+
+.loop-point-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.loop-range {
+  font-size: 0.75rem;
+  color: var(--guitar-muted);
+}
+
+.audio-upload {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.upload-audio-btn {
+  background: none;
+  border: 1px dashed var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.upload-audio-btn:hover {
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+.audio-loaded {
+  font-size: 0.82rem;
+  color: #27ae60;
+}
+
+/* ─── Chord Diagrams ────────────────────────────────────────────────────────── */
+
+.chord-diagrams-section {
+  background: var(--guitar-surface);
+  border: 1px solid var(--guitar-border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.chord-diagrams-section h3 {
+  font-size: 1rem;
+  color: var(--guitar-accent);
+  margin: 0 0 1rem 0;
+}
+
+.chord-diagrams-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  justify-content: flex-start;
+}
+
+.chord-diagram {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.chord-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--guitar-accent);
+}
+
+/* ─── Lyrics Viewer ──────────────────────────────────────────────────────────── */
+
+.lyrics-viewer {
+  background: var(--guitar-surface);
+  border: 1px solid var(--guitar-border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.lyrics-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.font-size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.font-size-control button {
+  background: var(--guitar-section);
+  border: 1px solid var(--guitar-border);
+  color: var(--guitar-text);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.font-size-control button:hover {
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+.font-size-control span {
+  font-size: 0.8rem;
+  color: var(--guitar-muted);
+  min-width: 36px;
+  text-align: center;
+}
+
+.auto-scroll-btn {
+  background: none;
+  border: 1px solid var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: all 0.2s;
+}
+
+.auto-scroll-btn.active {
+  background: var(--guitar-section);
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+.lyrics-container {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--guitar-border);
+  border-radius: 8px;
+  background: var(--guitar-bg);
+  font-family: 'Courier New', 'Consolas', monospace;
+  white-space: pre;
+  line-height: 1.8;
+  scroll-behavior: smooth;
+}
+
+.lyrics-line {
+  padding: 0.1rem 0;
+  transition: background 0.3s;
+}
+
+.lyrics-line.active {
+  background: rgba(180, 94, 40, 0.12);
+  border-left: 3px solid var(--guitar-accent);
+  padding-left: 0.5rem;
+}
+
+.lyrics-line.section-marker {
+  color: var(--guitar-accent);
+  font-weight: 700;
+  font-size: 0.85em;
+  padding-top: 0.5rem;
+  font-style: italic;
+}
+
+.lyrics-line.chord-annotation-line {
+  color: var(--guitar-accent);
+  font-weight: 600;
+}
+
+.annotation-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--guitar-border);
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.annotation-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid var(--guitar-border);
+  background: var(--guitar-surface);
+  font-size: 0.78rem;
+  transition: all 0.2s;
+}
+
+.annotation-pill.active {
+  background: var(--guitar-accent);
+  border-color: var(--guitar-accent);
+  color: white;
+}
+
+.pill-chord {
+  font-weight: 700;
+}
+
+.pill-lyrics {
+  color: var(--guitar-muted);
+  font-size: 0.72rem;
+}
+
+.annotation-pill.active .pill-lyrics {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ─── Song Editor ──────────────────────────────────────────────────────────── */
+
+.song-editor {
+  background: var(--guitar-surface);
+  border: 1px solid var(--guitar-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  max-width: 700px;
+}
+
+.song-editor h3 {
+  font-size: 1.2rem;
+  color: var(--guitar-accent);
+  margin: 0 0 1.25rem 0;
+}
+
+.editor-error {
+  background: #fde8e8;
+  color: #c0392b;
+  border: 1px solid #f5c6cb;
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.form-row label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--guitar-muted);
+}
+
+.editor-input,
+.editor-select,
+.editor-textarea {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--guitar-border);
+  border-radius: 8px;
+  background: var(--guitar-bg);
+  color: var(--guitar-text);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.editor-input:focus,
+.editor-select:focus,
+.editor-textarea:focus {
+  border-color: var(--guitar-accent);
+}
+
+.editor-textarea {
+  font-family: 'Courier New', 'Consolas', monospace;
+  resize: vertical;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.6;
+}
+
+.lyrics-hint {
+  font-size: 0.78rem;
+  color: var(--guitar-muted);
+  background: var(--guitar-section);
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+}
+
+.chord-warning {
+  font-size: 0.78rem;
+  color: #e07800;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-save {
+  background: var(--guitar-accent);
+  color: white;
+  border: none;
+  padding: 0.6rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.btn-save:hover {
+  background: var(--guitar-accent-light);
+}
+
+.btn-cancel {
+  background: none;
+  border: 1px solid var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+.btn-cancel:hover {
+  border-color: var(--guitar-muted);
+  color: var(--guitar-text);
+}
+
+.btn-import {
+  background: none;
+  border: 1px dashed var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btn-import:hover {
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .guitar-header {
+    padding: 0.6rem 1rem;
+  }
+
+  .guitar-title-area h1 {
+    font-size: 1.1rem;
+  }
+
+  .guitar-body {
+    padding: 1rem;
+  }
+
+  .song-item {
+    grid-template-columns: 1fr;
+  }
+
+  .song-item-actions {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: flex-start;
+  }
+
+  .chord-diagrams-grid {
+    gap: 0.75rem;
+  }
+
+  .player-secondary-controls {
+    gap: 0.5rem;
+  }
+
+  .rate-control {
+    flex-wrap: wrap;
+  }
+
+  .lyrics-container {
+    max-height: 260px;
+    font-size: 0.85rem;
+  }
+
+  .song-info-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .export-btn {
+    margin-left: 0;
+  }
+}
