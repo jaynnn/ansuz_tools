@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { goalTaskAPI } from '../api';
 import '../styles/GoalTask.css';
 
@@ -144,6 +145,7 @@ const GoalItem: React.FC<GoalItemProps> = ({ goal, onDelete, onHistory, onClick 
 // ─── Main GoalTask page ───────────────────────────────────────────────────────
 
 const GoalTask: React.FC = () => {
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('main');
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -675,8 +677,9 @@ const GoalTask: React.FC = () => {
   return (
     <div className="gt-page gt-main">
       <div className="gt-nav-bar">
-        <h1 className="gt-nav-title gt-main-title">我的目标</h1>
-      </div>
+          <button className="gt-back-btn" onClick={() => navigate('/')}>‹ 工具箱</button>
+          <h1 className="gt-nav-title gt-main-title">我的目标</h1>
+        </div>
 
       {loading ? (
         <div className="gt-loading">加载中…</div>
