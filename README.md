@@ -490,6 +490,9 @@ server {
     listen 80;
     server_name yourdomain.com;
 
+    # 允许上传较大的音频文件（智谱音频分析功能需要）
+    client_max_body_size 20m;
+
     location / {
         proxy_pass http://localhost:4000;
         proxy_http_version 1.1;

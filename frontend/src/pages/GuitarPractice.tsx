@@ -875,6 +875,13 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLo
   const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const MAX_AUDIO_SIZE = 10 * 1024 * 1024; // 10 MB，与后端限制保持一致
+    if (file.size > MAX_AUDIO_SIZE) {
+      setAnalyzeError(`音频文件过大（${(file.size / 1024 / 1024).toFixed(1)} MB），请上传不超过 10 MB 的音频文件`);
+      e.target.value = '';
+      return;
+    }
+    setAnalyzeError('');
     setAudioFile(file);
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
