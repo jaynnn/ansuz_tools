@@ -222,7 +222,18 @@ router.post('/songs', authMiddleware, async (req: AuthRequest, res: Response) =>
 
 // POST /api/guitar-practice/analyze-audio
 // Use Zhipu LLM to analyze uploaded audio: extract lyrics, timeline, and chord progression
-router.post('/analyze-audio', authMiddleware, audioRateLimit, upload.single('audio'), async (req: AuthRequest, res: Response) => {
+router.post('/analyze-audio', authMiddleware, audioRateLimit, (req: AuthRequest, res: Response, next: NextFunction) => {
+  upload.single('audio')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        const limitMB = Math.round(MAX_AUDIO_SIZE_BYTES / 1024 / 1024);
+        return res.status(413).json({ error: `音频文件过大，请上传不超过 ${limitMB} MB 的音频文件` });
+      }
+      return res.status(400).json({ error: err.message || '文件上传失败' });
+    }
+    next();
+  });
+}, async (req: AuthRequest, res: Response) => {
   try {
     if (!isZhipuConfigured()) {
       return res.status(503).json({ error: '智谱 AI 服务未配置，请在环境变量中设置 ZHIPU_API_KEY' });

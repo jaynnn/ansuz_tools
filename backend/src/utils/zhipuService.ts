@@ -14,7 +14,8 @@ export interface ZhipuAudioAnalysisResult {
 
 const DEFAULT_TIMEOUT_MS = 180000; // 180 seconds for audio processing
 const DEFAULT_ANNOTATION_DURATION_SECONDS = 4;
-const MAX_AUDIO_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
+// 智谱 API 对请求体大小有限制，base64 编码会使文件体积增加约 33%，因此限制原始音频为 10MB
+const MAX_AUDIO_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const getZhipuConfig = () => ({
   apiKey: process.env.ZHIPU_API_KEY || '',
