@@ -366,4 +366,24 @@ export const guitarPracticeAPI = {
     const response = await api.post('/guitar-practice/songs', song);
     return response.data;
   },
+
+  analyzeAudio: async (
+    audioFile: File,
+    title?: string,
+    artist?: string
+  ): Promise<{
+    difficulty: 'beginner' | 'intermediate' | 'advanced';
+    chords: string[];
+    lyricsWithChords: string;
+    annotations: Array<{ time: number; chord: string; lyrics: string; duration?: number }>;
+  }> => {
+    const formData = new FormData();
+    formData.append('audio', audioFile);
+    if (title) formData.append('title', title);
+    if (artist) formData.append('artist', artist);
+    const response = await api.post('/guitar-practice/analyze-audio', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
 };

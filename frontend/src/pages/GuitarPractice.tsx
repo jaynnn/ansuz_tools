@@ -862,6 +862,7 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLo
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | undefined>(undefined);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAnalyzingAudio, setIsAnalyzingAudio] = useState(false);
   const [analyzeError, setAnalyzeError] = useState('');
   const [annotations, setAnnotations] = useState<Song['annotations']>(initial?.annotations || []);
   const [preludeTime, setPreludeTime] = useState<number>(initial?.preludeTime ?? 0);
@@ -907,6 +908,31 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLo
       setAnalyzeError(err?.response?.data?.error || err?.message || 'AI 分析失败，请重试');
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleAnalyzeAudio = async () => {
+    if (!audioFile) {
+      setAnalyzeError('请先上传音频文件再进行智谱音频分析');
+      return;
+    }
+    setIsAnalyzingAudio(true);
+    setAnalyzeError('');
+    try {
+      const result = await guitarPracticeAPI.analyzeAudio(
+        audioFile,
+        title.trim() || undefined,
+        artist.trim() || undefined
+      );
+      setDifficulty(result.difficulty);
+      setChordsInput(result.chords.join(', '));
+      setLyricsWithChords(result.lyricsWithChords);
+      setAnnotations(result.annotations);
+      setError('');
+    } catch (err: any) {
+      setAnalyzeError(err?.response?.data?.error || err?.message || '音频分析失败，请重试');
+    } finally {
+      setIsAnalyzingAudio(false);
     }
   };
 
@@ -1009,17 +1035,29 @@ const SongEditor: React.FC<SongEditorProps> = ({ initial, onSave, onCancel, isLo
             {audioUrl && <span className="audio-ready">✓ 已加载</span>}
           </div>
           <div className="ai-analyze-hint">
-            填写歌曲名称和艺术家后，点击「AI 生成」自动识别和弦、歌词与难度。
+            填写歌曲名称和艺术家后，点击「AI 生成」通过曲名自动生成和弦与歌词。
+            <br />上传音频后，点击「智谱音频分析」可直接从音频识别歌词、时间轴和和弦走向。
           </div>
           {analyzeError && <div className="editor-error">{analyzeError}</div>}
-          <button
-            className="btn-ai-generate"
-            onClick={handleAnalyze}
-            disabled={isAnalyzing}
-            type="button"
-          >
-            {isAnalyzing ? '🔄 AI 分析中...' : '✨ AI 生成'}
-          </button>
+          <div className="ai-analyze-actions">
+            <button
+              className="btn-ai-generate"
+              onClick={handleAnalyze}
+              disabled={isAnalyzing || isAnalyzingAudio}
+              type="button"
+            >
+              {isAnalyzing ? '🔄 AI 分析中...' : '✨ AI 生成'}
+            </button>
+            <button
+              className="btn-ai-audio"
+              onClick={handleAnalyzeAudio}
+              disabled={!audioFile || isAnalyzing || isAnalyzingAudio}
+              type="button"
+              title="使用智谱 AI 从音频中识别歌词、时间轴与和弦走向"
+            >
+              {isAnalyzingAudio ? '🔄 音频解析中...' : '🎵 智谱音频分析'}
+            </button>
+          </div>
         </div>
       </div>
 
