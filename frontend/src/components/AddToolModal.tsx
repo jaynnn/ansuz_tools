@@ -53,6 +53,12 @@ const PREDEFINED_TOOLS = [
     url: '/guitar-practice',
     tags: ['音乐', '吉他', '练习', '和弦'],
   },
+  {
+    name: '病例记录',
+    description: 'AI辅助病例记录工具，记录病情及对应处理方式，自动生成分类标签，支持公开分享供他人参考',
+    url: '/medical-record',
+    tags: ['健康', '医疗', 'AI', '记录'],
+  },
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [], highlightToolName }) => {

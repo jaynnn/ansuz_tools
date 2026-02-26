@@ -18,6 +18,7 @@ import announcementRoutes from './routes/announcements';
 import messageRoutes from './routes/messages';
 import goalTaskRoutes from './routes/goalTask';
 import guitarPracticeRoutes from './routes/guitarPractice';
+import medicalRecordRoutes from './routes/medicalRecord';
 
 // Load environment variables
 dotenv.config();
@@ -84,6 +85,7 @@ app.use('/api/announcements', announcementRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/goal-task', goalTaskRoutes);
 app.use('/api/guitar-practice', guitarPracticeRoutes);
+app.use('/api/medical-record', medicalRecordRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

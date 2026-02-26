@@ -326,6 +326,34 @@ export const goalTaskAPI = {  getGoals: async () => {
   },
 };
 
+// Medical Record APIs
+export const medicalRecordAPI = {
+  getAll: async (params?: { search?: string; tag?: string }) => {
+    const response = await api.get('/medical-record', { params });
+    return response.data;
+  },
+
+  create: async (condition: string, treatment: string) => {
+    const response = await api.post('/medical-record', { condition, treatment });
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    const response = await api.delete(`/medical-record/${id}`);
+    return response.data;
+  },
+
+  togglePublish: async (id: number) => {
+    const response = await api.post(`/medical-record/${id}/publish`);
+    return response.data;
+  },
+
+  getPublic: async (params?: { search?: string; tag?: string }) => {
+    const response = await api.get('/medical-record/public', { params });
+    return response.data;
+  },
+};
+
 // Guitar Practice APIs
 export const guitarPracticeAPI = {
   analyze: async (title: string, artist: string): Promise<{
