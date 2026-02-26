@@ -244,8 +244,13 @@ router.post('/analyze-audio', authMiddleware, audioRateLimit, (req: AuthRequest,
     }
 
     const { title, artist } = req.body as { title?: string; artist?: string };
-    const safeTitle = title ? sanitizeString(title, 200) : undefined;
-    const safeArtist = artist ? sanitizeString(artist, 200) : undefined;
+
+    if (!title || !artist) {
+      return res.status(400).json({ error: '请提供歌曲名称和艺术家以进行智谱 AI 分析' });
+    }
+
+    const safeTitle = sanitizeString(title, 200);
+    const safeArtist = sanitizeString(artist, 200);
 
     logInfo('guitar_analyze_audio_request', {
       userId: req.userId,
@@ -255,8 +260,7 @@ router.post('/analyze-audio', authMiddleware, audioRateLimit, (req: AuthRequest,
       mimeType: req.file.mimetype,
     });
 
-    const audioBase64 = req.file.buffer.toString('base64');
-    const result = await analyzeAudioWithZhipu(audioBase64, req.file.mimetype, safeTitle, safeArtist);
+    const result = await analyzeAudioWithZhipu(safeTitle, safeArtist);
 
     if (req.userId && result.usage) {
       recordTokenUsage(req.userId, 'guitar_analyze_audio', result.usage, result.model);
