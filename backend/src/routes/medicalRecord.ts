@@ -159,6 +159,57 @@ router.post('/', authMiddleware, rateLimit, async (req: AuthRequest, res: Respon
   }
 });
 
+// PUT /api/medical-record/:id  –  update a record
+router.put('/:id', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const { condition, treatment } = req.body;
+    if (!condition) return res.status(400).json({ error: 'condition is required' });
+    if (!treatment) return res.status(400).json({ error: 'treatment is required' });
+
+    const existing = await dbGet(
+      'SELECT * FROM medical_records WHERE id = ? AND user_id = ?',
+      [req.params.id, req.userId]
+    );
+    if (!existing) return res.status(404).json({ error: 'Record not found' });
+
+    const safeCondition = sanitizeString(condition, 2000);
+    const safeTreatment = sanitizeString(treatment, 2000);
+
+    // Re-generate tags via LLM; fall back to existing tags on failure
+    let tags: string[] = (() => { try { return JSON.parse(existing.tags); } catch { return []; } })();
+    try {
+      const prompt = `根据以下病情描述和治疗方式，为该病例生成3~5个分类标签（如"感冒"、"消化系统"、"外伤"、"慢性病"等），以JSON数组格式输出，如：["感冒","呼吸系统","发热"]。只输出JSON数组，不要有其他文字。\n\n病情：${safeCondition}\n\n治疗方式：${safeTreatment}`;
+      const result = await chatCompletion([{ role: 'user', content: prompt }]);
+      if (req.userId) {
+        recordTokenUsage(req.userId, 'medical_record_tag', result.usage, result.model);
+      }
+      const text = result.content.trim();
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed)) {
+          tags = parsed.map((t: any) => String(t)).slice(0, 5);
+        }
+      }
+    } catch (e) {
+      logError('medical_record_tag_error', e as Error);
+    }
+
+    await dbRun(
+      'UPDATE medical_records SET condition = ?, treatment = ?, tags = ? WHERE id = ?',
+      [safeCondition, safeTreatment, JSON.stringify(tags), req.params.id]
+    );
+    const record = await dbGet('SELECT * FROM medical_records WHERE id = ?', [req.params.id]);
+    record.tags = (() => { try { return JSON.parse(record.tags); } catch { return []; } })();
+
+    logInfo('medical_record_updated', { userId: req.userId, id: record.id });
+    res.json({ record });
+  } catch (error) {
+    logError('medical_record_update_error', error as Error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // DELETE /api/medical-record/:id  –  delete a record
 router.delete('/:id', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {

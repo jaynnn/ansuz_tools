@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { medicalRecordAPI } from '../api';
 import '../styles/MedicalRecord.css';
@@ -35,8 +35,8 @@ const MedicalRecord: React.FC = () => {
   const navigate = useNavigate();
 
   const [tab, setTab] = useState<'mine' | 'public'>('mine');
-  const [records, setRecords] = useState<MedicalRecord[]>([]);
-  const [publicRecords, setPublicRecords] = useState<MedicalRecord[]>([]);
+  const [allMyRecords, setAllMyRecords] = useState<MedicalRecord[]>([]);
+  const [allPublicRecords, setAllPublicRecords] = useState<MedicalRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -48,60 +48,56 @@ const MedicalRecord: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  // Fetch records whenever tab / search / activeTag change.
-  // The cleanup function sets `cancelled = true` so that a stale response
-  // (from a previous, slower request) never overwrites a newer result.
-  useEffect(() => {
-    let cancelled = false;
-    const params: { search?: string; tag?: string } = {};
-    if (search.trim()) params.search = search.trim();
-    if (activeTag) params.tag = activeTag;
+  // Edit modal state
+  const [editingRecord, setEditingRecord] = useState<MedicalRecord | null>(null);
+  const [editCondition, setEditCondition] = useState('');
+  const [editTreatment, setEditTreatment] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState('');
 
+  // Fetch ALL records once on mount. Individual mutations update state in-place
+  // to avoid extra network round-trips and prevent flickering.
+  const fetchAll = () => {
     setLoading(true);
-    const fetchFn = tab === 'mine'
-      ? medicalRecordAPI.getAll(params)
-      : medicalRecordAPI.getPublic(params);
-
-    fetchFn
-      .then((data) => {
-        if (cancelled) return;
-        if (tab === 'mine') setRecords(data.records || []);
-        else setPublicRecords(data.records || []);
+    Promise.all([
+      medicalRecordAPI.getAll({}),
+      medicalRecordAPI.getPublic({}),
+    ])
+      .then(([myData, publicData]) => {
+        setAllMyRecords(myData.records || []);
+        setAllPublicRecords(publicData.records || []);
       })
       .catch(() => {
-        if (cancelled) return;
-        if (tab === 'mine') setRecords([]);
-        else setPublicRecords([]);
+        setAllMyRecords([]);
+        setAllPublicRecords([]);
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .finally(() => setLoading(false));
+  };
 
-    return () => { cancelled = true; };
-  }, [tab, search, activeTag]);
+  useEffect(() => { fetchAll(); }, []);
 
-  // Derive all tags from unfiltered list for sidebar
-  const [allMyTags, setAllMyTags] = useState<string[]>([]);
-  const [allPublicTags, setAllPublicTags] = useState<string[]>([]);
-
-  useEffect(() => {
-    // Fetch all records (no filter) to collect all tags for sidebar
-    medicalRecordAPI.getAll({}).then((d) => setAllMyTags(collectAllTags(d.records || []))).catch(() => {});
-    medicalRecordAPI.getPublic({}).then((d) => setAllPublicTags(collectAllTags(d.records || []))).catch(() => {});
-  }, [tab]);
-
+  // Derive tags from the full unfiltered lists
+  const allMyTags = useMemo(() => collectAllTags(allMyRecords), [allMyRecords]);
+  const allPublicTags = useMemo(() => collectAllTags(allPublicRecords), [allPublicRecords]);
   const sidebarTags = tab === 'mine' ? allMyTags : allPublicTags;
-  const displayRecords = tab === 'mine' ? records : publicRecords;
+
+  // Client-side filtering
+  const displayRecords = useMemo(() => {
+    const base = tab === 'mine' ? allMyRecords : allPublicRecords;
+    const s = search.trim().toLowerCase();
+    return base.filter((r) => {
+      if (s && !r.condition.toLowerCase().includes(s) && !r.treatment.toLowerCase().includes(s)) return false;
+      if (activeTag && !r.tags.includes(activeTag)) return false;
+      return true;
+    });
+  }, [tab, allMyRecords, allPublicRecords, search, activeTag]);
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('确认删除这条记录吗？')) return;
     try {
       await medicalRecordAPI.delete(id);
-      setRecords((prev) => {
-        const updated = prev.filter((r) => r.id !== id);
-        setAllMyTags(collectAllTags(updated));
-        return updated;
-      });
+      setAllMyRecords((prev) => prev.filter((r) => r.id !== id));
+      setAllPublicRecords((prev) => prev.filter((r) => r.id !== id));
     } catch {
       alert('删除失败，请重试');
     }
@@ -110,7 +106,7 @@ const MedicalRecord: React.FC = () => {
   const handleTogglePublish = async (id: number) => {
     try {
       const data = await medicalRecordAPI.togglePublish(id);
-      setRecords((prev) =>
+      setAllMyRecords((prev) =>
         prev.map((r) => (r.id === id ? { ...r, is_public: data.is_public } : r))
       );
     } catch {
@@ -127,11 +123,7 @@ const MedicalRecord: React.FC = () => {
     setSubmitError('');
     try {
       const data = await medicalRecordAPI.create(formCondition.trim(), formTreatment.trim());
-      setRecords((prev) => {
-        const updated = [data.record, ...prev];
-        setAllMyTags(collectAllTags(updated));
-        return updated;
-      });
+      setAllMyRecords((prev) => [data.record, ...prev]);
       setFormCondition('');
       setFormTreatment('');
       setShowModal(false);
@@ -139,6 +131,32 @@ const MedicalRecord: React.FC = () => {
       setSubmitError('添加失败，请重试');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleEditOpen = (record: MedicalRecord) => {
+    setEditingRecord(record);
+    setEditCondition(record.condition);
+    setEditTreatment(record.treatment);
+    setEditError('');
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editingRecord || !editCondition.trim() || !editTreatment.trim()) {
+      setEditError('请填写病情和处理方式');
+      return;
+    }
+    setEditSubmitting(true);
+    setEditError('');
+    try {
+      const data = await medicalRecordAPI.update(editingRecord.id, editCondition.trim(), editTreatment.trim());
+      setAllMyRecords((prev) => prev.map((r) => (r.id === editingRecord.id ? data.record : r)));
+      setAllPublicRecords((prev) => prev.map((r) => (r.id === editingRecord.id ? { ...data.record, author_nickname: r.author_nickname } : r)));
+      setEditingRecord(null);
+    } catch {
+      setEditError('修改失败，请重试');
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -232,6 +250,12 @@ const MedicalRecord: React.FC = () => {
                 {tab === 'mine' && (
                   <div className="mr-card-actions">
                     <button
+                      className="mr-action-btn edit"
+                      onClick={() => handleEditOpen(record)}
+                    >
+                      编辑
+                    </button>
+                    <button
                       className={`mr-action-btn ${record.is_public ? 'unpublish' : 'publish'}`}
                       onClick={() => handleTogglePublish(record.id)}
                     >
@@ -291,6 +315,44 @@ const MedicalRecord: React.FC = () => {
               disabled={submitting || !formCondition.trim() || !formTreatment.trim()}
             >
               {submitting ? 'AI 分析中...' : '保存记录'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit record modal */}
+      {editingRecord && (
+        <div className="mr-modal-overlay" onClick={() => setEditingRecord(null)}>
+          <div className="mr-modal" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mr-modal-title">修改病例记录</h2>
+            {editError && <div className="mr-error">{editError}</div>}
+            <div className="mr-form-group">
+              <label className="mr-form-label">病情描述</label>
+              <textarea
+                className="mr-form-textarea"
+                placeholder="请描述病情，如：头痛、发烧38.5°C、持续两天..."
+                value={editCondition}
+                onChange={(e) => setEditCondition(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <div className="mr-form-group">
+              <label className="mr-form-label">处理方式</label>
+              <textarea
+                className="mr-form-textarea"
+                placeholder="请描述治疗或处理方式，如：服用布洛芬、多喝水、休息..."
+                value={editTreatment}
+                onChange={(e) => setEditTreatment(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <p className="mr-hint">💡 保存后，AI 将重新为此病例生成分类标签</p>
+            <button
+              className="mr-submit-btn"
+              onClick={handleEditSubmit}
+              disabled={editSubmitting || !editCondition.trim() || !editTreatment.trim()}
+            >
+              {editSubmitting ? 'AI 分析中...' : '保存修改'}
             </button>
           </div>
         </div>

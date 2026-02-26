@@ -338,6 +338,11 @@ export const medicalRecordAPI = {
     return response.data;
   },
 
+  update: async (id: number, condition: string, treatment: string) => {
+    const response = await api.put(`/medical-record/${id}`, { condition, treatment });
+    return response.data;
+  },
+
   delete: async (id: number) => {
     const response = await api.delete(`/medical-record/${id}`);
     return response.data;
