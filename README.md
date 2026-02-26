@@ -483,15 +483,45 @@ pm2 stop ansuz_tools
 
 ### 使用 Nginx 反向代理（可选）
 
-Nginx 配置示例：
+项目根目录提供了 `nginx.conf` 配置模板，可直接参考使用。
+
+Nginx 配置示例（**注意：HTTP 和 HTTPS 两个 server 块均需配置 `client_max_body_size`，否则音频上传功能将返回 413 错误**）：
 
 ```nginx
+# HTTP -> HTTPS 重定向
 server {
     listen 80;
     server_name yourdomain.com;
 
     # 允许上传较大的音频文件（智谱音频分析功能需要）
     client_max_body_size 20m;
+
+    location / {
+        proxy_pass http://localhost:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# HTTPS 配置（使用 Let's Encrypt）
+server {
+    listen 443 ssl;
+    server_name yourdomain.com;
+
+    # 允许上传较大的音频文件（智谱音频分析功能需要）
+    # 注意：HTTPS server 块也必须配置此项，否则音频上传将报 413 错误
+    client_max_body_size 20m;
+
+    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
     location / {
         proxy_pass http://localhost:4000;
