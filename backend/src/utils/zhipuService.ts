@@ -75,8 +75,8 @@ export const analyzeAudioWithZhipu = async (
         role: 'user',
         content: [
           {
-            type: 'audio',
-            audio: {
+            type: 'audio_url',
+            audio_url: {
               url: `data:${mimeType};base64,${audioBase64}`,
             },
           },
