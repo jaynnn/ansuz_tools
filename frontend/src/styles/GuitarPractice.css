@@ -1167,6 +1167,252 @@
   border-color: #a07828;
 }
 
+/* ─── Lyrics Chord Visual Editor ─────────────────────────────────────────── */
+
+.lyrics-chord-editor {
+  position: relative;
+  border: 1px solid var(--guitar-border);
+  border-radius: 8px;
+  background: var(--guitar-bg);
+  overflow: visible;
+}
+
+.lce-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--guitar-border);
+  background: var(--guitar-section);
+  border-radius: 8px 8px 0 0;
+  gap: 0.5rem;
+}
+
+.lce-hint {
+  font-size: 0.75rem;
+  color: var(--guitar-muted);
+}
+
+.lce-raw-btn {
+  background: none;
+  border: 1px solid var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.2rem 0.6rem;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.lce-raw-btn:hover {
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+.lce-lines {
+  padding: 0.75rem 1rem;
+  min-height: 80px;
+  overflow-x: auto;
+}
+
+.lce-placeholder {
+  color: var(--guitar-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+  padding: 1rem 0;
+  text-align: center;
+}
+
+.lce-section-row {
+  color: var(--guitar-accent);
+  font-weight: 700;
+  font-size: 0.85em;
+  padding: 0.4rem 0 0.15rem;
+  font-style: italic;
+}
+
+.lce-blank-row {
+  height: 0.75em;
+}
+
+.lce-line {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  padding: 0.15rem 0;
+  gap: 0;
+}
+
+.lce-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 1.4em;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.lce-cell.dragging-src {
+  opacity: 0.4;
+}
+
+.lce-chord-area {
+  height: 22px;
+  width: 100%;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+}
+
+.lce-chord-label {
+  position: absolute;
+  left: 0;
+  bottom: 1px;
+  white-space: nowrap;
+  color: var(--guitar-accent);
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: grab;
+  user-select: none;
+  padding: 1px 2px;
+  border-radius: 3px;
+  line-height: 1.2;
+  transition: background 0.15s;
+  z-index: 2;
+}
+
+.lce-chord-label:hover {
+  background: rgba(180, 94, 40, 0.12);
+}
+
+.lce-chord-label:active {
+  cursor: grabbing;
+}
+
+.lce-char {
+  font-size: 1rem;
+  line-height: 1.5;
+  padding: 0 1px;
+  text-align: center;
+  white-space: pre;
+}
+
+.lce-char.underlined {
+  text-decoration: underline;
+  text-decoration-color: var(--guitar-accent);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 2px;
+}
+
+/* Chord Popup */
+.lce-popup {
+  position: absolute;
+  z-index: 200;
+  background: var(--guitar-surface);
+  border: 1px solid var(--guitar-border);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  min-width: 210px;
+  max-width: 300px;
+}
+
+.lce-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--guitar-muted);
+}
+
+.lce-popup-clear {
+  background: none;
+  border: 1px solid var(--guitar-border);
+  color: var(--guitar-muted);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.15s;
+}
+
+.lce-popup-clear:hover {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.lce-popup-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.lce-popup-btn {
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--guitar-border);
+  border-radius: 5px;
+  background: var(--guitar-bg);
+  color: var(--guitar-text);
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.lce-popup-btn:hover:not(.active) {
+  border-color: var(--guitar-accent);
+  color: var(--guitar-accent);
+}
+
+.lce-popup-btn.active {
+  background: var(--guitar-accent);
+  color: white;
+  border-color: var(--guitar-accent);
+}
+
+/* Prelude time row in timeline editor */
+.prelude-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--guitar-border);
+  margin-bottom: 0.5rem;
+}
+
+.prelude-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--guitar-muted);
+  white-space: nowrap;
+}
+
+.prelude-input {
+  width: 80px !important;
+  flex-shrink: 0;
+}
+
+.prelude-unit {
+  font-size: 0.82rem;
+  color: var(--guitar-muted);
+}
+
+/* Prelude indicator in karaoke display */
+.karaoke-prelude {
+  font-size: 1rem;
+  color: var(--guitar-accent);
+  font-style: italic;
+  animation: pulse-prelude 1s ease-in-out infinite;
+}
+
+@keyframes pulse-prelude {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* ─── Timeline Editor ─────────────────────────────────────────────────────── */
 
 .timeline-editor-header {
