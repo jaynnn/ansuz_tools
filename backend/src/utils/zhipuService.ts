@@ -20,14 +20,12 @@ const MAX_AUDIO_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const getZhipuConfig = () => ({
   apiKey: process.env.ZHIPU_API_KEY || '',
   baseUrl: process.env.ZHIPU_API_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
-  model: process.env.ZHIPU_AUDIO_MODEL || 'glm-4v-plus',
+  model: process.env.ZHIPU_AUDIO_MODEL || 'glm-4-flash',
 });
 
 export const analyzeAudioWithZhipu = async (
-  audioBase64: string,
-  mimeType: string,
-  title?: string,
-  artist?: string
+  title: string,
+  artist: string
 ): Promise<ZhipuAudioAnalysisResult> => {
   const config = getZhipuConfig();
 
@@ -35,16 +33,12 @@ export const analyzeAudioWithZhipu = async (
     throw new Error('Zhipu API key is not configured. Set ZHIPU_API_KEY in environment variables.');
   }
 
-  const contextHint = title && artist
-    ? `这是歌曲《${title}》（演唱：${artist}）的音频片段。`
-    : '';
-
-  const prompt = `${contextHint}请仔细聆听这段音频，分析其中的歌词内容、和弦走向与节奏时间线。
+  const prompt = `请为歌曲《${title}》（演唱：${artist}）生成吉他练习数据。
 
 请以JSON格式输出以下内容：
 {
   "difficulty": "<难度>",
-  "chords": ["<和弦1>", "<和弦2>", "..."],
+  "chords": ["<该歌曲常用的和弦1>", "<和弦2>", "..."],
   "lyricsWithChords": "带和弦标注的完整歌词（包含主歌、副歌等所有段落），和弦写在对应歌词上方，以空格对齐，换行分隔，用[verse]、[chorus]、[bridge]等标记段落",
   "annotations": [
     {"time": 0, "chord": "<和弦>", "lyrics": "第一句歌词", "duration": 4},
@@ -56,8 +50,7 @@ export const analyzeAudioWithZhipu = async (
 - difficulty 取值：beginner（初级）、intermediate（中级）或 advanced（高级），根据和弦难度判断
 - chords：列出歌曲主要和弦，使用标准吉他和弦名（如 C、G、Am、F、Em、Dm、D、A、E、B7 等）
 - lyricsWithChords：包含完整歌词（尽量覆盖主歌、副歌、桥段等所有段落），每行歌词上方标注对应和弦，使用空格对齐，用[verse]、[chorus]、[bridge]等标记段落开始
-- annotations：至少 12 条，尽量覆盖完整歌曲，time 为该句在音频中的秒数（根据实际音频时间），chord 为该时刻和弦，lyrics 为对应歌词，duration 为该句演唱时长（秒）
-- 若音频中无法识别完整和弦，请尽量根据旋律和节奏推断
+- annotations：至少 12 条，尽量覆盖完整歌曲，time 为该句在歌曲中的大致秒数（估算），chord 为该时刻和弦，lyrics 为对应歌词，duration 为该句歌词演唱时长（秒，估算）
 
 只输出 JSON，不要有其他文字。`;
 
@@ -73,18 +66,7 @@ export const analyzeAudioWithZhipu = async (
     messages: [
       {
         role: 'user',
-        content: [
-          {
-            type: 'audio_url',
-            audio_url: {
-              url: `data:${mimeType};base64,${audioBase64}`,
-            },
-          },
-          {
-            type: 'text',
-            text: prompt,
-          },
-        ],
+        content: prompt,
       },
     ],
     temperature: 0.3,
@@ -93,7 +75,6 @@ export const analyzeAudioWithZhipu = async (
   logInfo('zhipu_audio_request', {
     model: config.model,
     endpoint: endpointUrl,
-    mimeType,
     title,
     artist,
   });
