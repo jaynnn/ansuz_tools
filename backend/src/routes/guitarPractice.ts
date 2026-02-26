@@ -1,10 +1,43 @@
-import { Router, Response, Request } from 'express';
+import { Router, Response, Request, NextFunction } from 'express';
+import multer from 'multer';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { chatCompletion } from '../utils/llmService';
 import { recordTokenUsage } from '../utils/asyncLlmService';
+import { analyzeAudioWithZhipu, isZhipuConfigured, MAX_AUDIO_SIZE_BYTES } from '../utils/zhipuService';
 import { sanitizeString } from '../utils/sanitize';
-import { logInfo, logError } from '../utils/logger';
+import { logInfo, logError, logWarn } from '../utils/logger';
 import { dbRun, dbGet, dbAll } from '../utils/database';
+
+// Multer: store audio in memory, limit file size, accept audio only
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_AUDIO_SIZE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('只支持音频文件'));
+    }
+  },
+});
+
+// Rate limiter for audio analysis (expensive LLM call): 5 requests per user per minute
+const audioRateLimitMap = new Map<string, number[]>();
+const AUDIO_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const AUDIO_RATE_LIMIT_MAX = 5;
+
+const audioRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const key = String(req.userId || req.ip);
+  const now = Date.now();
+  const timestamps = (audioRateLimitMap.get(key) || []).filter(t => now - t < AUDIO_RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= AUDIO_RATE_LIMIT_MAX) {
+    logWarn('guitar_audio_rate_limit_exceeded', { key });
+    return res.status(429).json({ error: '请求过于频繁，请稍后再试' });
+  }
+  timestamps.push(now);
+  audioRateLimitMap.set(key, timestamps);
+  next();
+};
 
 const router = Router();
 
@@ -184,6 +217,49 @@ router.post('/songs', authMiddleware, async (req: AuthRequest, res: Response) =>
   } catch (error: any) {
     logError('guitar_song_submit_error', error as Error, { userId: req.userId });
     res.status(500).json({ error: error.message || '提交失败，请重试' });
+  }
+});
+
+// POST /api/guitar-practice/analyze-audio
+// Use Zhipu LLM to analyze uploaded audio: extract lyrics, timeline, and chord progression
+router.post('/analyze-audio', authMiddleware, audioRateLimit, upload.single('audio'), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!isZhipuConfigured()) {
+      return res.status(503).json({ error: '智谱 AI 服务未配置，请在环境变量中设置 ZHIPU_API_KEY' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: '请上传音频文件' });
+    }
+
+    const { title, artist } = req.body as { title?: string; artist?: string };
+    const safeTitle = title ? sanitizeString(title, 200) : undefined;
+    const safeArtist = artist ? sanitizeString(artist, 200) : undefined;
+
+    logInfo('guitar_analyze_audio_request', {
+      userId: req.userId,
+      title: safeTitle,
+      artist: safeArtist,
+      fileSize: req.file.size,
+      mimeType: req.file.mimetype,
+    });
+
+    const audioBase64 = req.file.buffer.toString('base64');
+    const result = await analyzeAudioWithZhipu(audioBase64, req.file.mimetype, safeTitle, safeArtist);
+
+    if (req.userId && result.usage) {
+      recordTokenUsage(req.userId, 'guitar_analyze_audio', result.usage, result.model);
+    }
+
+    res.json({
+      difficulty: result.difficulty,
+      chords: result.chords,
+      lyricsWithChords: result.lyricsWithChords,
+      annotations: result.annotations,
+    });
+  } catch (error: any) {
+    logError('guitar_analyze_audio_error', error as Error, { userId: req.userId });
+    res.status(500).json({ error: error.message || '音频分析失败，请重试' });
   }
 });
 
