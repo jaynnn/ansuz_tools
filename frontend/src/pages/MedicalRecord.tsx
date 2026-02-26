@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { medicalRecordAPI } from '../api';
 import '../styles/MedicalRecord.css';
@@ -48,43 +48,37 @@ const MedicalRecord: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  const fetchMyRecords = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params: { search?: string; tag?: string } = {};
-      if (search.trim()) params.search = search.trim();
-      if (activeTag) params.tag = activeTag;
-      const data = await medicalRecordAPI.getAll(params);
-      setRecords(data.records || []);
-    } catch {
-      setRecords([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [search, activeTag]);
-
-  const fetchPublicRecords = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params: { search?: string; tag?: string } = {};
-      if (search.trim()) params.search = search.trim();
-      if (activeTag) params.tag = activeTag;
-      const data = await medicalRecordAPI.getPublic(params);
-      setPublicRecords(data.records || []);
-    } catch {
-      setPublicRecords([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [search, activeTag]);
-
+  // Fetch records whenever tab / search / activeTag change.
+  // The cleanup function sets `cancelled = true` so that a stale response
+  // (from a previous, slower request) never overwrites a newer result.
   useEffect(() => {
-    if (tab === 'mine') {
-      fetchMyRecords();
-    } else {
-      fetchPublicRecords();
-    }
-  }, [tab, fetchMyRecords, fetchPublicRecords]);
+    let cancelled = false;
+    const params: { search?: string; tag?: string } = {};
+    if (search.trim()) params.search = search.trim();
+    if (activeTag) params.tag = activeTag;
+
+    setLoading(true);
+    const fetchFn = tab === 'mine'
+      ? medicalRecordAPI.getAll(params)
+      : medicalRecordAPI.getPublic(params);
+
+    fetchFn
+      .then((data) => {
+        if (cancelled) return;
+        if (tab === 'mine') setRecords(data.records || []);
+        else setPublicRecords(data.records || []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        if (tab === 'mine') setRecords([]);
+        else setPublicRecords([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [tab, search, activeTag]);
 
   // Derive all tags from unfiltered list for sidebar
   const [allMyTags, setAllMyTags] = useState<string[]>([]);
@@ -94,7 +88,6 @@ const MedicalRecord: React.FC = () => {
     // Fetch all records (no filter) to collect all tags for sidebar
     medicalRecordAPI.getAll({}).then((d) => setAllMyTags(collectAllTags(d.records || []))).catch(() => {});
     medicalRecordAPI.getPublic({}).then((d) => setAllPublicTags(collectAllTags(d.records || []))).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   const sidebarTags = tab === 'mine' ? allMyTags : allPublicTags;
