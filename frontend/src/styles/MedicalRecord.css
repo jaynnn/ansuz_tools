@@ -336,6 +336,11 @@
   background: var(--hover-bg, #f3f4f6);
 }
 
+.mr-action-btn.edit {
+  color: #007aff;
+  border-color: #007aff;
+}
+
 .mr-action-btn.publish {
   color: #34c759;
   border-color: #34c759;
