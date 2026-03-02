@@ -53,6 +53,9 @@ const MindSea: React.FC = () => {
   const [unreadNpcs, setUnreadNpcs] = useState<Set<string>>(new Set());
   const [chattingNpcId, setChattingNpcId] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState<Record<string, boolean>>({});
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [generateModalNpcId, setGenerateModalNpcId] = useState<string | null>(null);
+  const [extraPromptText, setExtraPromptText] = useState('');
   const navigate = useNavigate();
   const { token } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -136,16 +139,36 @@ const MindSea: React.FC = () => {
     e.target.value = '';
   };
 
-  const handleGenerateImage = async (e: React.MouseEvent, npcId: string) => {
+  const handleOpenGenerateModal = (e: React.MouseEvent, npcId: string) => {
     e.stopPropagation();
+    setGenerateModalNpcId(npcId);
+    setExtraPromptText('');
+    setShowGenerateModal(true);
+  };
+
+  const handleConfirmGenerate = async () => {
+    const npcId = generateModalNpcId;
+    if (!npcId) return;
+    setShowGenerateModal(false);
     setImageLoading(prev => ({ ...prev, [npcId]: true }));
     try {
-      await mindseaAPI.generateImage(npcId);
+      await mindseaAPI.generateImage(npcId, extraPromptText.trim() || undefined);
       await fetchNpcs();
-    } catch {
-      alert('AI生成图像失败，请稍后重试');
+    } catch (err) {
+      const apiError = err as { response?: { data?: { can_retry?: boolean; prompt?: string } } };
+      if (apiError.response?.data?.can_retry && apiError.response?.data?.prompt) {
+        try {
+          await mindseaAPI.retryImage(npcId, apiError.response.data.prompt);
+          await fetchNpcs();
+        } catch {
+          alert('AI生成图像失败（已自动重试），请稍后再试');
+        }
+      } else {
+        alert('AI生成图像失败，请稍后重试');
+      }
+    } finally {
+      setImageLoading(prev => ({ ...prev, [npcId]: false }));
     }
-    finally { setImageLoading(prev => ({ ...prev, [npcId]: false })); }
   };
 
   const handleSaveNpc = async (data: Record<string, unknown>) => {
@@ -221,22 +244,6 @@ const MindSea: React.FC = () => {
                     {unreadNpcs.has(npc._id) && <span className="npc-unread-dot" />}
                   </div>
 
-                  {/* Image action buttons - only for user's own NPCs */}
-                  {!npc.is_public && (
-                    <div className="npc-card-image-actions" onClick={e => e.stopPropagation()}>
-                      <button
-                        className="npc-image-btn"
-                        title="上传本地图片"
-                        onClick={(e) => { e.stopPropagation(); handleUploadImage(npc._id); }}
-                      >🖼</button>
-                      <button
-                        className="npc-image-btn"
-                        title="AI生成图片"
-                        onClick={(e) => handleGenerateImage(e, npc._id)}
-                      >✨</button>
-                    </div>
-                  )}
-
                   <div className="npc-card-bottom">
                     <div className="npc-card-name">{npc.name}</div>
                     <div className="npc-card-stage">{stage}</div>
@@ -246,6 +253,20 @@ const MindSea: React.FC = () => {
                   </div>
 
                   <div className="npc-hover-overlay">
+                    {!npc.is_public && (
+                      <div className="npc-hover-top-actions" onClick={e => e.stopPropagation()}>
+                        <button
+                          className="npc-hover-btn"
+                          title="上传形象图"
+                          onClick={(e) => { e.stopPropagation(); handleUploadImage(npc._id); }}
+                        >🖼 上传形象</button>
+                        <button
+                          className="npc-hover-btn"
+                          title="AI生成形象图"
+                          onClick={(e) => handleOpenGenerateModal(e, npc._id)}
+                        >✨ AI生成</button>
+                      </div>
+                    )}
                     <span className="npc-hover-text">开始对话 →</span>
                   </div>
                 </div>
@@ -283,6 +304,26 @@ const MindSea: React.FC = () => {
           onClose={() => { setShowAddModal(false); setEditNpc(null); }}
           onSave={handleSaveNpc}
         />
+      )}
+
+      {showGenerateModal && (
+        <div className="generate-modal-backdrop" onClick={() => setShowGenerateModal(false)}>
+          <div className="generate-modal" onClick={e => e.stopPropagation()}>
+            <h3 className="generate-modal-title">✨ AI生成形象图</h3>
+            <p className="generate-modal-desc">可补充角色形象描述（可选），留空则使用角色设定自动生成：</p>
+            <textarea
+              className="generate-modal-textarea"
+              placeholder="例如：穿着红色旗袍，背景是樱花盛开的庭院…"
+              value={extraPromptText}
+              onChange={e => setExtraPromptText(e.target.value)}
+              rows={3}
+            />
+            <div className="generate-modal-actions">
+              <button className="btn" onClick={() => setShowGenerateModal(false)}>取消</button>
+              <button className="btn btn-primary" onClick={handleConfirmGenerate}>开始生成</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
