@@ -137,6 +137,7 @@ const MindSeaChat: React.FC = () => {
       socketRef.current?.disconnect();
       sessionStorage.removeItem('mindsea_chatting');
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [npcId]);
 
   const fetchNpc = async () => {

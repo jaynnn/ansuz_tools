@@ -7,6 +7,7 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { chatCompletion } from '../utils/llmService';
 import { sendToUser } from '../utils/wsManager';
 import { logInfo, logError, logWarn } from '../utils/logger';
+import { onMongoConnected } from '../utils/mongoDatabase';
 
 const router = Router();
 
@@ -14,7 +15,7 @@ const router = Router();
 const rateLimitMap = new Map<number, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
-// Cleanup stale entries every 5 minutes
+// Cleanup stale entries every 5 minutes; interval ref held for potential future cleanup
 setInterval(() => {
   const now = Date.now();
   for (const [key, timestamps] of rateLimitMap) {
@@ -22,7 +23,10 @@ setInterval(() => {
     if (valid.length === 0) rateLimitMap.delete(key);
     else rateLimitMap.set(key, valid);
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref(); // unref so it doesn't prevent process exit
+
+// Track pending proactive dialogue timeouts per user+npc to avoid duplicates
+const proactivePendingMap = new Map<string, ReturnType<typeof setTimeout>>();
 
 const rateLimit = (maxPerMin: number) => (req: AuthRequest, res: Response, next: NextFunction): void => {
   const userId = req.userId;
@@ -280,11 +284,8 @@ async function seedDefaultNpcs(): Promise<void> {
   logInfo('mindsea_seeded', { count: defaultNpcs.length });
 }
 
-// Run seed after a short delay to allow MongoDB connection to stabilize
-// Single-server deployment assumption; for multi-instance, consider a distributed lock
-setTimeout(() => {
-  seedDefaultNpcs().catch(e => logError('mindsea_seed_error', e as Error));
-}, 3000);
+// Register seed to run after MongoDB connects
+onMongoConnected(() => seedDefaultNpcs().catch(e => logError('mindsea_seed_error', e as Error)));
 
 // ─── routes ─────────────────────────────────────────────────────────────────
 
@@ -683,20 +684,25 @@ ${impressionText}
         proactiveTriggered = true;
         const delaySecs = reaction.delay_seconds;
         const dialogueContent = reaction.dialogue_content;
-        const npcId = npc._id.toString();
-        // Capture userId in closure for async callback
-        const capturedUserId = userId;
-        setTimeout(() => {
-          sendToUser(capturedUserId, 'npc_proactive', {
-            npc_id: npcId,
-            content: dialogueContent,
-          });
-          sendToUser(capturedUserId, 'npc_log', {
-            type: 'proactive',
-            npc_id: npcId,
-            message: `主动触发: ${reaction.trigger_key}`,
-          });
-        }, delaySecs * 1000);
+        const npcIdStr = npc._id.toString();
+        const pendingKey = `${userId}:${npcIdStr}`;
+        // Skip if there's already a pending proactive task for this user+NPC
+        if (!proactivePendingMap.has(pendingKey)) {
+          const capturedUserId = userId;
+          const timeoutId = setTimeout(() => {
+            proactivePendingMap.delete(pendingKey);
+            sendToUser(capturedUserId, 'npc_proactive', {
+              npc_id: npcIdStr,
+              content: dialogueContent,
+            });
+            sendToUser(capturedUserId, 'npc_log', {
+              type: 'proactive',
+              npc_id: npcIdStr,
+              message: `主动触发: ${reaction.trigger_key}`,
+            });
+          }, delaySecs * 1000);
+          proactivePendingMap.set(pendingKey, timeoutId);
+        }
       }
     }
 

@@ -128,7 +128,9 @@ const MindSea: React.FC = () => {
       try {
         await mindseaAPI.updateNpc(npcId, { background_image: base64 });
         await fetchNpcs();
-      } catch { /* ignore */ }
+      } catch {
+        alert('上传图片失败，请重试');
+      }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -140,7 +142,9 @@ const MindSea: React.FC = () => {
     try {
       await mindseaAPI.generateImage(npcId);
       await fetchNpcs();
-    } catch { /* ignore */ }
+    } catch {
+      alert('AI生成图像失败，请稍后重试');
+    }
     finally { setImageLoading(prev => ({ ...prev, [npcId]: false })); }
   };
 
