@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Login from './pages/Login';
@@ -31,118 +31,131 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return token ? <><AnnouncementBar />{children}</> : <Navigate to="/login" />;
 };
 
+// Routes (by prefix) where the global footer should be hidden
+// (e.g. full-screen pages that use height: 100vh)
+const HIDDEN_FOOTER_PREFIXES = ['/mindsea/chat/'];
+
+const AppLayout: React.FC = () => {
+  const location = useLocation();
+  const hideFooter = HIDDEN_FOOTER_PREFIXES.some(prefix => location.pathname.startsWith(prefix));
+
+  return (
+    <div className="app-wrapper">
+      <div className="app-content">
+        <Suspense fallback={<LoadingFallback />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route
+              path="/"
+              element={
+                <PrivateRoute>
+                  <Dashboard />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <PrivateRoute>
+                  <Settings />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/stock-prediction"
+              element={
+                <PrivateRoute>
+                  <StockPrediction />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mbti-test"
+              element={
+                <PrivateRoute>
+                  <MBTITest />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/friend-match"
+              element={
+                <PrivateRoute>
+                  <FriendMatch />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/doudizhu"
+              element={
+                <PrivateRoute>
+                  <Doudizhu />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sudoku"
+              element={
+                <PrivateRoute>
+                  <Sudoku />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/goal-task"
+              element={
+                <PrivateRoute>
+                  <GoalTask />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/guitar-practice"
+              element={
+                <PrivateRoute>
+                  <GuitarPractice />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/medical-record"
+              element={
+                <PrivateRoute>
+                  <MedicalRecord />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mindsea"
+              element={
+                <PrivateRoute>
+                  <MindSea />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mindsea/chat/:npcId"
+              element={
+                <PrivateRoute>
+                  <MindSeaChat />
+                </PrivateRoute>
+              }
+            />
+          </Routes>
+        </Suspense>
+      </div>
+      {!hideFooter && <Footer />}
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   return (
     <ThemeProvider>
       <AuthProvider>
         <BrowserRouter>
-          <div className="app-wrapper">
-            <div className="app-content">
-              <Suspense fallback={<LoadingFallback />}>
-                <Routes>
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/register" element={<Register />} />
-                  <Route
-                    path="/"
-                    element={
-                      <PrivateRoute>
-                        <Dashboard />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/settings"
-                    element={
-                      <PrivateRoute>
-                        <Settings />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/stock-prediction"
-                    element={
-                      <PrivateRoute>
-                        <StockPrediction />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/mbti-test"
-                    element={
-                      <PrivateRoute>
-                        <MBTITest />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/friend-match"
-                    element={
-                      <PrivateRoute>
-                        <FriendMatch />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/doudizhu"
-                    element={
-                      <PrivateRoute>
-                        <Doudizhu />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/sudoku"
-                    element={
-                      <PrivateRoute>
-                        <Sudoku />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/goal-task"
-                    element={
-                      <PrivateRoute>
-                        <GoalTask />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/guitar-practice"
-                    element={
-                      <PrivateRoute>
-                        <GuitarPractice />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/medical-record"
-                    element={
-                      <PrivateRoute>
-                        <MedicalRecord />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/mindsea"
-                    element={
-                      <PrivateRoute>
-                        <MindSea />
-                      </PrivateRoute>
-                    }
-                  />
-                  <Route
-                    path="/mindsea/chat/:npcId"
-                    element={
-                      <PrivateRoute>
-                        <MindSeaChat />
-                      </PrivateRoute>
-                    }
-                  />
-                </Routes>
-              </Suspense>
-            </div>
-            <Footer />
-          </div>
+          <AppLayout />
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>
