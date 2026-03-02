@@ -46,6 +46,8 @@ interface NpcDoc {
   fatigue: FatigueState;
   impression_features: ImpressionFeature[];
   dialogue_history: Array<{ role: string; content: string; timestamp: string }>;
+  is_public: boolean;
+  background_image: string | null;
 }
 
 interface ChatMessage {
@@ -59,6 +61,10 @@ interface LogEntry {
   type: string;
   message: string;
   timestamp: Date;
+}
+
+interface ApiGenerateError {
+  response?: { data?: { can_retry?: boolean; prompt?: string } };
 }
 
 function getRelationshipStage(intimacy: number): string {
@@ -119,9 +125,13 @@ const MindSeaChat: React.FC = () => {
   const [fatigue, setFatigue] = useState<FatigueState | null>(null);
   const [impressionFeatures, setImpressionFeatures] = useState<ImpressionFeature[]>([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [extraPromptText, setExtraPromptText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const addLog = useCallback((type: string, message: string) => {
     const entry: LogEntry = { id: Date.now() + Math.random().toString(), type, message, timestamp: new Date() };
@@ -242,6 +252,67 @@ const MindSeaChat: React.FC = () => {
     setRightPanel(prev => prev === panel ? 'none' : panel);
   };
 
+  const handleUploadImage = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !npcId) return;
+    if (!file.type.startsWith('image/')) {
+      alert('请选择图片文件（支持 JPG、PNG、GIF 等格式）');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('图片大小不能超过5MB');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const base64 = evt.target?.result as string;
+      try {
+        await mindseaAPI.updateNpc(npcId, { background_image: base64 });
+        await fetchNpc();
+      } catch (uploadErr) {
+        console.error('Failed to upload image:', uploadErr);
+        alert('上传图片失败，请重试');
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleOpenGenerateModal = () => {
+    setExtraPromptText('');
+    setShowGenerateModal(true);
+  };
+
+  const handleConfirmGenerate = async () => {
+    if (!npcId) return;
+    setShowGenerateModal(false);
+    setImageLoading(true);
+    try {
+      await mindseaAPI.generateImage(npcId, extraPromptText.trim() || undefined);
+      await fetchNpc();
+    } catch (err) {
+      const apiError = err as ApiGenerateError;
+      if (apiError.response?.data?.can_retry && apiError.response?.data?.prompt) {
+        try {
+          await mindseaAPI.retryImage(npcId, apiError.response.data.prompt);
+          await fetchNpc();
+        } catch {
+          alert('AI生成图像失败（已自动重试），请稍后再试');
+        }
+      } else {
+        alert('AI生成图像失败，请稍后重试');
+      }
+    } finally {
+      setImageLoading(false);
+    }
+  };
+
   const relMap: Array<{ key: keyof NpcRelationship; label: string }> = [
     { key: 'trust', label: '信任' },
     { key: 'intimacy', label: '亲密' },
@@ -301,6 +372,22 @@ const MindSeaChat: React.FC = () => {
           </div>
 
           <div className="chat-header-actions">
+            {npc && !npc.is_public && (
+              <>
+                <button
+                  className="btn btn-icon"
+                  onClick={handleUploadImage}
+                  title="上传形象图"
+                  disabled={imageLoading}
+                >🖼</button>
+                <button
+                  className="btn btn-icon"
+                  onClick={handleOpenGenerateModal}
+                  title="AI生成形象图"
+                  disabled={imageLoading}
+                >{imageLoading ? '⏳' : '✨'}</button>
+              </>
+            )}
             <button
               className={`btn btn-icon${rightPanel === 'status' ? ' active' : ''}`}
               onClick={() => togglePanel('status')}
@@ -515,6 +602,36 @@ const MindSeaChat: React.FC = () => {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setShowClearConfirm(false)}>取消</button>
               <button className="btn btn-danger" onClick={handleClearHistory}>确认清除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+
+      {/* AI Generate Modal */}
+      {showGenerateModal && (
+        <div className="chat-generate-modal-backdrop" onClick={() => setShowGenerateModal(false)}>
+          <div className="chat-generate-modal" onClick={e => e.stopPropagation()}>
+            <h3 className="chat-generate-modal-title">✨ AI生成形象图</h3>
+            <p className="chat-generate-modal-desc">可补充角色形象描述（可选），留空则使用角色设定自动生成：</p>
+            <textarea
+              className="chat-generate-modal-textarea"
+              placeholder="例如：穿着红色旗袍，背景是樱花盛开的庭院…"
+              value={extraPromptText}
+              onChange={e => setExtraPromptText(e.target.value)}
+              rows={3}
+            />
+            <div className="chat-generate-modal-actions">
+              <button className="btn" onClick={() => setShowGenerateModal(false)}>取消</button>
+              <button className="btn btn-primary" onClick={handleConfirmGenerate}>开始生成</button>
             </div>
           </div>
         </div>
