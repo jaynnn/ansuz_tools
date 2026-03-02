@@ -399,8 +399,6 @@ const MindSeaChat: React.FC = () => {
           className={`chat-messages${npc.chat_background_image ? ' has-chat-bg' : ''}`}
           style={npc.chat_background_image ? {
             backgroundImage: `url(${npc.chat_background_image})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
           } : undefined}
         >
           {messages.map(msg => (

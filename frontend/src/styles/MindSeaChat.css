@@ -163,6 +163,13 @@
   position: relative;
 }
 
+/* When a chat background image is set, cover the full messages area */
+.chat-messages.has-chat-bg {
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
+
 /* Semi-transparent overlay when a chat background image is set */
 .chat-messages.has-chat-bg::before {
   content: '';
@@ -550,6 +557,7 @@
   color: var(--text-primary);
   cursor: pointer;
   font-size: 13px;
+  line-height: 1;
   transition: background 0.2s, border-color 0.2s;
   white-space: nowrap;
 }
