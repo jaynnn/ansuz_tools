@@ -17,6 +17,8 @@ const Sudoku = React.lazy(() => import('./pages/Sudoku'));
 const GoalTask = React.lazy(() => import('./pages/GoalTask'));
 const GuitarPractice = React.lazy(() => import('./pages/GuitarPractice'));
 const MedicalRecord = React.lazy(() => import('./pages/MedicalRecord'));
+const MindSea = React.lazy(() => import('./pages/MindSea'));
+const MindSeaChat = React.lazy(() => import('./pages/MindSeaChat'));
 
 const LoadingFallback: React.FC = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }} role="status" aria-live="polite">
@@ -117,6 +119,22 @@ const App: React.FC = () => {
                     element={
                       <PrivateRoute>
                         <MedicalRecord />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/mindsea"
+                    element={
+                      <PrivateRoute>
+                        <MindSea />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/mindsea/chat/:npcId"
+                    element={
+                      <PrivateRoute>
+                        <MindSeaChat />
                       </PrivateRoute>
                     }
                   />

@@ -3,6 +3,48 @@ import type { Server } from 'http';
 import jwt from 'jsonwebtoken';
 import { logInfo, logError } from './logger';
 import { dbGet } from './database';
+import { Server as SocketServer } from 'socket.io';
+
+// ─── Socket.io for MindSea ────────────────────────────────────────────────────
+let io: SocketServer | null = null;
+const userSocketMap = new Map<number, string>();
+
+export const sendToUser = (userId: number, event: string, data: unknown): void => {
+  if (!io) return;
+  const socketId = userSocketMap.get(userId);
+  if (socketId) io.to(socketId).emit(event, data);
+};
+
+export const initSocketIO = (server: Server): void => {
+  io = new SocketServer(server, {
+    cors: { origin: '*', methods: ['GET', 'POST'] },
+    path: '/socket.io',
+  });
+
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token as string | undefined;
+    if (!token) return next(new Error('No token'));
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: number };
+      socket.data.userId = decoded.userId;
+      next();
+    } catch {
+      next(new Error('Invalid token'));
+    }
+  });
+
+  io.on('connection', (socket) => {
+    const userId = socket.data.userId as number;
+    userSocketMap.set(userId, socket.id);
+    logInfo('socketio_connected', { userId, socketId: socket.id });
+    socket.on('disconnect', () => {
+      if (userSocketMap.get(userId) === socket.id) userSocketMap.delete(userId);
+      logInfo('socketio_disconnected', { userId });
+    });
+  });
+
+  logInfo('socketio_initialized', { path: '/socket.io' });
+};
 
 // ============ Existing broadcast functionality ============
 const clients = new Set<WebSocket>();
