@@ -82,6 +82,7 @@ export interface NpcDoc {
   is_public: boolean;
   owner_user_id: number | null;
   background_image: string | null;
+  chat_background_image: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -157,6 +158,7 @@ const NpcSchema = new Schema<NpcDoc>({
   is_public: { type: Boolean, default: false },
   owner_user_id: { type: Number, default: null },
   background_image: { type: String, default: null },
+  chat_background_image: { type: String, default: null },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
 }, {

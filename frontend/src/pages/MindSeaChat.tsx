@@ -48,6 +48,7 @@ interface NpcDoc {
   dialogue_history: Array<{ role: string; content: string; timestamp: string }>;
   is_public: boolean;
   background_image: string | null;
+  chat_background_image: string | null;
 }
 
 interface ChatMessage {
@@ -61,10 +62,6 @@ interface LogEntry {
   type: string;
   message: string;
   timestamp: Date;
-}
-
-interface ApiGenerateError {
-  response?: { data?: { can_retry?: boolean; prompt?: string } };
 }
 
 function getRelationshipStage(intimacy: number): string {
@@ -273,7 +270,7 @@ const MindSeaChat: React.FC = () => {
     reader.onload = async (evt) => {
       const base64 = evt.target?.result as string;
       try {
-        await mindseaAPI.updateNpc(npcId, { background_image: base64 });
+        await mindseaAPI.updateNpc(npcId, { chat_background_image: base64 });
         await fetchNpc();
       } catch (uploadErr) {
         console.error('Failed to upload image:', uploadErr);
@@ -294,20 +291,10 @@ const MindSeaChat: React.FC = () => {
     setShowGenerateModal(false);
     setImageLoading(true);
     try {
-      await mindseaAPI.generateImage(npcId, extraPromptText.trim() || undefined);
+      await mindseaAPI.generateChatBackground(npcId, extraPromptText.trim() || undefined);
       await fetchNpc();
-    } catch (err) {
-      const apiError = err as ApiGenerateError;
-      if (apiError.response?.data?.can_retry && apiError.response?.data?.prompt) {
-        try {
-          await mindseaAPI.retryImage(npcId, apiError.response.data.prompt);
-          await fetchNpc();
-        } catch {
-          alert('AI生成图像失败（已自动重试），请稍后再试');
-        }
-      } else {
-        alert('AI生成图像失败，请稍后重试');
-      }
+    } catch {
+      alert('AI生成聊天背景失败，请稍后重试');
     } finally {
       setImageLoading(false);
     }
@@ -372,22 +359,18 @@ const MindSeaChat: React.FC = () => {
           </div>
 
           <div className="chat-header-actions">
-            {npc && !npc.is_public && (
-              <>
-                <button
-                  className="btn btn-icon"
-                  onClick={handleUploadImage}
-                  title="上传形象图"
-                  disabled={imageLoading}
-                >🖼</button>
-                <button
-                  className="btn btn-icon"
-                  onClick={handleOpenGenerateModal}
-                  title="AI生成形象图"
-                  disabled={imageLoading}
-                >{imageLoading ? '⏳' : '✨'}</button>
-              </>
-            )}
+            <button
+              className="btn btn-icon"
+              onClick={handleUploadImage}
+              title="上传聊天背景"
+              disabled={imageLoading}
+            >🖼</button>
+            <button
+              className="btn btn-icon"
+              onClick={handleOpenGenerateModal}
+              title="AI生成聊天背景"
+              disabled={imageLoading}
+            >{imageLoading ? '⏳' : '✨'}</button>
             <button
               className={`btn btn-icon${rightPanel === 'status' ? ' active' : ''}`}
               onClick={() => togglePanel('status')}
@@ -412,7 +395,14 @@ const MindSeaChat: React.FC = () => {
         </div>
 
         {/* Messages */}
-        <div className="chat-messages">
+        <div
+          className={`chat-messages${npc.chat_background_image ? ' has-chat-bg' : ''}`}
+          style={npc.chat_background_image ? {
+            backgroundImage: `url(${npc.chat_background_image})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          } : undefined}
+        >
           {messages.map(msg => (
             <div key={msg.id} className={`message-row ${msg.role === 'user' ? 'user' : 'npc'}`}>
               {msg.role === 'npc' && (
@@ -620,11 +610,11 @@ const MindSeaChat: React.FC = () => {
       {showGenerateModal && (
         <div className="chat-generate-modal-backdrop" onClick={() => setShowGenerateModal(false)}>
           <div className="chat-generate-modal" onClick={e => e.stopPropagation()}>
-            <h3 className="chat-generate-modal-title">✨ AI生成形象图</h3>
-            <p className="chat-generate-modal-desc">可补充角色形象描述（可选），留空则使用角色设定自动生成：</p>
+            <h3 className="chat-generate-modal-title">✨ AI生成聊天背景</h3>
+            <p className="chat-generate-modal-desc">可补充场景描述（可选），留空则根据角色所在地点自动生成：</p>
             <textarea
               className="chat-generate-modal-textarea"
-              placeholder="例如：穿着红色旗袍，背景是樱花盛开的庭院…"
+              placeholder="例如：夜晚的咖啡馆，窗外灯光点点…"
               value={extraPromptText}
               onChange={e => setExtraPromptText(e.target.value)}
               rows={3}

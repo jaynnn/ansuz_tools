@@ -459,6 +459,10 @@ export const mindseaAPI = {
     const response = await api.post(`/mindsea/${id}/retry-image`, { original_prompt: originalPrompt });
     return response.data;
   },
+  generateChatBackground: async (id: string, extraPrompt?: string) => {
+    const response = await api.post(`/mindsea/${id}/generate-chat-background`, { extra_prompt: extraPrompt });
+    return response.data;
+  },
   clearHistory: async (id: string) => {
     const response = await api.delete(`/mindsea/${id}/history`);
     return response.data;

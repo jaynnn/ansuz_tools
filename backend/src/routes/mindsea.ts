@@ -926,4 +926,44 @@ router.post('/:id/retry-image', authMiddleware, rateLimit(10), async (req: AuthR
   }
 });
 
+// POST /:id/generate-chat-background - generate a scene background for the chat dialog
+router.post('/:id/generate-chat-background', authMiddleware, rateLimit(10), async (req: AuthRequest, res: Response) => {
+  if (!mongoGuard(res)) return;
+  try {
+    const userId = req.userId!;
+    const { extra_prompt } = req.body;
+
+    const npc = await NpcModel.findOne({
+      _id: req.params.id,
+      $or: [{ is_public: true }, { owner_user_id: userId }],
+    });
+    if (!npc) return res.status(404).json({ error: 'NPC不存在' });
+
+    const promptParts = [
+      npc.location || '室内',
+      extra_prompt || '',
+      '空镜场景，无人物，横版构图，电影感，柔和自然光，唯美插画风格，简洁干净，低饱和度，朦胧感，适合聊天界面背景',
+    ].filter(Boolean);
+    const prompt = promptParts.join('，');
+
+    try {
+      const imageUrl = await callZhipuImage(prompt);
+      const base64 = await downloadImageAsBase64(imageUrl);
+      npc.chat_background_image = base64;
+      await npc.save();
+      return res.json({ success: true, chat_background_image: base64, prompt });
+    } catch (imgErr) {
+      logError('mindsea_generate_chat_bg_error', imgErr as Error);
+      return res.status(500).json({
+        error: `聊天背景生成失败: ${(imgErr as Error).message}`,
+        can_retry: true,
+        prompt,
+      });
+    }
+  } catch (err) {
+    logError('mindsea_generate_chat_bg_outer_error', err as Error);
+    return res.status(500).json({ error: '聊天背景生成失败' });
+  }
+});
+
 export default router;
