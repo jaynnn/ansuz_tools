@@ -12,6 +12,12 @@ interface AddToolModalProps {
 // Predefined tools that users can quickly add
 const PREDEFINED_TOOLS = [
   {
+    name: 'MindSea',
+    description: 'NPC社交模拟系统，创造有记忆、有情感的虚拟角色，通过对话建立真实感关系',
+    url: '/mindsea',
+    tags: ['AI', '社交', 'NPC', '模拟'],
+  },
+  {
     name: '股票预测',
     description: '记录和分析股票预测结果，提供准确率统计和可视化分析',
     url: '/stock-prediction',

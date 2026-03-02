@@ -61,6 +61,41 @@ function clamp(val: number, min: number, max: number) {
   return Math.max(min, Math.min(max, val));
 }
 
+// ─── Relationship stage thresholds and per-stage max raw delta ───────────────
+const INTROVERT_PERSONALITY_TRAITS = ['内敛', '内向', '腼腆', '安静', '孤僻', '神秘', '沉静'];
+
+// Maximum single-turn relationship delta by intimacy stage
+function getStageMaxDelta(intimacy: number): number {
+  if (intimacy <= 20) return 3;   // 陌生: tiny changes
+  if (intimacy <= 40) return 5;   // 相识: small changes
+  if (intimacy <= 60) return 8;   // 朋友: moderate changes
+  if (intimacy <= 80) return 12;  // 亲密: larger changes
+  return 15;                       // 深交: deepest changes
+}
+
+// Introvert multiplier: harder to warm up initially, deeper once close
+function getIntrovertMultiplier(intimacy: number): number {
+  if (intimacy <= 40) return 0.5;  // very reserved with strangers/acquaintances
+  if (intimacy <= 60) return 0.8;  // still somewhat guarded with friends
+  return 1.3;                       // deeper bond once intimate/deeply close
+}
+
+// Fatigue increments per message type
+const FATIGUE_DELTA_BY_TYPE: Record<string, { cognitive: number; energy: number; benefit: number }> = {
+  intimate:   { cognitive: 6, energy: -5, benefit: 5 },   // deep conversation: tiring but rewarding
+  confiding:  { cognitive: 7, energy: -6, benefit: 5 },   // personal sharing: most mentally engaging
+  supportive: { cognitive: 3, energy: -2, benefit: 3 },   // pleasant chat: light drain, moderate benefit
+  offensive:  { cognitive: 10, energy: -8, benefit: -2 }, // hostility: heavy drain, no benefit
+  nonsense:   { cognitive: 2, energy: -1, benefit: -1 },  // meaningless: mild annoyance
+  neutral:    { cognitive: 4, energy: -3, benefit: 1 },   // default
+};
+const FATIGUE_DEFAULT_DELTA = FATIGUE_DELTA_BY_TYPE.neutral;
+
+// Fatigue score weights: cognitive load and energy loss each 40%, benefit offsets 20%
+const FATIGUE_WEIGHT_COGNITIVE = 0.4;
+const FATIGUE_WEIGHT_ENERGY_LOSS = 0.4;
+const FATIGUE_WEIGHT_BENEFIT = 0.2;
+
 function getRelationshipStage(intimacy: number): string {
   if (intimacy <= 20) return '陌生';
   if (intimacy <= 40) return '相识';
@@ -497,6 +532,17 @@ router.post('/:id/chat', authMiddleware, rateLimit(30), async (req: AuthRequest,
     const memoriesText = npc.memories.slice(-10).map(m => m.content).join('\n');
     const npc2npcText = npc.npc2npc_impression.map(n => `${n.npc_id}: ${n.summary}`).join('\n');
 
+    // Personality-awareness for relationship delta scaling
+    const isIntroverted = (npc.mbti?.startsWith('I') ?? false) ||
+      npc.personality.some(p => INTROVERT_PERSONALITY_TRAITS.includes(p));
+    const intimacyVal = npc.relationship.intimacy;
+    const stageMaxDelta = getStageMaxDelta(intimacyVal);
+    const introMultiplier = isIntroverted ? getIntrovertMultiplier(intimacyVal) : 1.0;
+    const effectiveMaxDelta = Math.max(1, Math.round(stageMaxDelta * introMultiplier));
+    const personalityNote = isIntroverted
+      ? `（${npc.name}性格内向，初期关系建立缓慢，亲密后变化更深）`
+      : `（${npc.name}性格外向，关系变化较直接）`;
+
     const systemPromptA = `你是${npc.name}。
 [角色设定: ${npc.system_prompt}]
 
@@ -526,26 +572,32 @@ ${npc2npcText || ''}
       { role: 'user' as const, content: message },
     ];
 
-    const taskBPrompt = `分析这段对话并以JSON输出关系变化。
+    const taskBPrompt = `分析以下对话中NPC的心理反应，输出关系变化JSON。
 
 NPC：${npc.name}
+NPC性格：${npc.personality.join('、') || '未知'}${npc.mbti ? `（MBTI: ${npc.mbti}）` : ''}
+当前关系阶段：${intimacyStageDesc}
 玩家消息：${message}
+
+${personalityNote}
+【本次最大变化幅度参考：±${effectiveMaxDelta}】
+- 普通问候/闲聊：最多±1
+- 友好支持性内容：+1到+${Math.ceil(effectiveMaxDelta * 0.5)}
+- 深度分享/情感共鸣：+${Math.ceil(effectiveMaxDelta * 0.5)}到+${effectiveMaxDelta}
+- 无意义/乱码：所有delta=0
+- 冒犯/攻击性言语：-${Math.ceil(effectiveMaxDelta * 0.5)}到-${effectiveMaxDelta}
 
 输出JSON（只输出JSON）：
 {
   "message_type": "supportive|offensive|neutral|nonsense|intimate|confiding",
-  "trust_delta": <-20到20的整数>,
-  "intimacy_delta": <-20到20的整数>,
-  "respect_delta": <-20到20的整数>,
-  "safety_delta": <-20到20的整数>,
-  "commitment_delta": <-20到20的整数>,
-  "reason": "简短说明"
-}
-
-规则：
-- 无意义/乱码输入：所有delta=0
-- 每个delta在-20到20之间
-- 保守估计，小变化更真实`;
+  "trust_delta": <整数，绝对值≤${effectiveMaxDelta}>,
+  "intimacy_delta": <整数，绝对值≤${effectiveMaxDelta}>,
+  "respect_delta": <整数，绝对值≤${effectiveMaxDelta}>,
+  "safety_delta": <整数，绝对值≤${effectiveMaxDelta}>,
+  "commitment_delta": <整数，绝对值≤${effectiveMaxDelta}>,
+  "emotion": "平静|好奇|愉快|感动|温暖|不安|烦躁|感激|失落|欣赏",
+  "reason": "简短说明（须提及性格因素）"
+}`;
 
     const taskCPrompt = `从以下玩家消息中提取关于玩家本人的信息。
 只提取玩家谈论自己（主语是"我"）的信息，不要提取关于NPC或他人的信息。
@@ -583,7 +635,7 @@ ${impressionText}
       : '（沉默片刻）……';
 
     // Parse Task B
-    let relationshipDeltas = { trust_delta: 0, intimacy_delta: 0, respect_delta: 0, safety_delta: 0, commitment_delta: 0, reason: '' };
+    let relationshipDeltas = { trust_delta: 0, intimacy_delta: 0, respect_delta: 0, safety_delta: 0, commitment_delta: 0, reason: '', message_type: 'neutral', emotion: '平静' };
     if (taskBResult.status === 'fulfilled') {
       try {
         const text = taskBResult.value.content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -602,20 +654,28 @@ ${impressionText}
       } catch { /* ignore */ }
     }
 
-    // Update relationship (cap each delta at 20, each score at 100)
-    const cap20 = (v: number) => clamp(v, -20, 20);
-    npc.relationship.trust = clamp(npc.relationship.trust + cap20(relationshipDeltas.trust_delta), 0, 100);
-    npc.relationship.intimacy = clamp(npc.relationship.intimacy + cap20(relationshipDeltas.intimacy_delta), 0, 100);
-    npc.relationship.respect = clamp(npc.relationship.respect + cap20(relationshipDeltas.respect_delta), 0, 100);
-    npc.relationship.safety = clamp(npc.relationship.safety + cap20(relationshipDeltas.safety_delta), 0, 100);
-    npc.relationship.commitment = clamp(npc.relationship.commitment + cap20(relationshipDeltas.commitment_delta), 0, 100);
+    // Snapshot old values before applying changes (for logging)
+    const oldRel = { ...npc.relationship };
+    const oldFatigue = { ...npc.fatigue };
 
-    // Update fatigue
-    npc.fatigue.cognitive_load = clamp(npc.fatigue.cognitive_load + 5, 0, 100);
-    npc.fatigue.mental_energy = clamp(npc.fatigue.mental_energy - 3, 0, 100);
-    npc.fatigue.dialogue_benefit = clamp(npc.fatigue.dialogue_benefit + 2, 0, 100);
+    // Update relationship with personality-aware clamping
+    const clampDelta = (v: number) => clamp(Number(v) || 0, -effectiveMaxDelta, effectiveMaxDelta);
+    npc.relationship.trust = clamp(npc.relationship.trust + clampDelta(relationshipDeltas.trust_delta), 0, 100);
+    npc.relationship.intimacy = clamp(npc.relationship.intimacy + clampDelta(relationshipDeltas.intimacy_delta), 0, 100);
+    npc.relationship.respect = clamp(npc.relationship.respect + clampDelta(relationshipDeltas.respect_delta), 0, 100);
+    npc.relationship.safety = clamp(npc.relationship.safety + clampDelta(relationshipDeltas.safety_delta), 0, 100);
+    npc.relationship.commitment = clamp(npc.relationship.commitment + clampDelta(relationshipDeltas.commitment_delta), 0, 100);
+
+    // Update fatigue dynamically based on message type
+    const msgType = relationshipDeltas.message_type || 'neutral';
+    const fatigueDelta = FATIGUE_DELTA_BY_TYPE[msgType] ?? FATIGUE_DEFAULT_DELTA;
+    npc.fatigue.cognitive_load = clamp(npc.fatigue.cognitive_load + fatigueDelta.cognitive, 0, 100);
+    npc.fatigue.mental_energy = clamp(npc.fatigue.mental_energy + fatigueDelta.energy, 0, 100);
+    npc.fatigue.dialogue_benefit = clamp(npc.fatigue.dialogue_benefit + fatigueDelta.benefit, 0, 100);
     npc.fatigue.fatigue_score = clamp(
-      (npc.fatigue.cognitive_load * 0.4 + (100 - npc.fatigue.mental_energy) * 0.4 - npc.fatigue.dialogue_benefit * 0.2),
+      (npc.fatigue.cognitive_load * FATIGUE_WEIGHT_COGNITIVE +
+       (100 - npc.fatigue.mental_energy) * FATIGUE_WEIGHT_ENERGY_LOSS -
+       npc.fatigue.dialogue_benefit * FATIGUE_WEIGHT_BENEFIT),
       0, 100
     );
 
@@ -710,24 +770,61 @@ ${impressionText}
     sendToUser(userId, 'npc_reply', { npc_id: npc._id, content: npcReply });
     sendToUser(userId, 'npc_relationship_update', { npc_id: npc._id, relationship: npc.relationship });
     sendToUser(userId, 'npc_fatigue_update', { npc_id: npc._id, fatigue: npc.fatigue });
+
+    // Scene/context log
     sendToUser(userId, 'npc_log', {
-      type: 'relationship',
+      type: 'scene',
       npc_id: npc._id,
-      message: `关系变化: ${JSON.stringify(relationshipDeltas)}`,
+      message: `场景: ${npc.location} | 动作: ${npc.current_action} | 关系阶段: ${getRelationshipStage(npc.relationship.intimacy)}(亲密度 ${npc.relationship.intimacy})`,
     });
-    if (impressionUpdates.length > 0) {
-      sendToUser(userId, 'npc_impression_update', { npc_id: npc._id, updates: impressionUpdates });
-      sendToUser(userId, 'npc_log', {
-        type: 'impression',
-        npc_id: npc._id,
-        message: `印象更新: ${impressionUpdates.map(u => u.key).join(', ')}`,
-      });
-    }
+
+    // Emotion + tone log
     sendToUser(userId, 'npc_log', {
       type: 'tone',
       npc_id: npc._id,
-      message: `情绪分析: ${relationshipDeltas.reason || 'N/A'}`,
+      message: `情绪: ${relationshipDeltas.emotion || '平静'} | 类型: ${relationshipDeltas.message_type || 'neutral'} | ${relationshipDeltas.reason || '无说明'}`,
     });
+
+    // Detailed relationship change log (before → after)
+    const relLabels: Record<string, string> = { trust: '信任', intimacy: '亲密', respect: '尊重', safety: '安全', commitment: '承诺' };
+    const relChangeParts: string[] = [];
+    for (const [k, label] of Object.entries(relLabels)) {
+      const key = k as keyof typeof oldRel;
+      const delta = npc.relationship[key] - oldRel[key];
+      if (delta !== 0) {
+        relChangeParts.push(`${label} ${oldRel[key]}→${npc.relationship[key]}(${delta > 0 ? '+' : ''}${delta})`);
+      }
+    }
+    const relChangeMsg = relChangeParts.length > 0
+      ? relChangeParts.join(' | ')
+      : Object.entries(relLabels).map(([k, l]) => `${l}:${npc.relationship[k as keyof typeof oldRel]}`).join(' ') + ' (无变化)';
+    sendToUser(userId, 'npc_log', {
+      type: 'relationship',
+      npc_id: npc._id,
+      message: `关系: ${relChangeMsg}`,
+    });
+
+    // Fatigue change log
+    const fatigueDeltaScore = npc.fatigue.fatigue_score - oldFatigue.fatigue_score;
+    sendToUser(userId, 'npc_log', {
+      type: 'fatigue',
+      npc_id: npc._id,
+      message: `疲劳: 认知 ${oldFatigue.cognitive_load}→${npc.fatigue.cognitive_load} | 能量 ${oldFatigue.mental_energy}→${npc.fatigue.mental_energy} | 收益 ${oldFatigue.dialogue_benefit}→${npc.fatigue.dialogue_benefit} | 疲劳分 ${oldFatigue.fatigue_score.toFixed(1)}→${npc.fatigue.fatigue_score.toFixed(1)}(${fatigueDeltaScore >= 0 ? '+' : ''}${fatigueDeltaScore.toFixed(1)})`,
+    });
+
+    // Impression log with content
+    if (impressionUpdates.length > 0) {
+      sendToUser(userId, 'npc_impression_update', { npc_id: npc._id, updates: impressionUpdates });
+      const impressionDetails = impressionUpdates.map(u => {
+        const feat = npc.impression_features.find(f => f.key === u.key);
+        return `[${feat?.label || u.key}] ${u.value}(重要性:${u.score})`;
+      }).join(' | ');
+      sendToUser(userId, 'npc_log', {
+        type: 'impression',
+        npc_id: npc._id,
+        message: `新印象: ${impressionDetails}`,
+      });
+    }
 
     return res.json({
       reply: npcReply,
