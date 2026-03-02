@@ -253,20 +253,18 @@ const MindSea: React.FC = () => {
                   </div>
 
                   <div className="npc-hover-overlay">
-                    {!npc.is_public && (
-                      <div className="npc-hover-top-actions" onClick={e => e.stopPropagation()}>
-                        <button
-                          className="npc-hover-btn"
-                          title="上传形象图"
-                          onClick={(e) => { e.stopPropagation(); handleUploadImage(npc._id); }}
-                        >🖼 上传形象</button>
-                        <button
-                          className="npc-hover-btn"
-                          title="AI生成形象图"
-                          onClick={(e) => handleOpenGenerateModal(e, npc._id)}
-                        >✨ AI生成</button>
-                      </div>
-                    )}
+                    <div className="npc-hover-top-actions" onClick={e => e.stopPropagation()}>
+                      <button
+                        className="npc-hover-btn"
+                        title="上传形象图"
+                        onClick={(e) => { e.stopPropagation(); handleUploadImage(npc._id); }}
+                      >🖼 上传形象</button>
+                      <button
+                        className="npc-hover-btn"
+                        title="AI生成形象图"
+                        onClick={(e) => handleOpenGenerateModal(e, npc._id)}
+                      >✨ AI生成</button>
+                    </div>
                     <span className="npc-hover-text">开始对话 →</span>
                   </div>
                 </div>
