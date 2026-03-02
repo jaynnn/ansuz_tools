@@ -83,6 +83,7 @@ function getLogTypeIcon(type: string): string {
     relationship: '🌸',
     memory: '🟣',
     proactive: '🟢',
+    scene: '📍',
   };
   return icons[type] || '⚪';
 }
