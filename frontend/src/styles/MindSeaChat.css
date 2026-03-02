@@ -657,3 +657,88 @@
   gap: 8px;
 }
 
+/* ── Mobile Header Menu ── */
+
+/* Hidden on desktop; shown on mobile via media query */
+.header-mobile-toggle {
+  display: none;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Transparent backdrop that captures outside-clicks to close the menu */
+.header-mobile-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+
+/* Dropdown panel */
+.header-mobile-menu {
+  position: fixed;
+  top: 60px;
+  right: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+  z-index: 151;
+}
+
+.header-mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.15s;
+}
+
+.header-mobile-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.1));
+}
+
+.header-mobile-menu-item.active {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.header-mobile-menu-item.danger {
+  color: #ef4444;
+}
+
+.header-mobile-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Mobile Responsive ── */
+@media (max-width: 640px) {
+  .header-desktop-only {
+    display: none !important;
+  }
+
+  .header-mobile-toggle {
+    display: flex;
+  }
+
+  .chat-header {
+    min-height: 56px;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+}
+

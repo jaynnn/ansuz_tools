@@ -125,6 +125,7 @@ const MindSeaChat: React.FC = () => {
   const [imageLoading, setImageLoading] = useState(false);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [extraPromptText, setExtraPromptText] = useState('');
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -336,10 +337,10 @@ const MindSeaChat: React.FC = () => {
             </div>
           </div>
 
-          <div className="chat-header-divider" />
+          <div className="chat-header-divider header-desktop-only" />
 
           {relationship && (
-            <div className="header-rel-bars">
+            <div className="header-rel-bars header-desktop-only">
               {relMap.map(({ key, label }) => (
                 <div key={key} className="header-rel-bar">
                   <span>{label}</span>
@@ -351,14 +352,14 @@ const MindSeaChat: React.FC = () => {
             </div>
           )}
 
-          <div className="chat-header-divider" />
+          <div className="chat-header-divider header-desktop-only" />
 
-          <div className="header-scene">
+          <div className="header-scene header-desktop-only">
             <div className="header-scene-loc">📍 {npc.location}</div>
             <div className="header-scene-action">{npc.current_action}</div>
           </div>
 
-          <div className="chat-header-actions">
+          <div className="chat-header-actions header-desktop-only">
             <button
               className="btn btn-icon"
               onClick={handleUploadImage}
@@ -392,6 +393,13 @@ const MindSeaChat: React.FC = () => {
               title="返回"
             >←</button>
           </div>
+
+          {/* Mobile-only: collapse all actions into a single toggle */}
+          <button
+            className={`btn btn-icon header-mobile-toggle${showHeaderMenu ? ' active' : ''}`}
+            onClick={() => setShowHeaderMenu(m => !m)}
+            title="更多操作"
+          >⋯</button>
         </div>
 
         {/* Messages */}
@@ -566,6 +574,40 @@ const MindSeaChat: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Mobile header dropdown menu */}
+      {showHeaderMenu && (
+        <div className="header-mobile-menu-backdrop" role="presentation" onClick={() => setShowHeaderMenu(false)}>
+          <div className="header-mobile-menu" onClick={e => e.stopPropagation()}>
+            <button
+              className="header-mobile-menu-item"
+              onClick={() => { handleUploadImage(); setShowHeaderMenu(false); }}
+              disabled={imageLoading}
+            >🖼 上传聊天背景</button>
+            <button
+              className="header-mobile-menu-item"
+              onClick={() => { handleOpenGenerateModal(); setShowHeaderMenu(false); }}
+              disabled={imageLoading}
+            >{imageLoading ? '⏳' : '✨'} AI生成聊天背景</button>
+            <button
+              className={`header-mobile-menu-item${rightPanel === 'status' ? ' active' : ''}`}
+              onClick={() => { togglePanel('status'); setShowHeaderMenu(false); }}
+            >📊 状态面板</button>
+            <button
+              className={`header-mobile-menu-item${rightPanel === 'log' ? ' active' : ''}`}
+              onClick={() => { togglePanel('log'); setShowHeaderMenu(false); }}
+            >🔍 日志</button>
+            <button
+              className="header-mobile-menu-item danger"
+              onClick={() => { setShowClearConfirm(true); setShowHeaderMenu(false); }}
+            >🗑 清除记录</button>
+            <button
+              className="header-mobile-menu-item"
+              onClick={() => navigate('/mindsea')}
+            >← 返回</button>
+          </div>
+        </div>
+      )}
 
       {/* Clear confirm */}
       {showClearConfirm && (
