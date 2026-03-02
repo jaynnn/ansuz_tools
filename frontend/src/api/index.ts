@@ -420,3 +420,47 @@ export const guitarPracticeAPI = {
     return response.data;
   },
 };
+
+// MindSea APIs
+export const mindseaAPI = {
+  getNpcs: async () => {
+    const response = await api.get('/mindsea');
+    return response.data;
+  },
+  getNpc: async (id: string) => {
+    const response = await api.get(`/mindsea/${id}`);
+    return response.data;
+  },
+  createNpc: async (data: Record<string, unknown>) => {
+    const response = await api.post('/mindsea', data);
+    return response.data;
+  },
+  updateNpc: async (id: string, data: Record<string, unknown>) => {
+    const response = await api.put(`/mindsea/${id}`, data);
+    return response.data;
+  },
+  deleteNpc: async (id: string) => {
+    const response = await api.delete(`/mindsea/${id}`);
+    return response.data;
+  },
+  chat: async (id: string, message: string) => {
+    const response = await api.post(`/mindsea/${id}/chat`, { message });
+    return response.data;
+  },
+  generateConfig: async (basicInfo: Record<string, string>) => {
+    const response = await api.post('/mindsea/generate-config-preview', basicInfo);
+    return response.data;
+  },
+  generateImage: async (id: string, extraPrompt?: string) => {
+    const response = await api.post(`/mindsea/${id}/generate-image`, { extra_prompt: extraPrompt });
+    return response.data;
+  },
+  retryImage: async (id: string, originalPrompt: string) => {
+    const response = await api.post(`/mindsea/${id}/retry-image`, { original_prompt: originalPrompt });
+    return response.data;
+  },
+  clearHistory: async (id: string) => {
+    const response = await api.delete(`/mindsea/${id}/history`);
+    return response.data;
+  },
+};

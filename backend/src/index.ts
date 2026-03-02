@@ -6,7 +6,8 @@ import path from 'path';
 import http from 'http';
 import { initDatabase } from './utils/database';
 import logger, { logInfo, logError } from './utils/logger';
-import { initWebSocket } from './utils/wsManager';
+import { initWebSocket, initSocketIO } from './utils/wsManager';
+import { connectMongo } from './utils/mongoDatabase';
 import authRoutes from './routes/auth';
 import toolsRoutes from './routes/tools';
 import stockPredictionsRoutes from './routes/stockPredictions';
@@ -19,6 +20,7 @@ import messageRoutes from './routes/messages';
 import goalTaskRoutes from './routes/goalTask';
 import guitarPracticeRoutes from './routes/guitarPractice';
 import medicalRecordRoutes from './routes/medicalRecord';
+import mindseaRoutes from './routes/mindsea';
 
 // Load environment variables
 dotenv.config();
@@ -54,6 +56,8 @@ app.use(cors(corsOrigin ? { origin: corsOrigin.split(',').map(o => o.trim()) } :
 
 // Body parsing with size limits to prevent DoS
 app.use(express.json({ limit: '1mb' }));
+// MindSea routes need larger body for base64 images
+app.use('/api/mindsea', express.json({ limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -86,6 +90,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/goal-task', goalTaskRoutes);
 app.use('/api/guitar-practice', guitarPracticeRoutes);
 app.use('/api/medical-record', medicalRecordRoutes);
+app.use('/api/mindsea', mindseaRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -111,8 +116,17 @@ const startServer = async () => {
     logInfo('server_starting', { port: PORT, nodeEnv: process.env.NODE_ENV });
     await initDatabase();
 
+    // MongoDB is optional - MindSea works if available
+    try {
+      await connectMongo();
+    } catch (err) {
+      logError('mongodb_optional_failed', err as Error);
+      console.warn('Warning: MongoDB connection failed. MindSea features will be unavailable.');
+    }
+
     const server = http.createServer(app);
     initWebSocket(server);
+    initSocketIO(server);
 
     server.listen(PORT, () => {
       const message = `Server is running on port ${PORT}`;

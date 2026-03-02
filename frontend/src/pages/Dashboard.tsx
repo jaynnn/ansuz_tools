@@ -135,6 +135,20 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="tools-grid">
+          {/* MindSea built-in tool */}
+          <div
+            className="tool-card"
+            onClick={() => navigate('/mindsea')}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/mindsea'); } }}
+            role="button"
+            tabIndex={0}
+            aria-label="打开MindSea"
+            style={{ cursor: 'pointer' }}
+          >
+            <div style={{ fontSize: 28, marginBottom: 8 }}>🌊</div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>MindSea</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>NPC社交模拟</div>
+          </div>
           {filteredTools.map((tool) => (
             <ToolCard key={tool.id} tool={tool} onDelete={handleDeleteTool} />
           ))}
