@@ -23,6 +23,10 @@
   --input-bg: #ffffff;
   --hover-bg: #f3f4f6;
   --tag-bg: #e0e7ff;
+  /* MindSea aliases */
+  --bg-primary: #f5f5f5;
+  --bg-secondary: #ffffff;
+  --border-color: #d1d5db;
 }
 
 /* Dark theme */
@@ -39,6 +43,10 @@
   --input-bg: #2d2d2d;
   --hover-bg: #404040;
   --tag-bg: #3730a3;
+  /* MindSea aliases */
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d2d;
+  --border-color: #404040;
 }
 
 * {

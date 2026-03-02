@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { mindseaAPI } from '../api';
 
 interface ImpressionFeature {
@@ -21,6 +21,7 @@ interface NpcDoc {
   location?: string;
   current_action?: string;
   system_prompt?: string;
+  background_image?: string | null;
   specific_rules?: {
     opening_mannerisms: string;
     speech_style: string;
@@ -53,11 +54,14 @@ const AddNpcModal: React.FC<Props> = ({ npc, onClose, onSave }) => {
   const [location, setLocation] = useState(npc?.location || '');
   const [currentAction, setCurrentAction] = useState(npc?.current_action || '');
   const [systemPrompt, setSystemPrompt] = useState(npc?.system_prompt || '');
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(npc?.background_image ?? null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [generatingConfig, setGeneratingConfig] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [aiPreview, setAiPreview] = useState<Record<string, unknown> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleGenerateConfig = async () => {
     if (!name) { setError('请先填写角色名称'); return; }
@@ -80,6 +84,50 @@ const AddNpcModal: React.FC<Props> = ({ npc, onClose, onSave }) => {
     }
   };
 
+  const handleUploadImage = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('请选择图片文件');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('图片大小不能超过5MB');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      setBackgroundImage(evt.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleGenerateImage = async () => {
+    if (!isEdit || !npc?._id) return;
+    setGeneratingImage(true);
+    setError('');
+    try {
+      await mindseaAPI.generateImage(npc._id);
+      await onSave({
+        name: name.trim(), age, occupation, background: backgroundBrief,
+        personality: personalityDesc.split(/[、,，]/).map(s => s.trim()).filter(Boolean),
+        color, location, current_action: currentAction, system_prompt: systemPrompt,
+        ...(backgroundImage !== null && backgroundImage !== '' ? { background_image: backgroundImage } : {}),
+      });
+    } catch {
+      setError('AI生成图片失败，请稍后重试');
+    } finally {
+      setGeneratingImage(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) { setError('请填写角色名称'); return; }
     setSaving(true);
@@ -97,6 +145,9 @@ const AddNpcModal: React.FC<Props> = ({ npc, onClose, onSave }) => {
       current_action: currentAction,
       system_prompt: systemPrompt,
     };
+    if (backgroundImage !== null && backgroundImage !== '') {
+      data.background_image = backgroundImage;
+    }
     try {
       await onSave(data);
     } catch (err: unknown) {
@@ -110,24 +161,34 @@ const AddNpcModal: React.FC<Props> = ({ npc, onClose, onSave }) => {
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 200, padding: 16,
+        backdropFilter: 'blur(4px)',
       }}
       onClick={onClose}
     >
       <div
         style={{
-          background: 'var(--bg-secondary)', borderRadius: 16, padding: 24,
-          width: '100%', maxWidth: 520, maxHeight: '85vh', overflow: 'auto',
+          background: 'var(--bg-secondary)',
+          backgroundImage: 'none',
+          border: '1px solid var(--border-color)',
+          borderRadius: 16,
+          padding: 24,
+          width: '100%',
+          maxWidth: 540,
+          maxHeight: '90vh',
+          overflow: 'auto',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+          color: 'var(--text-primary)',
         }}
         onClick={e => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>{isEdit ? '编辑角色' : '新增角色'}</h2>
+          <h2 style={{ margin: 0, fontSize: 18, color: 'var(--text-primary)' }}>{isEdit ? '编辑角色' : '新增角色'}</h2>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: 'var(--text-secondary)' }}
+            style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: 'var(--text-secondary)', lineHeight: 1 }}
           >✕</button>
         </div>
 
@@ -169,6 +230,59 @@ const AddNpcModal: React.FC<Props> = ({ npc, onClose, onSave }) => {
               placeholder="角色的背景故事（包含外貌描述有助于生成图片）"
             />
           </label>
+
+          {/* Background Image */}
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>背景图片</div>
+            {backgroundImage ? (
+              <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', marginBottom: 8 }}>
+                <img
+                  src={backgroundImage}
+                  alt="背景预览"
+                  style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block', borderRadius: 10 }}
+                />
+                <button
+                  onClick={() => setBackgroundImage(null)}
+                  style={{
+                    position: 'absolute', top: 6, right: 6,
+                    background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none',
+                    borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 12,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                  title="删除图片"
+                >✕</button>
+              </div>
+            ) : null}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={handleUploadImage}
+                style={{
+                  flex: 1, padding: '8px 12px',
+                  background: 'var(--bg-primary)',
+                  border: '1px dashed var(--border-color)',
+                  borderRadius: 8, cursor: 'pointer',
+                  color: 'var(--text-secondary)', fontSize: 13,
+                  transition: 'border-color 0.2s',
+                }}
+              >
+                🖼 上传本地图片
+              </button>
+              {isEdit && (
+                <button
+                  onClick={handleGenerateImage}
+                  disabled={generatingImage}
+                  style={{
+                    flex: 1, padding: '8px 12px',
+                    background: generatingImage ? 'rgba(167,139,250,0.4)' : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                    border: 'none', borderRadius: 8, cursor: 'pointer',
+                    color: '#fff', fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  {generatingImage ? '✨ 生成中…' : '✨ AI生成图片'}
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Color picker */}
           <div>
@@ -270,6 +384,15 @@ const AddNpcModal: React.FC<Props> = ({ npc, onClose, onSave }) => {
             {saving ? '保存中…' : (isEdit ? '更新角色' : '创建角色')}
           </button>
         </div>
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
       </div>
     </div>
   );
