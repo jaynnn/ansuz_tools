@@ -198,6 +198,7 @@ const StockMarketPage: React.FC = () => {
   const [botHoldings, setBotHoldings] = useState<Holding[]>([]);
   const [botError, setBotError] = useState<string | null>(null);
   const [loadingBot, setLoadingBot] = useState(false);
+  const [isMarketOpen, setIsMarketOpen] = useState(false);
   const [botAutoRefresh, setBotAutoRefresh] = useState(() => localStorage.getItem(BOT_AUTOREFRESH_KEY) === 'true');
   const [botRefreshInterval, setBotRefreshInterval] = useState(() => {
     const saved = parseInt(localStorage.getItem(BOT_REFRESH_INTERVAL_KEY) || '');
@@ -364,6 +365,7 @@ const StockMarketPage: React.FC = () => {
       setBotLogs(data.logs);
       if (data.balance !== null) setBotBalance(data.balance);
       setBotHoldings(data.holdings ?? []);
+      setIsMarketOpen(data.isMarketOpen ?? false);
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       setBotError(e?.response?.data?.error || '加载机器人状态失败');
@@ -1051,11 +1053,17 @@ const StockMarketPage: React.FC = () => {
               <div className="bot-status">
                 <span className={`bot-status-dot ${botRunning ? 'running' : 'stopped'}`} />
                 <span>{botRunning ? '运行中' : '已停止'}</span>
-                {botRunning && <span className="bot-interval-hint">（每5分钟决策一次）</span>}
+                {botRunning && !isMarketOpen && <span className="bot-interval-hint">（非交易时间，等待开盘）</span>}
+                {botRunning && isMarketOpen && <span className="bot-interval-hint">（每5分钟决策一次）</span>}
               </div>
               <div className="bot-controls">
                 {!botRunning ? (
-                  <button className="bot-start-btn" onClick={handleStartBot} disabled={loadingBot || codes.length === 0}>
+                  <button
+                    className="bot-start-btn"
+                    onClick={handleStartBot}
+                    disabled={loadingBot || codes.length === 0}
+                    title="🤖 AI交易机器人是一位顶尖专业量化交易员，综合分析实时行情、多轮价格趋势、持仓状态和最新财经资讯后，在模拟账户中进行系统化决策，绝不仅凭涨跌幅机械操作。你可以实时观察机器人的每一个决策过程和结果。"
+                  >
                     {loadingBot ? '启动中...' : '▶ 启动机器人'}
                   </button>
                 ) : (
@@ -1150,11 +1158,6 @@ const StockMarketPage: React.FC = () => {
             </div>
 
             {botError && <div className="stock-error">{botError}</div>}
-
-            <div className="bot-description">
-              <p>🤖 AI交易机器人是一位顶尖专业量化交易员，综合分析实时行情、多轮价格趋势、持仓状态和最新财经资讯后，在模拟账户中进行系统化决策，绝不仅凭涨跌幅机械操作。</p>
-              <p>你可以实时观察机器人的每一个决策过程和结果。</p>
-            </div>
 
             <div className="bot-logs-header">
               <span>决策日志</span>

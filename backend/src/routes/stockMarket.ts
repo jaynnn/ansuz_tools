@@ -594,6 +594,10 @@ router.post('/trading/buy', authMiddleware, tradingWriteRateLimit, async (req: A
       return res.status(400).json({ error: '参数错误' });
     }
 
+    if (!isTradingHours()) {
+      return res.status(400).json({ error: '非交易时间：A股交易时间为工作日 09:30-11:30 和 13:00-15:00，请在开市后操作' });
+    }
+
     const account = await ensureAccount(req.userId!);
     const total = quantity * price;
 
@@ -650,6 +654,10 @@ router.post('/trading/sell', authMiddleware, tradingWriteRateLimit, async (req: 
     const { code, quantity, price } = req.body as { code: string; quantity: number; price: number };
     if (!code || !quantity || !price || quantity <= 0 || price <= 0) {
       return res.status(400).json({ error: '参数错误' });
+    }
+
+    if (!isTradingHours()) {
+      return res.status(400).json({ error: '非交易时间：A股交易时间为工作日 09:30-11:30 和 13:00-15:00，请在开市后操作' });
     }
 
     const holding = await dbGet(
@@ -1346,7 +1354,7 @@ router.get('/trading/bot/status', authMiddleware, tradingReadRateLimit, async (r
       'SELECT * FROM stock_trading_holdings WHERE user_id = ? AND quantity > 0',
       [req.userId]
     );
-    res.json({ isRunning, watchlist, logs: logs.map((l: any) => ({ ...l, created_at: normalizeTimestamp(l.created_at) })), balance, holdings });
+    res.json({ isRunning, watchlist, logs: logs.map((l: any) => ({ ...l, created_at: normalizeTimestamp(l.created_at) })), balance, holdings, isMarketOpen: isTradingHours() });
   } catch (error) {
     logError('stock_bot_status_error', error as Error);
     res.status(500).json({ error: (error as Error).message });

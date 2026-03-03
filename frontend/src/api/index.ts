@@ -535,7 +535,7 @@ export const stockMarketAPI = {
   },
 
   getBotStatus: async (): Promise<{
-    isRunning: boolean; watchlist: string[]; balance: number | null;
+    isRunning: boolean; watchlist: string[]; balance: number | null; isMarketOpen: boolean;
     holdings: Array<{ stock_code: string; stock_name: string; quantity: number; avg_cost: number }>;
     logs: Array<{ id: number; action: string; stock_code: string | null; reasoning: string | null; result: string | null; created_at: string; session_id: number | null }>;
   }> => {
