@@ -59,18 +59,9 @@ const STORAGE_KEY = 'stock_market_codes';
 const BOT_AUTOREFRESH_KEY = 'stock_bot_autorefresh';
 const BOT_REFRESH_INTERVAL_KEY = 'stock_bot_refresh_interval';
 
-// Financial / economic jargon that will be highlighted in bot trade logs.
-// Sorted longest-first to avoid partial matches (e.g. "量价背离" before "量价").
-const FINANCIAL_TERMS: string[] = [
-  '量价背离', '风险/回报', '风险回报', '风险偏好', '避险情绪', '集合竞价', '连续竞价',
-  '量价关系', '主趋势', '上影线', '下影线', '支撑位', '压力位', '阻力位', '布林带',
-  '换手率', '波动率', '成交额', '成交量', '涨跌幅', '放量', '缩量', '跳空', '缺口',
-  '止损', '止盈', '仓位', '加仓', '减仓', '做多', '做空', '多头', '空头', '看涨', '看跌',
-  '回调', '反弹', '突破', '套牢', '动量', '振幅', '均线', 'MACD', 'RSI', 'KDJ',
-  'T+1', 'T+0', 'K线', 'PE', 'PB', 'ROE',
-];
-// Build a single regex (longest terms first for greedy match)
-const TERM_REGEX = new RegExp(`(${FINANCIAL_TERMS.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
+// Term popup positioning constants (popup width is 260px per CSS)
+const POPUP_HALF_WIDTH = 130;  // half of popup width, used to center popup on clicked term
+const POPUP_VERTICAL_OFFSET = 8; // px gap between popup bottom and term top
 
 const WELCOME_HINTS = [
   '上证指数今天表现如何？',
@@ -216,11 +207,15 @@ const StockMarketPage: React.FC = () => {
   // Financial term tooltip state
   const [termPopup, setTermPopup] = useState<{
     term: string;
-    explanation: string | null;
-    loading: boolean;
+    explanation: string;
     x: number;
     y: number;
   } | null>(null);
+
+  // Per-log-entry annotations: logId → { term: explanation }
+  // Populated asynchronously by the LLM after each new log entry arrives.
+  const [logAnnotations, setLogAnnotations] = useState<Record<number, Record<string, string>>>({});
+  const annotatedIdsRef = useRef<Set<number>>(new Set());
 
   // Diary state
   const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>([]);
@@ -311,6 +306,29 @@ const StockMarketPage: React.FC = () => {
     return () => { if (botAutoRefreshRef.current) clearInterval(botAutoRefreshRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, botAutoRefresh, botRefreshInterval]);
+
+  // Asynchronously annotate new bot log entries: submit text to LLM, which identifies
+  // financial jargon and returns term→explanation. Highlights appear once ready.
+  useEffect(() => {
+    const newLogs = botLogs.filter(l => {
+      if (!l.reasoning && !l.result) return false;
+      return !annotatedIdsRef.current.has(l.id);
+    });
+    for (const log of newLogs) {
+      annotatedIdsRef.current.add(log.id);
+      const text = [log.reasoning, log.result].filter(Boolean).join(' ');
+      stockMarketAPI.annotateTerms(text)
+        .then(({ terms }) => {
+          if (Object.keys(terms).length > 0) {
+            setLogAnnotations(prev => ({ ...prev, [log.id]: terms }));
+          }
+        })
+        .catch(err => {
+          console.error('[annotate-terms] failed for log', log.id, err);
+          annotatedIdsRef.current.delete(log.id); // allow retry on next render
+        });
+    }
+  }, [botLogs]);
 
   const loadTradingData = async () => {
     try {
@@ -571,6 +589,8 @@ const StockMarketPage: React.FC = () => {
       await stockMarketAPI.clearBotLogs();
       setBotLogs([]);
       setSelectedSession(null);
+      setLogAnnotations({});
+      annotatedIdsRef.current.clear();
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       setBotError(e?.response?.data?.error || '清空日志失败');
@@ -613,27 +633,38 @@ const StockMarketPage: React.FC = () => {
   const totalCost = holdings.reduce((sum, h) => sum + h.avg_cost * h.quantity, 0);
   const totalPnl = holdingsValue - totalCost;
 
-  // Handle click on a highlighted financial term: fetch explanation via chat API
-  const handleTermClick = async (term: string, event: React.MouseEvent) => {
+  // Show a pre-fetched explanation for a highlighted term (no async call needed).
+  const handleTermClick = (term: string, explanation: string, event: React.MouseEvent) => {
     event.stopPropagation();
     const rect = (event.target as HTMLElement).getBoundingClientRect();
-    setTermPopup({ term, explanation: null, loading: true, x: rect.left + rect.width / 2, y: rect.top });
-    try {
-      const data = await stockMarketAPI.chat([
-        { role: 'user', content: `请用100字以内简洁解释金融术语：${term}` },
-      ]);
-      setTermPopup(prev => prev && prev.term === term ? { ...prev, explanation: data.reply, loading: false } : prev);
-    } catch {
-      setTermPopup(prev => prev && prev.term === term ? { ...prev, explanation: '暂时无法获取解释，请稍后再试。', loading: false } : prev);
-    }
+    const x = Math.min(rect.left + rect.width / 2, window.innerWidth - POPUP_HALF_WIDTH);
+    setTermPopup({ term, explanation, x, y: rect.top });
   };
 
-  // Render text with financial terms highlighted as clickable spans
-  const renderLogText = (text: string): React.ReactNode => {
-    const parts = text.split(TERM_REGEX);
+  // Render log text with LLM-identified financial terms highlighted.
+  // Terms are only highlighted after the async annotation for this log entry completes.
+  const renderLogText = (text: string, logId: number): React.ReactNode => {
+    const annotations = logAnnotations[logId];
+    if (!annotations) return text;
+    const terms = Object.keys(annotations);
+    if (terms.length === 0) return text;
+    // Sort longest first to avoid partial matches
+    terms.sort((a, b) => b.length - a.length);
+    const regex = new RegExp(
+      `(${terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+      'g'
+    );
+    const parts = text.split(regex);
     return parts.map((part, i) =>
-      FINANCIAL_TERMS.includes(part)
-        ? <span key={i} className="term-highlight" onClick={e => handleTermClick(part, e)}>{part}</span>
+      annotations[part] !== undefined
+        ? <span
+            key={i}
+            className="term-highlight"
+            role="button"
+            tabIndex={0}
+            onClick={e => handleTermClick(part, annotations[part], e)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTermClick(part, annotations[part], e as unknown as React.MouseEvent); } }}
+          >{part}</span>
         : part
     );
   };
@@ -1122,8 +1153,8 @@ const StockMarketPage: React.FC = () => {
                         <span className="bot-log-session">第{log.session_id}次</span>
                       )}
                     </div>
-                    {log.reasoning && <div className="bot-log-reasoning">{renderLogText(log.reasoning)}</div>}
-                    {log.result && <div className="bot-log-result">{renderLogText(log.result)}</div>}
+                    {log.reasoning && <div className="bot-log-reasoning">{renderLogText(log.reasoning, log.id)}</div>}
+                    {log.result && <div className="bot-log-result">{renderLogText(log.result, log.id)}</div>}
                   </div>
                 ))
               )}
@@ -1274,18 +1305,13 @@ const StockMarketPage: React.FC = () => {
         <div className="term-popup-overlay" onClick={() => setTermPopup(null)} />
         <div
           className="term-popup"
-          style={{ left: Math.min(termPopup.x, window.innerWidth - 280), top: termPopup.y - 8 }}
+          style={{ left: termPopup.x - POPUP_HALF_WIDTH, top: termPopup.y - POPUP_VERTICAL_OFFSET }}
         >
           <div className="term-popup-header">
             <span className="term-popup-term">{termPopup.term}</span>
             <button className="term-popup-close" onClick={() => setTermPopup(null)}>×</button>
           </div>
-          <div className="term-popup-body">
-            {termPopup.loading
-              ? <span className="term-popup-loading">查询中…</span>
-              : <span>{termPopup.explanation}</span>
-            }
-          </div>
+          <div className="term-popup-body">{termPopup.explanation}</div>
         </div>
       </>
     )}

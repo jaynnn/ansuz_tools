@@ -1435,8 +1435,11 @@
   transition: background 0.15s;
 }
 
-.term-highlight:hover {
+.term-highlight:hover,
+.term-highlight:focus-visible {
   background: rgba(96, 165, 250, 0.45);
+  outline: 2px solid rgba(96, 165, 250, 0.7);
+  outline-offset: 1px;
 }
 
 .term-popup-overlay {
@@ -1485,9 +1488,4 @@
 .term-popup-body {
   padding: 10px 12px;
   color: var(--text-primary);
-}
-
-.term-popup-loading {
-  color: var(--text-secondary);
-  font-style: italic;
 }

@@ -11,11 +11,14 @@ const router = Router();
 // Simple in-memory rate limiter
 const quoteRateLimitMap = new Map<number, number[]>();
 const chatRateLimitMap = new Map<number, number[]>();
+const annotateRateLimitMap = new Map<number, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const QUOTE_RATE_LIMIT_MAX = 30;
 const CHAT_RATE_LIMIT_MAX = 10;
+const ANNOTATE_RATE_LIMIT_MAX = 30; // auto-fired per log entry, needs higher budget
 
 const DIARY_MAX_TITLE_LENGTH = 200;
+const MAX_ANNOTATION_TEXT_LENGTH = 500; // max chars submitted to LLM for term annotation
 const DIARY_MAX_CONTENT_LENGTH = 10000;
 
 const quoteRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -41,6 +44,19 @@ const chatRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
   }
   timestamps.push(now);
   chatRateLimitMap.set(userId, timestamps);
+  next();
+};
+
+const annotateRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const userId = req.userId!;
+  const now = Date.now();
+  const timestamps = (annotateRateLimitMap.get(userId) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= ANNOTATE_RATE_LIMIT_MAX) {
+    logWarn('stock_annotate_rate_limit_exceeded', { userId });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+  timestamps.push(now);
+  annotateRateLimitMap.set(userId, timestamps);
   next();
 };
 
@@ -457,6 +473,47 @@ router.post('/chat', authMiddleware, chatRateLimit, async (req: AuthRequest, res
   } catch (error) {
     logError('stock_market_chat_error', error as Error);
     res.status(500).json({ error: (error as Error).message || 'AI chat failed' });
+  }
+});
+
+// POST /api/stock-market/trading/annotate-terms
+// Identifies financial/economic jargon in a log text and returns term→explanation map.
+// Called automatically by the frontend for each new bot log entry.
+router.post('/trading/annotate-terms', authMiddleware, annotateRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const { text } = req.body as { text: string };
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.json({ terms: {} });
+    }
+    const truncated = text.slice(0, MAX_ANNOTATION_TEXT_LENGTH); // guard against oversized payloads
+    const result = await chatCompletion([
+      {
+        role: 'system',
+        content: '你是金融术语识别助手。从给定文本中找出所有金融或经济学专业术语，为每个术语提供不超过60字的简明解释。只返回JSON对象格式，键为术语、值为解释，不要有任何其他内容。若无专业术语则返回{}。',
+      },
+      {
+        role: 'user',
+        content: `请识别以下文本中的金融/经济学专业术语并给出简明解释（JSON格式）：\n${truncated}`,
+      },
+    ]);
+
+    let terms: Record<string, string> = {};
+    try {
+      // Strip markdown code fences if present (e.g. ```json ... ```)
+      const cleaned = result.content.replace(/^```[a-z]*\n?|\n?```$/gi, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        terms = parsed;
+      }
+    } catch {
+      // LLM returned non-JSON — ignore, return empty
+    }
+
+    logInfo('stock_annotate_terms', { userId: req.userId, termCount: Object.keys(terms).length });
+    res.json({ terms });
+  } catch (error) {
+    logError('stock_annotate_terms_error', error as Error);
+    res.json({ terms: {} }); // degrade gracefully — don't break the UI
   }
 });
 

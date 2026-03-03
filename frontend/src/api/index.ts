@@ -564,6 +564,11 @@ export const stockMarketAPI = {
     return response.data;
   },
 
+  annotateTerms: async (text: string): Promise<{ terms: Record<string, string> }> => {
+    const response = await api.post('/stock-market/trading/annotate-terms', { text });
+    return response.data;
+  },
+
   getTradingStats: async (): Promise<{
     stats: Array<{
       stock_code: string; stock_name: string; total_bought: number; total_sold: number;
