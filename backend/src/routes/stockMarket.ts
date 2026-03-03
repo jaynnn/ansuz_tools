@@ -21,6 +21,12 @@ const DIARY_MAX_TITLE_LENGTH = 200;
 const MAX_ANNOTATION_TEXT_LENGTH = 500; // max chars submitted to LLM for term annotation
 const DIARY_MAX_CONTENT_LENGTH = 10000;
 
+// Price-limit detection tolerances: a 0.1% band around the computed limit price
+// accounts for floating-point rounding and tick-size effects when comparing
+// the current market price to the theoretical limit price.
+const LIMIT_UP_FACTOR = 0.999;   // current >= limitUp * 0.999 → treat as limit-up
+const LIMIT_DOWN_FACTOR = 1.001; // current <= limitDown * 1.001 → treat as limit-down
+
 const quoteRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
   const userId = req.userId!;
   const now = Date.now();
@@ -258,7 +264,37 @@ function isT0Product(code: string, name: string): boolean {
   // Commodity ETF
   if (/原油|豆粕|有色金属|铜ETF|能源ETF|商品ETF/.test(n)) return true;
 
+  // Convertible bonds (可转债): T+0 per A-share rules (debt instruments settle T+0).
+  // Individual convertible bonds are distinguished by name containing "转债" without "ETF".
+  // Code-based check: sh11[0-3]xxx covers 110–113 series (Shanghai); sz12[38]xxx covers
+  // sz123xxx and sz128xxx series (Shenzhen).
+  if (/转债/.test(n) && !/ETF/i.test(n)) return true;
+  if (/^(sh|sz)(11[0-3]|12[38])\d{3}$/.test(c)) return true;
+
   return false;
+}
+
+/**
+ * Returns the daily price-limit percentage (±%) for a given stock/fund.
+ *
+ * Rules (per CSRC / exchange rules):
+ *   - ST / *ST stocks (name starts with "ST" or "*ST"): ±5%
+ *   - STAR Market 科创板 (sh688xxx): ±20%
+ *   - ChiNext 创业板 (sz3xxxxx):    ±20%
+ *   - BSE 北交所 (bj prefix):       ±30%
+ *   - All other main-board stocks:  ±10%
+ *
+ * Note: newly-listed stocks on STAR/ChiNext have no limit for their first 5 trading days,
+ * and newly-listed BSE stocks have no limit on their first day. Those edge cases are not
+ * handled here because the bot only trades once a stock appears in the user's watchlist.
+ */
+function getPriceLimitPct(code: string, name: string): number {
+  if (/^\*?ST/i.test(name.trim())) return 5;
+  const c = code.toLowerCase();
+  if (/^sh688/.test(c)) return 20;   // STAR Market 科创板
+  if (/^sz3/.test(c)) return 20;     // ChiNext 创业板
+  if (/^bj/.test(c)) return 30;      // BSE 北交所
+  return 10;                         // Standard main board
 }
 
 // ─── Financial News ──────────────────────────────────────────────────────────
@@ -624,6 +660,12 @@ router.post('/trading/sell', authMiddleware, tradingWriteRateLimit, async (req: 
       return res.status(400).json({ error: `持仓不足，当前持有 ${holding?.quantity ?? 0} 股` });
     }
 
+    // Odd-lot rule: if remaining shares after this sell would be 1–99, require selling all
+    const remainingAfterSell = holding.quantity - quantity;
+    if (remainingAfterSell > 0 && remainingAfterSell < 100) {
+      return res.status(400).json({ error: `卖出后剩余${remainingAfterSell}股属于零碎股，须一次性全部卖出（共${holding.quantity}股）` });
+    }
+
     // Enforce A-share T+1: domestic equity/mixed/broad-based ETFs and regular stocks
     // cannot be sold on the same day they were purchased.
     // Cross-border, bond, gold, monetary, and commodity ETFs are T+0 and are exempt.
@@ -842,9 +884,16 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
         const trendPct = ((newest - oldest) / oldest * 100).toFixed(2);
         trendDesc = `近${hist.length}轮${Number(trendPct) >= 0 ? '上涨' : '下跌'}${Math.abs(Number(trendPct))}%`;
       }
+      // Price limits
+      const limitPct = getPriceLimitPct(q.code, q.name);
+      const limitUpPrice = q.yesterdayClose > 0 ? parseFloat((q.yesterdayClose * (1 + limitPct / 100)).toFixed(2)) : null;
+      const limitDownPrice = q.yesterdayClose > 0 ? parseFloat((q.yesterdayClose * (1 - limitPct / 100)).toFixed(2)) : null;
+      const atLimitUp = limitUpPrice !== null && q.currentPrice >= limitUpPrice * LIMIT_UP_FACTOR;
+      const atLimitDown = limitDownPrice !== null && q.currentPrice > 0 && q.currentPrice <= limitDownPrice * LIMIT_DOWN_FACTOR;
+      const limitStatus = atLimitUp ? '  【已涨停，买单大概率无法成交】' : atLimitDown ? '  【已跌停，卖单大概率无法成交】' : '';
       return [
         `${q.name}(${q.code}):`,
-        `  现价=${q.currentPrice}`,
+        `  现价=${q.currentPrice}  涨跌幅限制=±${limitPct}%  涨停价=${limitUpPrice?.toFixed(2) ?? 'N/A'}  跌停价=${limitDownPrice?.toFixed(2) ?? 'N/A'}${limitStatus}`,
         `  昨收=${q.yesterdayClose} 今开=${q.todayOpen}`,
         `  涨跌幅=${q.changePercent > 0 ? '+' : ''}${q.changePercent}%`,
         `  日内相对开盘=${priceVsOpen}%`,
@@ -924,7 +973,17 @@ ${newsSummary}
 1. 只允许对以上行情列表中的标的进行交易
 2. 若标的现价为0，视为停牌或收盘，不得交易
 3. T+1规则：当日买入的境内股票型ETF、混合型ETF及普通A股，当日不得卖出（须等下一交易日）；持仓中标注【T+1锁定，今日不可卖出】的标的，今日只能 hold
-4. T+0例外：跨境ETF（如纳指ETF、标普ETF、恒生ETF）、债券ETF、黄金ETF、货币ETF、商品ETF当日买入可当日卖出
+4. T+0例外：跨境ETF（如纳指ETF、标普ETF、恒生ETF）、债券ETF、黄金ETF、货币ETF、商品ETF、可转债（名称含"转债"的非ETF品种）当日买入可当日卖出
+5. 涨跌幅限制（交易所强制约束，硬性规则）：
+   - 沪深主板普通股票：±10%；名称含"ST"或"*ST"的股票：±5%
+   - 科创板（代码sh688xxx）/ 创业板（代码sz3xxxxx）：±20%
+   - 北交所（代码bj前缀）：±30%
+   - 行情标注【已涨停】：该标的当日买单大概率无法成交，严禁买入
+   - 行情标注【已跌停】：该标的当日卖单大概率无法成交，严禁卖出，只能 hold
+6. 交易数量规则：
+   - 买入数量必须是100股（1手）的整数倍，最小买入单位为100股
+   - 卖出数量通常须为100股的整数倍；但若持仓不足100股（零碎股），必须一次性全部卖出
+   - 卖出后若剩余持仓在1~99股之间（产生零碎股），须将此次卖出数量扩展至清仓
 
 请按上述方法论完成分析，再给出交易决策。以JSON格式返回：
 {
@@ -1004,6 +1063,19 @@ ${newsSummary}
       const currentBalance = currentAccount?.balance ?? 0;
 
       if (action === 'buy') {
+        // Enforce: cannot buy when price is at limit-up (orders will not fill)
+        const limitPctBuy = getPriceLimitPct(code, quote.name);
+        if (quote.yesterdayClose > 0) {
+          const limitUpPrice = quote.yesterdayClose * (1 + limitPctBuy / 100);
+          if (quote.currentPrice >= limitUpPrice * LIMIT_UP_FACTOR) {
+            await dbRun(
+              'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+              [userId, 'skip', code, reasoning || '', `已涨停（涨幅限制±${limitPctBuy}%），买单无法成交，跳过`, sessionId]
+            );
+            continue;
+          }
+        }
+
         // Enforce: quantity must be multiple of 100; total ≤ 20% of available balance
         const maxAmount = currentBalance * 0.20;
         const rawQty = Math.floor(decision.quantity / 100) * 100;
@@ -1069,7 +1141,7 @@ ${newsSummary}
 
         // Enforce A-share T+1: domestic equity/mixed/broad-based ETFs and regular stocks
         // cannot be sold on the day they were bought. T+0 products (cross-border, bond,
-        // gold, monetary, commodity ETFs) are exempt from this restriction.
+        // gold, monetary, commodity ETFs, convertible bonds) are exempt.
         if (holding.last_buy_date === todayCycleDate && !isT0Product(code, quote.name)) {
           holdCount++;
           await dbRun(
@@ -1079,10 +1151,37 @@ ${newsSummary}
           continue;
         }
 
-        // Enforce: quantity ≤ 50% of current holding, must be multiple of 100
-        const maxSell = Math.floor(holding.quantity * 0.5 / 100) * 100 || Math.min(holding.quantity, 100);
-        const rawSellQty = Math.floor(decision.quantity / 100) * 100;
-        const quantity = Math.min(rawSellQty || 100, maxSell, holding.quantity);
+        // Enforce: cannot sell when price is at limit-down (orders will not fill)
+        const limitPctSell = getPriceLimitPct(code, quote.name);
+        if (quote.yesterdayClose > 0) {
+          const limitDownPrice = quote.yesterdayClose * (1 - limitPctSell / 100);
+          if (quote.currentPrice <= limitDownPrice * LIMIT_DOWN_FACTOR) {
+            holdCount++;
+            await dbRun(
+              'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+              [userId, 'hold', code, reasoning || '', `已跌停（涨幅限制±${limitPctSell}%），卖单无法成交，转为观望`, sessionId]
+            );
+            continue;
+          }
+        }
+
+        // Odd-lot rule: if current holding < 100 shares, must sell entire position at once.
+        // Also if selling would leave 1–99 shares (an odd lot), extend quantity to sell all.
+        let quantity: number;
+        if (holding.quantity < 100) {
+          // Odd lot already — sell entire position
+          quantity = holding.quantity;
+        } else {
+          // Normal case: 50% rule, rounded down to nearest 100
+          const maxSell = Math.floor(holding.quantity * 0.5 / 100) * 100 || 100;
+          const rawSellQty = Math.floor(decision.quantity / 100) * 100 || 100;
+          quantity = Math.min(rawSellQty, maxSell, holding.quantity);
+          // If remaining would become an odd lot (1–99 shares), extend to clear full position
+          const remaining = holding.quantity - quantity;
+          if (remaining > 0 && remaining < 100) {
+            quantity = holding.quantity;
+          }
+        }
         const total = quantity * quote.currentPrice;
         await dbRun(
           'UPDATE stock_trading_accounts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
