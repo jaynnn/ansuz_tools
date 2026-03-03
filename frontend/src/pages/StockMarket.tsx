@@ -195,6 +195,7 @@ const StockMarketPage: React.FC = () => {
   const [botRunning, setBotRunning] = useState(false);
   const [botLogs, setBotLogs] = useState<BotLog[]>([]);
   const [botBalance, setBotBalance] = useState<number | null>(null);
+  const [botHoldings, setBotHoldings] = useState<Holding[]>([]);
   const [botError, setBotError] = useState<string | null>(null);
   const [loadingBot, setLoadingBot] = useState(false);
   const [botAutoRefresh, setBotAutoRefresh] = useState(() => localStorage.getItem(BOT_AUTOREFRESH_KEY) === 'true');
@@ -362,6 +363,7 @@ const StockMarketPage: React.FC = () => {
       setBotRunning(data.isRunning);
       setBotLogs(data.logs);
       if (data.balance !== null) setBotBalance(data.balance);
+      setBotHoldings(data.holdings ?? []);
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       setBotError(e?.response?.data?.error || '加载机器人状态失败');
@@ -1064,11 +1066,72 @@ const StockMarketPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Bot account balance */}
+            {/* Bot account summary */}
             {botBalance !== null && (
-              <div className="bot-balance-bar">
-                <span className="bot-balance-label">模拟账户余额：</span>
-                <span className="bot-balance-value">¥{formatMoney(botBalance)}</span>
+              <div className="bot-asset-summary">
+                {(() => {
+                  const botHoldingsValue = botHoldings.reduce((sum, h) => {
+                    const q = quoteMap.get(h.stock_code);
+                    return sum + (q ? q.currentPrice * h.quantity : h.avg_cost * h.quantity);
+                  }, 0);
+                  const botTotalAssets = botBalance + botHoldingsValue;
+                  const botTotalCost = botHoldings.reduce((sum, h) => sum + h.avg_cost * h.quantity, 0);
+                  const botPnl = botHoldingsValue - botTotalCost;
+                  return (
+                    <div className="trading-summary">
+                      <div className="trading-summary-item">
+                        <span className="ts-label">可用资金</span>
+                        <span className="ts-value">¥{formatMoney(botBalance)}</span>
+                      </div>
+                      <div className="trading-summary-item">
+                        <span className="ts-label">持仓市值</span>
+                        <span className="ts-value">¥{formatMoney(botHoldingsValue)}</span>
+                      </div>
+                      <div className="trading-summary-item">
+                        <span className="ts-label">总资产</span>
+                        <span className="ts-value">¥{formatMoney(botTotalAssets)}</span>
+                      </div>
+                      <div className="trading-summary-item">
+                        <span className="ts-label">持仓盈亏</span>
+                        <span className={`ts-value ${botPnl >= 0 ? 'stock-change-up' : 'stock-change-down'}`}>
+                          {botPnl >= 0 ? '+' : ''}¥{formatMoney(botPnl)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+                {botHoldings.length > 0 && (
+                  <div className="stock-table-container" style={{ marginTop: 8 }}>
+                    <table className="stock-table">
+                      <thead>
+                        <tr><th>代码</th><th>名称</th><th>持仓</th><th>均价</th><th>现价</th><th>盈亏</th><th>市值</th></tr>
+                      </thead>
+                      <tbody>
+                        {botHoldings.map(h => {
+                          const q = quoteMap.get(h.stock_code);
+                          const currentPrice = q?.currentPrice ?? h.avg_cost;
+                          const pnl = (currentPrice - h.avg_cost) * h.quantity;
+                          const pnlPct = ((currentPrice - h.avg_cost) / h.avg_cost * 100);
+                          const cls = pnl >= 0 ? 'stock-change-up' : 'stock-change-down';
+                          return (
+                            <tr key={h.stock_code}>
+                              <td>{h.stock_code.toUpperCase()}</td>
+                              <td>{h.stock_name}</td>
+                              <td>{h.quantity}</td>
+                              <td>¥{h.avg_cost.toFixed(2)}</td>
+                              <td>¥{currentPrice.toFixed(2)}</td>
+                              <td className={cls}>
+                                {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}<br />
+                                <small>({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%)</small>
+                              </td>
+                              <td>¥{formatMoney(currentPrice * h.quantity)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 

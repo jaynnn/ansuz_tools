@@ -701,24 +701,66 @@ router.post('/trading/reset', authMiddleware, tradingWriteRateLimit, async (req:
 
 // ─── AI Trading Bot ───────────────────────────────────────────────────────────
 
-// In-memory bot state: userId -> { timer, watchlist, sessionId, priceHistory, cycleCount }
+// In-memory bot state: userId -> { timer, monitorTimer, watchlist, sessionId, priceHistory, cycleCount, ... }
 interface BotPriceHistory {
   [stockCode: string]: number[]; // last N cycle closing prices
 }
-const runningBots = new Map<number, {
+interface BotState {
   timer: ReturnType<typeof setInterval>;
+  monitorTimer: ReturnType<typeof setInterval>;
   watchlist: string[];
   sessionId: number;
-  priceHistory: BotPriceHistory;   // tracks last 3 prices per stock
+  priceHistory: BotPriceHistory;   // tracks last 3 prices per stock (for trend analysis)
   cycleCount: number;              // how many cycles have run
-}>();
+  lastSkipReason: string | null;  // tracks last skip reason to avoid log spam
+  monitorPrices: { [code: string]: number }; // last snapshot prices for anomaly detection
+  lastCycleTime: number;          // timestamp of last completed cycle (for debouncing)
+  cycleRunning: boolean;          // prevent concurrent cycles
+}
+const runningBots = new Map<number, BotState>();
 
 const BOT_INTERVAL_MS = parseInt(process.env.STOCK_BOT_INTERVAL_MS || '') || 10 * 60 * 1000; // Default: 10 minutes
+const BOT_MONITOR_INTERVAL_MS = parseInt(process.env.STOCK_BOT_MONITOR_INTERVAL_MS || '') || 60 * 1000; // Default: 1 minute
+const MIN_EVENT_CYCLE_GAP_MS = parseInt(process.env.STOCK_BOT_MIN_EVENT_GAP_MS || '') || 3 * 60 * 1000; // Min 3 min between event-triggered cycles
+const ANOMALY_TRIGGER_THRESHOLD = parseFloat(process.env.STOCK_BOT_ANOMALY_THRESHOLD || '') || 0.02; // 2% auto-trigger
+const ANOMALY_LLM_THRESHOLD = parseFloat(process.env.STOCK_BOT_ANOMALY_LLM_THRESHOLD || '') || 0.01; // 1% LLM-assisted check
 const BOT_PRICE_HISTORY_SIZE = 3; // remember last 3 cycle prices per stock
 
+/**
+ * Returns true when the current time is within A-share trading hours.
+ * Morning session: 09:30 – 11:30 (Beijing time)
+ * Afternoon session: 13:00 – 15:00 (Beijing time)
+ * Weekends are always outside trading hours.
+ * Note: public holidays are not checked here.
+ */
+function isTradingHours(): boolean {
+  const tz = process.env.SERVER_TIMEZONE || 'Asia/Shanghai';
+  // Create a Date whose wall-clock values (getHours, getMinutes, getDay) reflect the target timezone.
+  // new Date(toLocaleString('en-US', { timeZone })) is a well-known reliable pattern for this.
+  const localDate = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+  const day = localDate.getDay(); // 0=Sun, 6=Sat
+  if (day === 0 || day === 6) return false;
+  const totalMinutes = localDate.getHours() * 60 + localDate.getMinutes();
+  return (totalMinutes >= 9 * 60 + 30 && totalMinutes < 11 * 60 + 30) ||
+         (totalMinutes >= 13 * 60 && totalMinutes < 15 * 60);
+}
+
 async function runBotCycle(userId: number, watchlist: string[], sessionId: number) {
-  // Get the mutable bot state so we can update price history
+  // Enforce trading hours: only run during A-share market sessions
   const botState = runningBots.get(userId);
+  if (!isTradingHours()) {
+    if (botState && botState.lastSkipReason !== 'market_closed') {
+      botState.lastSkipReason = 'market_closed';
+      await dbRun(
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'skip', '当前非交易时间（A股交易时间：工作日09:30-11:30、13:00-15:00），等待开盘', sessionId]
+      );
+    }
+    return;
+  }
+  if (botState) botState.lastSkipReason = null;
+
+  // Get the mutable bot state so we can update price history
   const priceHistory: BotPriceHistory = botState?.priceHistory ?? {};
   const cycleCount = (botState?.cycleCount ?? 0) + 1;
   if (botState) botState.cycleCount = cycleCount;
@@ -762,6 +804,13 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
       }
     }
     if (botState) botState.priceHistory = priceHistory;
+
+    // Seed monitorPrices with cycle prices so the anomaly monitor has an immediate baseline
+    if (botState) {
+      for (const q of quotes) {
+        if (q.currentPrice > 0) botState.monitorPrices[q.code] = q.currentPrice;
+      }
+    }
 
     // Fetch recent bot orders (last 10) for this user to show trade history context
     const recentBotOrders = await dbAll(
@@ -1083,6 +1132,86 @@ ${newsSummary}
   }
 }
 
+/**
+ * Price anomaly monitor: runs every BOT_MONITOR_INTERVAL_MS during market hours.
+ * Detects significant price moves and triggers an immediate bot cycle when found.
+ * For borderline moves (between ANOMALY_LLM_THRESHOLD and ANOMALY_TRIGGER_THRESHOLD),
+ * an LLM call is used to determine whether the move warrants immediate action.
+ */
+async function runPriceMonitor(userId: number, watchlist: string[], sessionId: number) {
+  if (!isTradingHours()) return;
+
+  const botState = runningBots.get(userId);
+  if (!botState || botState.cycleRunning) return;
+
+  const now = Date.now();
+  if (now - botState.lastCycleTime < MIN_EVENT_CYCLE_GAP_MS) return;
+
+  try {
+    const quotes = await fetchEastmoneyQuotes(watchlist);
+
+    interface AnomalyInfo { code: string; name: string; changePct: number; direction: string }
+    const strongAnomalies: AnomalyInfo[] = [];
+    const weakAnomalies: AnomalyInfo[] = [];
+
+    for (const q of quotes) {
+      if (q.currentPrice <= 0) continue;
+      const lastPrice = botState.monitorPrices[q.code];
+      botState.monitorPrices[q.code] = q.currentPrice; // always update snapshot
+      if (!lastPrice || lastPrice <= 0) continue;
+      const changePct = (q.currentPrice - lastPrice) / lastPrice;
+      const absChange = Math.abs(changePct);
+      const direction = changePct > 0 ? '上涨' : '下跌';
+      if (absChange >= ANOMALY_TRIGGER_THRESHOLD) {
+        strongAnomalies.push({ code: q.code, name: q.name, changePct: absChange * 100, direction });
+      } else if (absChange >= ANOMALY_LLM_THRESHOLD) {
+        weakAnomalies.push({ code: q.code, name: q.name, changePct: absChange * 100, direction });
+      }
+    }
+
+    let shouldTrigger = strongAnomalies.length > 0;
+    let triggerReason = strongAnomalies.map(a => `${a.name}(${a.code}) ${a.direction}${a.changePct.toFixed(2)}%`).join('; ');
+
+    // LLM-assisted check for borderline anomalies
+    if (!shouldTrigger && weakAnomalies.length > 0) {
+      try {
+        const anomalyDesc = weakAnomalies.map(a => `${a.name} ${a.direction}${a.changePct.toFixed(2)}%`).join(', ');
+        const result = await chatCompletion([
+          { role: 'system', content: '你是股市异动判断助手。判断给定的价格变动是否构成需要立即交易决策的市场异动。只回复"是"或"否"，不要有其他内容。' },
+          { role: 'user', content: `监控时段内观测到以下价格变动：${anomalyDesc}。这是否构成需要立即进行交易决策的市场异动？` },
+        ]);
+        if (result.content.includes('是') && !result.content.trim().startsWith('否')) {
+          shouldTrigger = true;
+          triggerReason = `[LLM判断] ${anomalyDesc}`;
+        }
+      } catch (err) {
+        logWarn('stock_bot_anomaly_llm_error', { message: (err as Error).message, userId });
+      }
+    }
+
+    if (shouldTrigger) {
+      logInfo('stock_bot_anomaly_triggered', { userId, triggerReason });
+      await dbRun(
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'analysis', `[异动触发] ${triggerReason}，触发即时决策分析`, sessionId]
+      );
+      botState.cycleRunning = true;
+      botState.lastSkipReason = null;
+      try {
+        await runBotCycle(userId, watchlist, sessionId);
+      } finally {
+        if (runningBots.has(userId)) {
+          const s = runningBots.get(userId)!;
+          s.cycleRunning = false;
+          s.lastCycleTime = Date.now();
+        }
+      }
+    }
+  } catch (err) {
+    logWarn('stock_bot_monitor_error', { message: (err as Error).message, userId });
+  }
+}
+
 // GET /api/stock-market/trading/bot/status
 router.get('/trading/bot/status', authMiddleware, tradingReadRateLimit, async (req: AuthRequest, res: Response) => {
   try {
@@ -1094,7 +1223,11 @@ router.get('/trading/bot/status', authMiddleware, tradingReadRateLimit, async (r
     );
     const account = await dbGet('SELECT balance FROM stock_trading_accounts WHERE user_id = ?', [req.userId]);
     const balance = account?.balance ?? null;
-    res.json({ isRunning, watchlist, logs: logs.map((l: any) => ({ ...l, created_at: normalizeTimestamp(l.created_at) })), balance });
+    const holdings = await dbAll(
+      'SELECT * FROM stock_trading_holdings WHERE user_id = ? AND quantity > 0',
+      [req.userId]
+    );
+    res.json({ isRunning, watchlist, logs: logs.map((l: any) => ({ ...l, created_at: normalizeTimestamp(l.created_at) })), balance, holdings });
   } catch (error) {
     logError('stock_bot_status_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
@@ -1135,10 +1268,31 @@ router.post('/trading/bot/start', authMiddleware, tradingWriteRateLimit, async (
       [userId, 'start', `机器人启动，监控股票: ${validCodes.join(', ')}`, sessionId]
     );
 
-    // Run one cycle immediately, then schedule
-    runBotCycle(userId, validCodes, sessionId);
-    const timer = setInterval(() => runBotCycle(userId, validCodes, sessionId), BOT_INTERVAL_MS);
-    runningBots.set(userId, { timer, watchlist: validCodes, sessionId, priceHistory: {}, cycleCount: 0 });
+    // Wrapper that prevents concurrent cycles and records timing for debouncing
+    const runScheduledCycle = async () => {
+      const state = runningBots.get(userId);
+      if (!state || state.cycleRunning) return;
+      state.cycleRunning = true;
+      try {
+        await runBotCycle(userId, validCodes, sessionId);
+      } finally {
+        if (runningBots.has(userId)) {
+          const s = runningBots.get(userId)!;
+          s.cycleRunning = false;
+          s.lastCycleTime = Date.now();
+        }
+      }
+    };
+
+    // Run one cycle immediately, then schedule periodic and anomaly-monitor timers
+    runScheduledCycle();
+    const timer = setInterval(runScheduledCycle, BOT_INTERVAL_MS);
+    const monitorTimer = setInterval(() => runPriceMonitor(userId, validCodes, sessionId), BOT_MONITOR_INTERVAL_MS);
+    runningBots.set(userId, {
+      timer, monitorTimer, watchlist: validCodes, sessionId,
+      priceHistory: {}, cycleCount: 0,
+      lastSkipReason: null, monitorPrices: {}, lastCycleTime: 0, cycleRunning: false,
+    });
 
     logInfo('stock_bot_started', { userId, watchlist: validCodes, sessionId });
     res.json({ message: '机器人已启动', watchlist: validCodes });
@@ -1158,6 +1312,7 @@ router.post('/trading/bot/stop', authMiddleware, tradingWriteRateLimit, async (r
     }
 
     clearInterval(bot.timer);
+    clearInterval(bot.monitorTimer);
     runningBots.delete(userId);
 
     await dbRun(
