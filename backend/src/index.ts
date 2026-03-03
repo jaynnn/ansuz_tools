@@ -21,6 +21,7 @@ import goalTaskRoutes from './routes/goalTask';
 import guitarPracticeRoutes from './routes/guitarPractice';
 import medicalRecordRoutes from './routes/medicalRecord';
 import mindseaRoutes from './routes/mindsea';
+import stockMarketRoutes from './routes/stockMarket';
 
 // Load environment variables
 dotenv.config();
@@ -91,6 +92,7 @@ app.use('/api/goal-task', goalTaskRoutes);
 app.use('/api/guitar-practice', guitarPracticeRoutes);
 app.use('/api/medical-record', medicalRecordRoutes);
 app.use('/api/mindsea', mindseaRoutes);
+app.use('/api/stock-market', stockMarketRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

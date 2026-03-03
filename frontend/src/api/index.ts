@@ -468,3 +468,28 @@ export const mindseaAPI = {
     return response.data;
   },
 };
+
+// Stock Market APIs
+export const stockMarketAPI = {
+  getQuotes: async (codes: string[]): Promise<{ quotes: Array<{
+    code: string;
+    name: string;
+    currentPrice: number;
+    yesterdayClose: number;
+    todayOpen: number;
+    todayHigh: number;
+    todayLow: number;
+    changeAmount: number;
+    changePercent: number;
+    volume: number;
+    amount: number;
+  }> }> => {
+    const response = await api.get('/stock-market/quote', { params: { codes: codes.join(',') } });
+    return response.data;
+  },
+
+  chat: async (messages: Array<{ role: string; content: string }>): Promise<{ reply: string }> => {
+    const response = await api.post('/stock-market/chat', { messages });
+    return response.data;
+  },
+};
