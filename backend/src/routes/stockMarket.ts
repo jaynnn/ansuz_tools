@@ -21,6 +21,12 @@ const DIARY_MAX_TITLE_LENGTH = 200;
 const MAX_ANNOTATION_TEXT_LENGTH = 500; // max chars submitted to LLM for term annotation
 const DIARY_MAX_CONTENT_LENGTH = 10000;
 
+// Price-limit detection tolerances: a 0.1% band around the computed limit price
+// accounts for floating-point rounding and tick-size effects when comparing
+// the current market price to the theoretical limit price.
+const LIMIT_UP_FACTOR = 0.999;   // current >= limitUp * 0.999 → treat as limit-up
+const LIMIT_DOWN_FACTOR = 1.001; // current <= limitDown * 1.001 → treat as limit-down
+
 const quoteRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
   const userId = req.userId!;
   const now = Date.now();
@@ -258,7 +264,37 @@ function isT0Product(code: string, name: string): boolean {
   // Commodity ETF
   if (/原油|豆粕|有色金属|铜ETF|能源ETF|商品ETF/.test(n)) return true;
 
+  // Convertible bonds (可转债): T+0 per A-share rules (debt instruments settle T+0).
+  // Individual convertible bonds are distinguished by name containing "转债" without "ETF".
+  // Code-based check: sh11[0-3]xxx covers 110–113 series (Shanghai); sz12[38]xxx covers
+  // sz123xxx and sz128xxx series (Shenzhen).
+  if (/转债/.test(n) && !/ETF/i.test(n)) return true;
+  if (/^(sh|sz)(11[0-3]|12[38])\d{3}$/.test(c)) return true;
+
   return false;
+}
+
+/**
+ * Returns the daily price-limit percentage (±%) for a given stock/fund.
+ *
+ * Rules (per CSRC / exchange rules):
+ *   - ST / *ST stocks (name starts with "ST" or "*ST"): ±5%
+ *   - STAR Market 科创板 (sh688xxx): ±20%
+ *   - ChiNext 创业板 (sz3xxxxx):    ±20%
+ *   - BSE 北交所 (bj prefix):       ±30%
+ *   - All other main-board stocks:  ±10%
+ *
+ * Note: newly-listed stocks on STAR/ChiNext have no limit for their first 5 trading days,
+ * and newly-listed BSE stocks have no limit on their first day. Those edge cases are not
+ * handled here because the bot only trades once a stock appears in the user's watchlist.
+ */
+function getPriceLimitPct(code: string, name: string): number {
+  if (/^\*?ST/i.test(name.trim())) return 5;
+  const c = code.toLowerCase();
+  if (/^sh688/.test(c)) return 20;   // STAR Market 科创板
+  if (/^sz3/.test(c)) return 20;     // ChiNext 创业板
+  if (/^bj/.test(c)) return 30;      // BSE 北交所
+  return 10;                         // Standard main board
 }
 
 // ─── Financial News ──────────────────────────────────────────────────────────
@@ -624,6 +660,12 @@ router.post('/trading/sell', authMiddleware, tradingWriteRateLimit, async (req: 
       return res.status(400).json({ error: `持仓不足，当前持有 ${holding?.quantity ?? 0} 股` });
     }
 
+    // Odd-lot rule: if remaining shares after this sell would be 1–99, require selling all
+    const remainingAfterSell = holding.quantity - quantity;
+    if (remainingAfterSell > 0 && remainingAfterSell < 100) {
+      return res.status(400).json({ error: `卖出后剩余${remainingAfterSell}股属于零碎股，须一次性全部卖出（共${holding.quantity}股）` });
+    }
+
     // Enforce A-share T+1: domestic equity/mixed/broad-based ETFs and regular stocks
     // cannot be sold on the same day they were purchased.
     // Cross-border, bond, gold, monetary, and commodity ETFs are T+0 and are exempt.
@@ -701,24 +743,70 @@ router.post('/trading/reset', authMiddleware, tradingWriteRateLimit, async (req:
 
 // ─── AI Trading Bot ───────────────────────────────────────────────────────────
 
-// In-memory bot state: userId -> { timer, watchlist, sessionId, priceHistory, cycleCount }
+// In-memory bot state: userId -> { timer, monitorTimer, watchlist, sessionId, priceHistory, cycleCount, ... }
 interface BotPriceHistory {
   [stockCode: string]: number[]; // last N cycle closing prices
 }
-const runningBots = new Map<number, {
+interface BotState {
   timer: ReturnType<typeof setInterval>;
+  monitorTimer: ReturnType<typeof setInterval>;
   watchlist: string[];
   sessionId: number;
-  priceHistory: BotPriceHistory;   // tracks last 3 prices per stock
+  priceHistory: BotPriceHistory;   // tracks last 3 prices per stock (for trend analysis)
   cycleCount: number;              // how many cycles have run
-}>();
+  lastSkipReason: string | null;  // tracks last skip reason to avoid log spam
+  monitorPrices: { [code: string]: number }; // last snapshot prices for anomaly detection
+  lastCycleTime: number;          // timestamp of last completed cycle (for debouncing)
+  cycleRunning: boolean;          // prevent concurrent cycles
+  conversationHistory: LLMMessage[]; // rolling window of prior user+assistant turns for LLM context
+}
+const runningBots = new Map<number, BotState>();
 
 const BOT_INTERVAL_MS = parseInt(process.env.STOCK_BOT_INTERVAL_MS || '') || 10 * 60 * 1000; // Default: 10 minutes
+const BOT_MONITOR_INTERVAL_MS = parseInt(process.env.STOCK_BOT_MONITOR_INTERVAL_MS || '') || 60 * 1000; // Default: 1 minute
+const MIN_EVENT_CYCLE_GAP_MS = parseInt(process.env.STOCK_BOT_MIN_EVENT_GAP_MS || '') || 3 * 60 * 1000; // Min 3 min between event-triggered cycles
+const ANOMALY_TRIGGER_THRESHOLD = parseFloat(process.env.STOCK_BOT_ANOMALY_THRESHOLD || '') || 0.02; // 2% auto-trigger
+const ANOMALY_LLM_THRESHOLD = parseFloat(process.env.STOCK_BOT_ANOMALY_LLM_THRESHOLD || '') || 0.01; // 1% LLM-assisted check
 const BOT_PRICE_HISTORY_SIZE = 3; // remember last 3 cycle prices per stock
+// Number of previous user+assistant turn pairs to keep in LLM conversation history.
+// Each turn pair is roughly 800-1200 tokens; 5 pairs ≈ 4000-6000 extra tokens.
+const BOT_CONV_HISTORY_TURNS = parseInt(process.env.STOCK_BOT_CONV_HISTORY_TURNS || '') || 5;
+
+/**
+ * Returns true when the current time is within A-share trading hours.
+ * Morning session: 09:30 – 11:30 (Beijing time)
+ * Afternoon session: 13:00 – 15:00 (Beijing time)
+ * Weekends are always outside trading hours.
+ * Note: public holidays are not checked here.
+ */
+function isTradingHours(): boolean {
+  const tz = process.env.SERVER_TIMEZONE || 'Asia/Shanghai';
+  // Create a Date whose wall-clock values (getHours, getMinutes, getDay) reflect the target timezone.
+  // new Date(toLocaleString('en-US', { timeZone })) is a well-known reliable pattern for this.
+  const localDate = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+  const day = localDate.getDay(); // 0=Sun, 6=Sat
+  if (day === 0 || day === 6) return false;
+  const totalMinutes = localDate.getHours() * 60 + localDate.getMinutes();
+  return (totalMinutes >= 9 * 60 + 30 && totalMinutes < 11 * 60 + 30) ||
+         (totalMinutes >= 13 * 60 && totalMinutes < 15 * 60);
+}
 
 async function runBotCycle(userId: number, watchlist: string[], sessionId: number) {
-  // Get the mutable bot state so we can update price history
+  // Enforce trading hours: only run during A-share market sessions
   const botState = runningBots.get(userId);
+  if (!isTradingHours()) {
+    if (botState && botState.lastSkipReason !== 'market_closed') {
+      botState.lastSkipReason = 'market_closed';
+      await dbRun(
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'skip', '当前非交易时间（A股交易时间：工作日09:30-11:30、13:00-15:00），等待开盘', sessionId]
+      );
+    }
+    return;
+  }
+  if (botState) botState.lastSkipReason = null;
+
+  // Get the mutable bot state so we can update price history
   const priceHistory: BotPriceHistory = botState?.priceHistory ?? {};
   const cycleCount = (botState?.cycleCount ?? 0) + 1;
   if (botState) botState.cycleCount = cycleCount;
@@ -763,6 +851,13 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
     }
     if (botState) botState.priceHistory = priceHistory;
 
+    // Seed monitorPrices with cycle prices so the anomaly monitor has an immediate baseline
+    if (botState) {
+      for (const q of quotes) {
+        if (q.currentPrice > 0) botState.monitorPrices[q.code] = q.currentPrice;
+      }
+    }
+
     // Fetch recent bot orders (last 10) for this user to show trade history context
     const recentBotOrders = await dbAll(
       `SELECT stock_code, stock_name, action, quantity, price, created_at
@@ -793,9 +888,16 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
         const trendPct = ((newest - oldest) / oldest * 100).toFixed(2);
         trendDesc = `近${hist.length}轮${Number(trendPct) >= 0 ? '上涨' : '下跌'}${Math.abs(Number(trendPct))}%`;
       }
+      // Price limits
+      const limitPct = getPriceLimitPct(q.code, q.name);
+      const limitUpPrice = q.yesterdayClose > 0 ? parseFloat((q.yesterdayClose * (1 + limitPct / 100)).toFixed(2)) : null;
+      const limitDownPrice = q.yesterdayClose > 0 ? parseFloat((q.yesterdayClose * (1 - limitPct / 100)).toFixed(2)) : null;
+      const atLimitUp = limitUpPrice !== null && q.currentPrice >= limitUpPrice * LIMIT_UP_FACTOR;
+      const atLimitDown = limitDownPrice !== null && q.currentPrice > 0 && q.currentPrice <= limitDownPrice * LIMIT_DOWN_FACTOR;
+      const limitStatus = atLimitUp ? '  【已涨停，买单大概率无法成交】' : atLimitDown ? '  【已跌停，卖单大概率无法成交】' : '';
       return [
         `${q.name}(${q.code}):`,
-        `  现价=${q.currentPrice}`,
+        `  现价=${q.currentPrice}  涨跌幅限制=±${limitPct}%  涨停价=${limitUpPrice?.toFixed(2) ?? 'N/A'}  跌停价=${limitDownPrice?.toFixed(2) ?? 'N/A'}${limitStatus}`,
         `  昨收=${q.yesterdayClose} 今开=${q.todayOpen}`,
         `  涨跌幅=${q.changePercent > 0 ? '+' : ''}${q.changePercent}%`,
         `  日内相对开盘=${priceVsOpen}%`,
@@ -875,7 +977,17 @@ ${newsSummary}
 1. 只允许对以上行情列表中的标的进行交易
 2. 若标的现价为0，视为停牌或收盘，不得交易
 3. T+1规则：当日买入的境内股票型ETF、混合型ETF及普通A股，当日不得卖出（须等下一交易日）；持仓中标注【T+1锁定，今日不可卖出】的标的，今日只能 hold
-4. T+0例外：跨境ETF（如纳指ETF、标普ETF、恒生ETF）、债券ETF、黄金ETF、货币ETF、商品ETF当日买入可当日卖出
+4. T+0例外：跨境ETF（如纳指ETF、标普ETF、恒生ETF）、债券ETF、黄金ETF、货币ETF、商品ETF、可转债（名称含"转债"的非ETF品种）当日买入可当日卖出
+5. 涨跌幅限制（交易所强制约束，硬性规则）：
+   - 沪深主板普通股票：±10%；名称含"ST"或"*ST"的股票：±5%
+   - 科创板（代码sh688xxx）/ 创业板（代码sz3xxxxx）：±20%
+   - 北交所（代码bj前缀）：±30%
+   - 行情标注【已涨停】：该标的当日买单大概率无法成交，严禁买入
+   - 行情标注【已跌停】：该标的当日卖单大概率无法成交，严禁卖出，只能 hold
+6. 交易数量规则：
+   - 买入数量必须是100股（1手）的整数倍，最小买入单位为100股
+   - 卖出数量通常须为100股的整数倍；但若持仓不足100股（零碎股），必须一次性全部卖出
+   - 卖出后若剩余持仓在1~99股之间（产生零碎股），须将此次卖出数量扩展至清仓
 
 请按上述方法论完成分析，再给出交易决策。以JSON格式返回：
 {
@@ -892,8 +1004,10 @@ ${newsSummary}
 
     let llmResponse: string;
     try {
+      const conversationHistory = botState?.conversationHistory ?? [];
       const result = await chatCompletion([
-        { role: 'system', content: '你是专业量化股票交易员，严格遵循趋势识别、量价验证、风险评估、宏观过滤四步分析方法论做出每一笔交易决策，只返回JSON格式的交易决策，不要有任何其他文字。' },
+        { role: 'system', content: '你是专业量化股票交易员，严格遵循趋势识别、量价验证、风险评估、宏观过滤四步分析方法论做出每一笔交易决策，只返回JSON格式的交易决策，不要有任何其他文字。你拥有本次会话中历轮决策的完整上下文，请结合以往分析和决策的连贯逻辑做出本轮判断，避免重复执行相同操作。' },
+        ...conversationHistory,
         { role: 'user', content: prompt },
       ]);
       llmResponse = result.content;
@@ -926,6 +1040,20 @@ ${newsSummary}
       [userId, 'analysis', parsed.analysis || '', sessionId]
     );
 
+    // Persist this cycle's user prompt + assistant response into the rolling conversation
+    // history so future cycles have contextual memory of prior reasoning and decisions.
+    if (botState) {
+      botState.conversationHistory.push(
+        { role: 'user', content: prompt },
+        { role: 'assistant', content: llmResponse }
+      );
+      // Cap to last BOT_CONV_HISTORY_TURNS pairs (2 messages per pair)
+      const maxMessages = BOT_CONV_HISTORY_TURNS * 2;
+      if (botState.conversationHistory.length > maxMessages) {
+        botState.conversationHistory = botState.conversationHistory.slice(-maxMessages);
+      }
+    }
+
     // Execute decisions
     let buyCount = 0, sellCount = 0, holdCount = 0;
     for (const decision of (parsed.decisions || [])) {
@@ -955,6 +1083,19 @@ ${newsSummary}
       const currentBalance = currentAccount?.balance ?? 0;
 
       if (action === 'buy') {
+        // Enforce: cannot buy when price is at limit-up (orders will not fill)
+        const limitPctBuy = getPriceLimitPct(code, quote.name);
+        if (quote.yesterdayClose > 0) {
+          const limitUpPrice = quote.yesterdayClose * (1 + limitPctBuy / 100);
+          if (quote.currentPrice >= limitUpPrice * LIMIT_UP_FACTOR) {
+            await dbRun(
+              'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+              [userId, 'skip', code, reasoning || '', `已涨停（涨幅限制±${limitPctBuy}%），买单无法成交，跳过`, sessionId]
+            );
+            continue;
+          }
+        }
+
         // Enforce: quantity must be multiple of 100; total ≤ 20% of available balance
         const maxAmount = currentBalance * 0.20;
         const rawQty = Math.floor(decision.quantity / 100) * 100;
@@ -1020,7 +1161,7 @@ ${newsSummary}
 
         // Enforce A-share T+1: domestic equity/mixed/broad-based ETFs and regular stocks
         // cannot be sold on the day they were bought. T+0 products (cross-border, bond,
-        // gold, monetary, commodity ETFs) are exempt from this restriction.
+        // gold, monetary, commodity ETFs, convertible bonds) are exempt.
         if (holding.last_buy_date === todayCycleDate && !isT0Product(code, quote.name)) {
           holdCount++;
           await dbRun(
@@ -1030,10 +1171,37 @@ ${newsSummary}
           continue;
         }
 
-        // Enforce: quantity ≤ 50% of current holding, must be multiple of 100
-        const maxSell = Math.floor(holding.quantity * 0.5 / 100) * 100 || Math.min(holding.quantity, 100);
-        const rawSellQty = Math.floor(decision.quantity / 100) * 100;
-        const quantity = Math.min(rawSellQty || 100, maxSell, holding.quantity);
+        // Enforce: cannot sell when price is at limit-down (orders will not fill)
+        const limitPctSell = getPriceLimitPct(code, quote.name);
+        if (quote.yesterdayClose > 0) {
+          const limitDownPrice = quote.yesterdayClose * (1 - limitPctSell / 100);
+          if (quote.currentPrice <= limitDownPrice * LIMIT_DOWN_FACTOR) {
+            holdCount++;
+            await dbRun(
+              'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+              [userId, 'hold', code, reasoning || '', `已跌停（涨幅限制±${limitPctSell}%），卖单无法成交，转为观望`, sessionId]
+            );
+            continue;
+          }
+        }
+
+        // Odd-lot rule: if current holding < 100 shares, must sell entire position at once.
+        // Also if selling would leave 1–99 shares (an odd lot), extend quantity to sell all.
+        let quantity: number;
+        if (holding.quantity < 100) {
+          // Odd lot already — sell entire position
+          quantity = holding.quantity;
+        } else {
+          // Normal case: 50% rule, rounded down to nearest 100
+          const maxSell = Math.floor(holding.quantity * 0.5 / 100) * 100 || 100;
+          const rawSellQty = Math.floor(decision.quantity / 100) * 100 || 100;
+          quantity = Math.min(rawSellQty, maxSell, holding.quantity);
+          // If remaining would become an odd lot (1–99 shares), extend to clear full position
+          const remaining = holding.quantity - quantity;
+          if (remaining > 0 && remaining < 100) {
+            quantity = holding.quantity;
+          }
+        }
         const total = quantity * quote.currentPrice;
         await dbRun(
           'UPDATE stock_trading_accounts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
@@ -1083,6 +1251,86 @@ ${newsSummary}
   }
 }
 
+/**
+ * Price anomaly monitor: runs every BOT_MONITOR_INTERVAL_MS during market hours.
+ * Detects significant price moves and triggers an immediate bot cycle when found.
+ * For borderline moves (between ANOMALY_LLM_THRESHOLD and ANOMALY_TRIGGER_THRESHOLD),
+ * an LLM call is used to determine whether the move warrants immediate action.
+ */
+async function runPriceMonitor(userId: number, watchlist: string[], sessionId: number) {
+  if (!isTradingHours()) return;
+
+  const botState = runningBots.get(userId);
+  if (!botState || botState.cycleRunning) return;
+
+  const now = Date.now();
+  if (now - botState.lastCycleTime < MIN_EVENT_CYCLE_GAP_MS) return;
+
+  try {
+    const quotes = await fetchEastmoneyQuotes(watchlist);
+
+    interface AnomalyInfo { code: string; name: string; changePct: number; direction: string }
+    const strongAnomalies: AnomalyInfo[] = [];
+    const weakAnomalies: AnomalyInfo[] = [];
+
+    for (const q of quotes) {
+      if (q.currentPrice <= 0) continue;
+      const lastPrice = botState.monitorPrices[q.code];
+      botState.monitorPrices[q.code] = q.currentPrice; // always update snapshot
+      if (!lastPrice || lastPrice <= 0) continue;
+      const changePct = (q.currentPrice - lastPrice) / lastPrice;
+      const absChange = Math.abs(changePct);
+      const direction = changePct > 0 ? '上涨' : '下跌';
+      if (absChange >= ANOMALY_TRIGGER_THRESHOLD) {
+        strongAnomalies.push({ code: q.code, name: q.name, changePct: absChange * 100, direction });
+      } else if (absChange >= ANOMALY_LLM_THRESHOLD) {
+        weakAnomalies.push({ code: q.code, name: q.name, changePct: absChange * 100, direction });
+      }
+    }
+
+    let shouldTrigger = strongAnomalies.length > 0;
+    let triggerReason = strongAnomalies.map(a => `${a.name}(${a.code}) ${a.direction}${a.changePct.toFixed(2)}%`).join('; ');
+
+    // LLM-assisted check for borderline anomalies
+    if (!shouldTrigger && weakAnomalies.length > 0) {
+      try {
+        const anomalyDesc = weakAnomalies.map(a => `${a.name} ${a.direction}${a.changePct.toFixed(2)}%`).join(', ');
+        const result = await chatCompletion([
+          { role: 'system', content: '你是股市异动判断助手。判断给定的价格变动是否构成需要立即交易决策的市场异动。只回复"是"或"否"，不要有其他内容。' },
+          { role: 'user', content: `监控时段内观测到以下价格变动：${anomalyDesc}。这是否构成需要立即进行交易决策的市场异动？` },
+        ]);
+        if (result.content.includes('是') && !result.content.trim().startsWith('否')) {
+          shouldTrigger = true;
+          triggerReason = `[LLM判断] ${anomalyDesc}`;
+        }
+      } catch (err) {
+        logWarn('stock_bot_anomaly_llm_error', { message: (err as Error).message, userId });
+      }
+    }
+
+    if (shouldTrigger) {
+      logInfo('stock_bot_anomaly_triggered', { userId, triggerReason });
+      await dbRun(
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'analysis', `[异动触发] ${triggerReason}，触发即时决策分析`, sessionId]
+      );
+      botState.cycleRunning = true;
+      botState.lastSkipReason = null;
+      try {
+        await runBotCycle(userId, watchlist, sessionId);
+      } finally {
+        if (runningBots.has(userId)) {
+          const s = runningBots.get(userId)!;
+          s.cycleRunning = false;
+          s.lastCycleTime = Date.now();
+        }
+      }
+    }
+  } catch (err) {
+    logWarn('stock_bot_monitor_error', { message: (err as Error).message, userId });
+  }
+}
+
 // GET /api/stock-market/trading/bot/status
 router.get('/trading/bot/status', authMiddleware, tradingReadRateLimit, async (req: AuthRequest, res: Response) => {
   try {
@@ -1094,7 +1342,11 @@ router.get('/trading/bot/status', authMiddleware, tradingReadRateLimit, async (r
     );
     const account = await dbGet('SELECT balance FROM stock_trading_accounts WHERE user_id = ?', [req.userId]);
     const balance = account?.balance ?? null;
-    res.json({ isRunning, watchlist, logs: logs.map((l: any) => ({ ...l, created_at: normalizeTimestamp(l.created_at) })), balance });
+    const holdings = await dbAll(
+      'SELECT * FROM stock_trading_holdings WHERE user_id = ? AND quantity > 0',
+      [req.userId]
+    );
+    res.json({ isRunning, watchlist, logs: logs.map((l: any) => ({ ...l, created_at: normalizeTimestamp(l.created_at) })), balance, holdings });
   } catch (error) {
     logError('stock_bot_status_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
@@ -1135,10 +1387,32 @@ router.post('/trading/bot/start', authMiddleware, tradingWriteRateLimit, async (
       [userId, 'start', `机器人启动，监控股票: ${validCodes.join(', ')}`, sessionId]
     );
 
-    // Run one cycle immediately, then schedule
-    runBotCycle(userId, validCodes, sessionId);
-    const timer = setInterval(() => runBotCycle(userId, validCodes, sessionId), BOT_INTERVAL_MS);
-    runningBots.set(userId, { timer, watchlist: validCodes, sessionId, priceHistory: {}, cycleCount: 0 });
+    // Wrapper that prevents concurrent cycles and records timing for debouncing
+    const runScheduledCycle = async () => {
+      const state = runningBots.get(userId);
+      if (!state || state.cycleRunning) return;
+      state.cycleRunning = true;
+      try {
+        await runBotCycle(userId, validCodes, sessionId);
+      } finally {
+        if (runningBots.has(userId)) {
+          const s = runningBots.get(userId)!;
+          s.cycleRunning = false;
+          s.lastCycleTime = Date.now();
+        }
+      }
+    };
+
+    // Run one cycle immediately, then schedule periodic and anomaly-monitor timers
+    runScheduledCycle();
+    const timer = setInterval(runScheduledCycle, BOT_INTERVAL_MS);
+    const monitorTimer = setInterval(() => runPriceMonitor(userId, validCodes, sessionId), BOT_MONITOR_INTERVAL_MS);
+    runningBots.set(userId, {
+      timer, monitorTimer, watchlist: validCodes, sessionId,
+      priceHistory: {}, cycleCount: 0,
+      lastSkipReason: null, monitorPrices: {}, lastCycleTime: 0, cycleRunning: false,
+      conversationHistory: [],
+    });
 
     logInfo('stock_bot_started', { userId, watchlist: validCodes, sessionId });
     res.json({ message: '机器人已启动', watchlist: validCodes });
@@ -1158,6 +1432,7 @@ router.post('/trading/bot/stop', authMiddleware, tradingWriteRateLimit, async (r
     }
 
     clearInterval(bot.timer);
+    clearInterval(bot.monitorTimer);
     runningBots.delete(userId);
 
     await dbRun(
