@@ -199,6 +199,14 @@ function normalizeTimestamp(ts: string | null | undefined): string {
   return ts.replace(' ', 'T') + 'Z';
 }
 
+/**
+ * Returns today's date in YYYY-MM-DD format using the configured server timezone
+ * (default: Asia/Shanghai). Used for A-share T+1 rule enforcement.
+ */
+function getTodayTradeDate(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: process.env.SERVER_TIMEZONE || 'Asia/Shanghai' });
+}
+
 // ─── Financial News ──────────────────────────────────────────────────────────
 
 interface NewsItem {
@@ -473,17 +481,20 @@ router.post('/trading/buy', authMiddleware, tradingWriteRateLimit, async (req: A
       'SELECT * FROM stock_trading_holdings WHERE user_id = ? AND stock_code = ?',
       [req.userId, code]
     );
+    const buyDate = getTodayTradeDate();
     if (existing) {
       const newQty = existing.quantity + quantity;
       const newAvgCost = (existing.avg_cost * existing.quantity + price * quantity) / newQty;
+      // Note: updating last_buy_date locks the entire position for T+1 (conservative simplification;
+      // per-lot tracking would be needed to allow selling pre-existing shares separately).
       await dbRun(
-        'UPDATE stock_trading_holdings SET quantity = ?, avg_cost = ?, stock_name = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND stock_code = ?',
-        [newQty, newAvgCost, name || existing.stock_name, req.userId, code]
+        'UPDATE stock_trading_holdings SET quantity = ?, avg_cost = ?, stock_name = ?, last_buy_date = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND stock_code = ?',
+        [newQty, newAvgCost, name || existing.stock_name, buyDate, req.userId, code]
       );
     } else {
       await dbRun(
-        'INSERT INTO stock_trading_holdings (user_id, stock_code, stock_name, quantity, avg_cost) VALUES (?, ?, ?, ?, ?)',
-        [req.userId, code, name, quantity, price]
+        'INSERT INTO stock_trading_holdings (user_id, stock_code, stock_name, quantity, avg_cost, last_buy_date) VALUES (?, ?, ?, ?, ?, ?)',
+        [req.userId, code, name, quantity, price, buyDate]
       );
     }
 
@@ -516,6 +527,12 @@ router.post('/trading/sell', authMiddleware, tradingWriteRateLimit, async (req: 
     );
     if (!holding || holding.quantity < quantity) {
       return res.status(400).json({ error: `持仓不足，当前持有 ${holding?.quantity ?? 0} 股` });
+    }
+
+    // Enforce A-share T+1: shares bought today cannot be sold until the next trading day
+    const todayDate = getTodayTradeDate();
+    if (holding.last_buy_date === todayDate) {
+      return res.status(400).json({ error: `T+1限制：${holding.stock_name} 今日买入的股份须等到下一个交易日才能卖出` });
     }
 
     const total = quantity * price;
@@ -692,13 +709,15 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
       ].join('\n');
     }).join('\n\n');
 
+    const todayCycleDate = getTodayTradeDate();
     const holdingsSummary = holdings.length > 0
       ? holdings.map((h: any) => {
           const q = quotes.find(x => x.code === h.stock_code);
           const currentVal = q ? q.currentPrice * h.quantity : 0;
           const cost = h.avg_cost * h.quantity;
           const pnl = currentVal - cost;
-          return `${h.stock_name}(${h.stock_code}): 持有${h.quantity}股, 均价${h.avg_cost.toFixed(2)}, 现价${q?.currentPrice?.toFixed(2) ?? 'N/A'}, 盈亏${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}`;
+          const t1Lock = h.last_buy_date === todayCycleDate ? '【T+1锁定，今日不可卖出】' : '';
+          return `${h.stock_name}(${h.stock_code}): 持有${h.quantity}股, 均价${h.avg_cost.toFixed(2)}, 现价${q?.currentPrice?.toFixed(2) ?? 'N/A'}, 盈亏${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}${t1Lock}`;
         }).join('\n')
       : '暂无持仓';
 
@@ -740,15 +759,16 @@ ${newsSummary}
 4. 成交量信号：成交额是否放量（对比常规水平）
 5. 宏观背景：结合最新资讯判断整体市场情绪
 
-【交易规则与行为约束】
+【A股交易规则与行为约束】
 1. 只能在以上行情列表中的股票进行交易
 2. 买入时每次买入金额不超过可用资金的20%
 3. 卖出时每次卖出不超过持仓的50%
 4. 若现价为0则不交易（市场收盘或停牌）
 5. 每个决策必须有量化数据支撑，不得仅凭感觉
-6. 【重要】检查最近操作历史——若某只股票刚刚在近2轮内被买入，必须有更强的信号才能继续加仓；避免在下跌趋势中连续买入同一只股票
-7. 【重要】若多轮观测显示某股价格持续下跌，倾向于卖出或观望，而非继续买入
-8. 在综合判断不明朗时，优先选择 hold（观望），不要为了交易而交易
+6. 【T+1规则，极其重要】A股实行T+1交割制度：当日买入的股票（含ETF）当日不得卖出，须等到下一个交易日才能卖出。持仓列表中标注【T+1锁定，今日不可卖出】的股票，今日决策只能是 hold，严禁对其下达 sell 指令
+7. 【重要】检查最近操作历史——若某只股票刚刚在近2轮内被买入，必须有更强的信号才能继续加仓；避免在下跌趋势中连续买入同一只股票
+8. 【重要】若多轮观测显示某股价格持续下跌，倾向于卖出或观望，而非继续买入
+9. 在综合判断不明朗时，优先选择 hold（观望），不要为了交易而交易
 
 请先进行量化分析，再给出交易决策。以JSON格式返回：
 {
@@ -856,14 +876,15 @@ ${newsSummary}
         if (existingHolding) {
           const newQty = existingHolding.quantity + quantity;
           const newAvgCost = (existingHolding.avg_cost * existingHolding.quantity + quote.currentPrice * quantity) / newQty;
+          // Note: updating last_buy_date locks the entire position for T+1 (conservative simplification)
           await dbRun(
-            'UPDATE stock_trading_holdings SET quantity = ?, avg_cost = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND stock_code = ?',
-            [newQty, newAvgCost, userId, code]
+            'UPDATE stock_trading_holdings SET quantity = ?, avg_cost = ?, last_buy_date = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND stock_code = ?',
+            [newQty, newAvgCost, todayCycleDate, userId, code]
           );
         } else {
           await dbRun(
-            'INSERT INTO stock_trading_holdings (user_id, stock_code, stock_name, quantity, avg_cost) VALUES (?, ?, ?, ?, ?)',
-            [userId, code, quote.name, quantity, quote.currentPrice]
+            'INSERT INTO stock_trading_holdings (user_id, stock_code, stock_name, quantity, avg_cost, last_buy_date) VALUES (?, ?, ?, ?, ?, ?)',
+            [userId, code, quote.name, quantity, quote.currentPrice, todayCycleDate]
           );
         }
 
@@ -886,6 +907,16 @@ ${newsSummary}
           await dbRun(
             'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
             [userId, 'skip', code, reasoning || '', `无持仓，无法卖出`, sessionId]
+          );
+          continue;
+        }
+
+        // Enforce A-share T+1: shares bought today cannot be sold until the next trading day
+        if (holding.last_buy_date === todayCycleDate) {
+          holdCount++;
+          await dbRun(
+            'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [userId, 'hold', code, reasoning || '', `T+1限制：${quote.name} 今日买入，须下一交易日方可卖出`, sessionId]
           );
           continue;
         }
