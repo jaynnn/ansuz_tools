@@ -903,6 +903,12 @@
   color: #ef4444;
 }
 
+.bot-log-cycle_summary .bot-log-reasoning {
+  color: #94a3b8;
+  font-size: 12px;
+  font-style: italic;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .stock-market-header {

@@ -597,8 +597,7 @@ const StockMarketPage: React.FC = () => {
       case 'sell': return '🔴';
       case 'hold': return '⚪';
       case 'analysis': return '🔍';
-      case 'analysis_start': return '▶️';
-      case 'analysis_end': return '✅';
+      case 'cycle_summary': return '📊';
       case 'start': return '🚀';
       case 'stop': return '⏹️';
       case 'error': return '❌';

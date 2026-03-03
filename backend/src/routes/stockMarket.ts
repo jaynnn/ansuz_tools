@@ -203,21 +203,74 @@ function normalizeTimestamp(ts: string | null | undefined): string {
 
 interface NewsItem {
   title: string;
-  time: string;
+  summary: string;
+}
+
+interface QuanmiaoTopic {
+  HotTopic?: string;
+  TextSummary?: string;
 }
 
 // In-memory news cache to avoid hammering the news API every bot cycle
 let newsCache: { items: NewsItem[]; fetchedAt: number } | null = null;
 const NEWS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const NEWS_ITEMS_LIMIT = 8;
 
+/**
+ * Fetch hot-topic news from Alibaba Cloud Quanmiao (全妙) service.
+ * Requires env vars: ALIBABA_CLOUD_ACCESS_KEY_ID, ALIBABA_CLOUD_ACCESS_KEY_SECRET, WORKSPACE_ID.
+ * Falls back to EastMoney 快讯 when credentials are absent or the call fails.
+ */
 async function fetchFinancialNews(): Promise<NewsItem[]> {
   const now = Date.now();
   if (newsCache && now - newsCache.fetchedAt < NEWS_CACHE_TTL_MS) {
     return newsCache.items;
   }
 
+  // ── Primary: Quanmiao (Alibaba Cloud aimiaobi) ──────────────────────────
+  const akId = process.env.ALIBABA_CLOUD_ACCESS_KEY_ID;
+  const akSecret = process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET;
+  const workspaceId = process.env.WORKSPACE_ID;
+
+  if (akId && akSecret && workspaceId) {
+    try {
+      // Dynamically import to avoid loading the SDK when credentials are absent
+      const OpenApi = await import('@alicloud/openapi-client');
+      const $Util = await import('@alicloud/tea-util');
+
+      const config = new OpenApi.Config({
+        signatureVersion: 'V3',
+        accessKeyId: akId,
+        accessKeySecret: akSecret,
+        endpoint: 'aimiaobi.cn-beijing.aliyuncs.com',
+      });
+      const client = new OpenApi.default(config);
+
+      const runtime = new $Util.RuntimeOptions({ readTimeout: 10000, connectTimeout: 10000 });
+      const request = new OpenApi.OpenApiRequest();
+      request.body = { WorkspaceId: workspaceId, Size: NEWS_ITEMS_LIMIT, Locations: [] as string[] };
+
+      const result = await client.doRPCRequest(
+        'GetHotTopicBroadcast', '2023-08-01', 'https', 'POST', 'AK', 'json', request, runtime
+      );
+      const topics: QuanmiaoTopic[] = result?.body?.Data?.Data ?? [];
+      const items: NewsItem[] = topics.map((t: QuanmiaoTopic) => ({
+        title: t.HotTopic || '',
+        summary: t.TextSummary || '',
+      })).filter((i: NewsItem) => i.title);
+
+      if (items.length > 0) {
+        newsCache = { items, fetchedAt: Date.now() };
+        return items;
+      }
+    } catch (err) {
+      logWarn('quanmiao_news_error', { message: (err as Error).message });
+      // Fall through to EastMoney backup
+    }
+  }
+
+  // ── Fallback: EastMoney 快讯 ─────────────────────────────────────────────
   return new Promise((resolve) => {
-    // EastMoney 快讯 (flash news) – publicly accessible, no auth required
     const path = '/kuaixun/v1/getlistbyft.aspx?rtntype=2&ft=f&pageindex=1&pagesize=8';
     const req = https.request(
       {
@@ -237,13 +290,12 @@ async function fetchFinancialNews(): Promise<NewsItem[]> {
         res.on('end', () => {
           try {
             const text = Buffer.concat(chunks).toString('utf-8');
-            // The response may be JSONP – strip callback wrapper if present
             const jsonText = text.replace(/^[^(]*\(/, '').replace(/\)[^)]*$/, '').trim();
             const json = JSON.parse(jsonText.length ? jsonText : text);
             const list: any[] = json?.LiveList ?? json?.list ?? [];
-            const items: NewsItem[] = list.slice(0, 8).map((item: any) => ({
+            const items: NewsItem[] = list.slice(0, NEWS_ITEMS_LIMIT).map((item: any) => ({
               title: item.title || item.Title || '',
-              time: item.showtime || item.ShowTime || item.ctime || '',
+              summary: item.digest || item.Digest || '',
             })).filter((i: NewsItem) => i.title);
             newsCache = { items, fetchedAt: Date.now() };
             resolve(items);
@@ -558,10 +610,6 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
   if (botState) botState.cycleCount = cycleCount;
   try {
     logInfo('stock_bot_cycle_start', { userId, watchlist });
-    await dbRun(
-      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
-      [userId, 'analysis_start', `开始分析 ${watchlist.join(', ')} ...`, sessionId]
-    );
 
     // Fetch current quotes
     let quotes: StockQuote[] = [];
@@ -664,7 +712,7 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
 
     // News summary section
     const newsSummary = newsItems.length > 0
-      ? newsItems.map((n, i) => `  ${i + 1}. ${n.title}${n.time ? ' (' + n.time + ')' : ''}`).join('\n')
+      ? newsItems.map((n, i) => `  ${i + 1}. ${n.title}${n.summary ? ': ' + n.summary : ''}`).join('\n')
       : '  暂无最新资讯';
 
     const prompt = `你是一位顶尖专业量化股票交易员，使用系统化的计算和量化指标做出交易决策，绝不凭直觉操作。
@@ -752,6 +800,7 @@ ${newsSummary}
     );
 
     // Execute decisions
+    let buyCount = 0, sellCount = 0, holdCount = 0;
     for (const decision of (parsed.decisions || [])) {
       const { code, action, reasoning } = decision;
       if (!code || !action) continue;
@@ -766,6 +815,7 @@ ${newsSummary}
       }
 
       if (action === 'hold' || !decision.quantity || decision.quantity <= 0) {
+        holdCount++;
         await dbRun(
           'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
           [userId, 'hold', code, reasoning || '', `持有观望 ${quote.name}`, sessionId]
@@ -822,6 +872,7 @@ ${newsSummary}
           [userId, code, quote.name, 'buy', quantity, quote.currentPrice, total, 1]
         );
 
+        buyCount++;
         await dbRun(
           'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
           [userId, 'buy', code, reasoning || '', `买入 ${quote.name} ${quantity}股 @¥${quote.currentPrice.toFixed(2)}，花费¥${total.toFixed(2)}`, sessionId]
@@ -865,6 +916,7 @@ ${newsSummary}
         );
 
         const pnl = (quote.currentPrice - holding.avg_cost) * quantity;
+        sellCount++;
         await dbRun(
           'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
           [userId, 'sell', code, reasoning || '', `卖出 ${holding.stock_name} ${quantity}股 @¥${quote.currentPrice.toFixed(2)}，获得¥${total.toFixed(2)}，盈亏¥${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}`, sessionId]
@@ -872,9 +924,12 @@ ${newsSummary}
       }
     }
 
+    // Emit a single consolidated cycle-summary log instead of the generic "本轮决策执行完毕"
+    const currentAccount = await dbGet('SELECT balance FROM stock_trading_accounts WHERE user_id = ?', [userId]);
+    const cycleSummary = `第${cycleCount}轮完成 | 买入${buyCount}笔 卖出${sellCount}笔 观望${holdCount}笔 | 余额¥${(currentAccount?.balance ?? 0).toFixed(2)}`;
     await dbRun(
       'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
-      [userId, 'analysis_end', '本轮决策执行完毕', sessionId]
+      [userId, 'cycle_summary', cycleSummary, sessionId]
     );
     logInfo('stock_bot_cycle_end', { userId });
   } catch (error) {
