@@ -624,6 +624,21 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create stock_trading_diary table - user trading journal entries
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS stock_trading_diary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        mood TEXT,
+        tags TEXT NOT NULL DEFAULT '[]',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
     await migrateUsersTable();

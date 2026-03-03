@@ -87,7 +87,7 @@ function formatMoney(amount: number): string {
   return amount.toFixed(2);
 }
 
-type TabType = 'market' | 'trading' | 'chat' | 'bot';
+type TabType = 'market' | 'trading' | 'chat' | 'bot' | 'diary';
 
 interface TradingStats {
   stock_code: string;
@@ -101,6 +101,16 @@ interface TradingStats {
   sell_count: number;
   trade_count: number;
   realized_pnl: number;
+}
+
+interface DiaryEntry {
+  id: number;
+  title: string;
+  content: string;
+  mood: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
 }
 
 const StockMarketPage: React.FC = () => {
@@ -190,6 +200,18 @@ const StockMarketPage: React.FC = () => {
   });
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
 
+  // Diary state
+  const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>([]);
+  const [diaryLoading, setDiaryLoading] = useState(false);
+  const [diaryError, setDiaryError] = useState<string | null>(null);
+  const [showDiaryForm, setShowDiaryForm] = useState(false);
+  const [editingDiary, setEditingDiary] = useState<DiaryEntry | null>(null);
+  const [diaryFormTitle, setDiaryFormTitle] = useState('');
+  const [diaryFormContent, setDiaryFormContent] = useState('');
+  const [diaryFormMood, setDiaryFormMood] = useState('');
+  const [diaryFormTags, setDiaryFormTags] = useState('');
+  const [diaryViewEntry, setDiaryViewEntry] = useState<DiaryEntry | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const botLogsEndRef = useRef<HTMLDivElement>(null);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -243,6 +265,7 @@ const StockMarketPage: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'trading') loadTradingData();
     if (activeTab === 'bot') loadBotStatus();
+    if (activeTab === 'diary') loadDiaryEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -302,6 +325,73 @@ const StockMarketPage: React.FC = () => {
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       setBotError(e?.response?.data?.error || '加载机器人状态失败');
+    }
+  };
+
+  const loadDiaryEntries = async () => {
+    setDiaryLoading(true);
+    setDiaryError(null);
+    try {
+      const data = await stockMarketAPI.getDiaryEntries();
+      setDiaryEntries(data.entries);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setDiaryError(e?.response?.data?.error || '加载日记失败');
+    } finally {
+      setDiaryLoading(false);
+    }
+  };
+
+  const openDiaryCreate = () => {
+    setEditingDiary(null);
+    setDiaryFormTitle('');
+    setDiaryFormContent('');
+    setDiaryFormMood('');
+    setDiaryFormTags('');
+    setShowDiaryForm(true);
+  };
+
+  const openDiaryEdit = (entry: DiaryEntry) => {
+    setEditingDiary(entry);
+    setDiaryFormTitle(entry.title);
+    setDiaryFormContent(entry.content);
+    setDiaryFormMood(entry.mood || '');
+    setDiaryFormTags(entry.tags.join(', '));
+    setDiaryViewEntry(null);
+    setShowDiaryForm(true);
+  };
+
+  const handleDiarySubmit = async () => {
+    if (!diaryFormTitle.trim()) { setDiaryError('请填写标题'); return; }
+    if (!diaryFormContent.trim()) { setDiaryError('请填写内容'); return; }
+    setDiaryError(null);
+    const tags = diaryFormTags.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+    const payload = { title: diaryFormTitle.trim(), content: diaryFormContent.trim(), mood: diaryFormMood.trim() || undefined, tags };
+    try {
+      if (editingDiary) {
+        const data = await stockMarketAPI.updateDiaryEntry(editingDiary.id, payload);
+        setDiaryEntries(prev => prev.map(e => e.id === editingDiary.id ? data.entry : e));
+      } else {
+        const data = await stockMarketAPI.createDiaryEntry(payload);
+        setDiaryEntries(prev => [data.entry, ...prev]);
+      }
+      setShowDiaryForm(false);
+      setEditingDiary(null);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setDiaryError(e?.response?.data?.error || '保存失败，请重试');
+    }
+  };
+
+  const handleDiaryDelete = async (id: number) => {
+    if (!window.confirm('确定要删除这篇日记吗？')) return;
+    try {
+      await stockMarketAPI.deleteDiaryEntry(id);
+      setDiaryEntries(prev => prev.filter(e => e.id !== id));
+      if (diaryViewEntry?.id === id) setDiaryViewEntry(null);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setDiaryError(e?.response?.data?.error || '删除失败');
     }
   };
 
@@ -531,6 +621,7 @@ const StockMarketPage: React.FC = () => {
             { key: 'trading', label: '模拟交易' },
             { key: 'chat', label: 'AI助手' },
             { key: 'bot', label: 'AI机器人' },
+            { key: 'diary', label: '交易日记' },
           ] as { key: TabType; label: string }[]).map(tab => (
             <button
               key={tab.key}
@@ -990,6 +1081,140 @@ const StockMarketPage: React.FC = () => {
                 ))
               )}
               <div ref={botLogsEndRef} />
+            </div>
+          </div>
+        )}
+
+        {/* ── 交易日记 Tab ── */}
+        {activeTab === 'diary' && (
+          <div className="diary-panel">
+            <div className="diary-panel-header">
+              <h2>📒 交易日记</h2>
+              <button className="diary-new-btn" onClick={openDiaryCreate}>✏️ 写日记</button>
+            </div>
+
+            {diaryError && <div className="stock-error">{diaryError}</div>}
+
+            {/* Diary form modal */}
+            {showDiaryForm && (
+              <div className="diary-form-overlay" onClick={() => setShowDiaryForm(false)}>
+                <div className="diary-form-modal" onClick={e => e.stopPropagation()}>
+                  <div className="diary-form-header">
+                    <h3>{editingDiary ? '编辑日记' : '写新日记'}</h3>
+                    <button className="diary-modal-close" onClick={() => setShowDiaryForm(false)}>✕</button>
+                  </div>
+                  <div className="diary-form-body">
+                    <input
+                      className="diary-form-input"
+                      placeholder="标题（必填）"
+                      value={diaryFormTitle}
+                      onChange={e => setDiaryFormTitle(e.target.value)}
+                      maxLength={200}
+                    />
+                    <div className="diary-form-row">
+                      <input
+                        className="diary-form-input diary-form-input-half"
+                        placeholder="心情（如：😊 乐观、😐 平静、😰 焦虑）"
+                        value={diaryFormMood}
+                        onChange={e => setDiaryFormMood(e.target.value)}
+                        maxLength={50}
+                      />
+                      <input
+                        className="diary-form-input diary-form-input-half"
+                        placeholder="标签（逗号分隔，如：复盘,策略,总结）"
+                        value={diaryFormTags}
+                        onChange={e => setDiaryFormTags(e.target.value)}
+                        maxLength={200}
+                      />
+                    </div>
+                    <textarea
+                      className="diary-form-textarea"
+                      placeholder="记录你的交易心得、市场观察、决策过程和总结反思…"
+                      value={diaryFormContent}
+                      onChange={e => setDiaryFormContent(e.target.value)}
+                      rows={12}
+                      maxLength={10000}
+                    />
+                  </div>
+                  <div className="diary-form-footer">
+                    <span className="diary-form-char-count">{diaryFormContent.length}/10000</span>
+                    <div className="diary-form-actions">
+                      <button className="diary-cancel-btn" onClick={() => setShowDiaryForm(false)}>取消</button>
+                      <button className="diary-save-btn" onClick={handleDiarySubmit}>保存</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Diary view modal */}
+            {diaryViewEntry && !showDiaryForm && (
+              <div className="diary-form-overlay" onClick={() => setDiaryViewEntry(null)}>
+                <div className="diary-view-modal" onClick={e => e.stopPropagation()}>
+                  <div className="diary-form-header">
+                    <div className="diary-view-title-area">
+                      <h3>{diaryViewEntry.title}</h3>
+                      {diaryViewEntry.mood && <span className="diary-entry-mood">{diaryViewEntry.mood}</span>}
+                    </div>
+                    <button className="diary-modal-close" onClick={() => setDiaryViewEntry(null)}>✕</button>
+                  </div>
+                  <div className="diary-view-meta">
+                    <span>{new Date(diaryViewEntry.created_at).toLocaleString('zh-CN')}</span>
+                    {diaryViewEntry.updated_at !== diaryViewEntry.created_at && (
+                      <span>（编辑于 {new Date(diaryViewEntry.updated_at).toLocaleString('zh-CN')}）</span>
+                    )}
+                  </div>
+                  {diaryViewEntry.tags.length > 0 && (
+                    <div className="diary-view-tags">
+                      {diaryViewEntry.tags.map(tag => <span key={tag} className="diary-tag">{tag}</span>)}
+                    </div>
+                  )}
+                  <div className="diary-view-content">{diaryViewEntry.content}</div>
+                  <div className="diary-view-footer">
+                    <button className="diary-edit-btn" onClick={() => openDiaryEdit(diaryViewEntry)}>编辑</button>
+                    <button className="diary-delete-btn" onClick={() => handleDiaryDelete(diaryViewEntry.id)}>删除</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Diary list */}
+            <div className="diary-list">
+              {diaryLoading ? (
+                <div className="stock-empty">加载中...</div>
+              ) : diaryEntries.length === 0 ? (
+                <div className="diary-empty">
+                  <p>📝 还没有日记</p>
+                  <p>记录你的交易心得、市场观察和决策过程，让经验成为财富</p>
+                  <button className="diary-new-btn" onClick={openDiaryCreate}>写第一篇日记</button>
+                </div>
+              ) : (
+                diaryEntries.map(entry => (
+                  <div
+                    key={entry.id}
+                    className="diary-entry-card"
+                    onClick={() => setDiaryViewEntry(entry)}
+                  >
+                    <div className="diary-entry-card-header">
+                      <div className="diary-entry-title">{entry.title}</div>
+                      {entry.mood && <span className="diary-entry-mood">{entry.mood}</span>}
+                    </div>
+                    <div className="diary-entry-preview">{entry.content.slice(0, 120)}{entry.content.length > 120 ? '…' : ''}</div>
+                    {entry.tags.length > 0 && (
+                      <div className="diary-entry-tags">
+                        {entry.tags.map(tag => <span key={tag} className="diary-tag">{tag}</span>)}
+                      </div>
+                    )}
+                    <div className="diary-entry-footer">
+                      <span className="diary-entry-date">{new Date(entry.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <div className="diary-entry-actions" onClick={e => e.stopPropagation()}>
+                        <button className="diary-edit-btn" onClick={() => openDiaryEdit(entry)}>编辑</button>
+                        <button className="diary-delete-btn" onClick={() => handleDiaryDelete(entry.id)}>删除</button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}

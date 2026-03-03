@@ -575,4 +575,30 @@ export const stockMarketAPI = {
     const response = await api.get('/stock-market/trading/stats');
     return response.data;
   },
+
+  getDiaryEntries: async (): Promise<{ entries: Array<{
+    id: number; title: string; content: string; mood: string | null; tags: string[]; created_at: string; updated_at: string;
+  }> }> => {
+    const response = await api.get('/stock-market/diary');
+    return response.data;
+  },
+
+  createDiaryEntry: async (entry: { title: string; content: string; mood?: string; tags?: string[] }): Promise<{ entry: {
+    id: number; title: string; content: string; mood: string | null; tags: string[]; created_at: string; updated_at: string;
+  } }> => {
+    const response = await api.post('/stock-market/diary', entry);
+    return response.data;
+  },
+
+  updateDiaryEntry: async (id: number, entry: { title: string; content: string; mood?: string; tags?: string[] }): Promise<{ entry: {
+    id: number; title: string; content: string; mood: string | null; tags: string[]; created_at: string; updated_at: string;
+  } }> => {
+    const response = await api.put(`/stock-market/diary/${id}`, entry);
+    return response.data;
+  },
+
+  deleteDiaryEntry: async (id: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/stock-market/diary/${id}`);
+    return response.data;
+  },
 };

@@ -15,6 +15,9 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const QUOTE_RATE_LIMIT_MAX = 30;
 const CHAT_RATE_LIMIT_MAX = 10;
 
+const DIARY_MAX_TITLE_LENGTH = 200;
+const DIARY_MAX_CONTENT_LENGTH = 10000;
+
 const quoteRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
   const userId = req.userId!;
   const now = Date.now();
@@ -46,6 +49,11 @@ const tradingWriteRateLimitMap = new Map<number, number[]>();
 const TRADING_READ_MAX = 60;  // 60 reads per minute
 const TRADING_WRITE_MAX = 20; // 20 writes per minute
 
+const diaryReadRateLimitMap = new Map<number, number[]>();
+const diaryWriteRateLimitMap = new Map<number, number[]>();
+const DIARY_READ_MAX = 60;
+const DIARY_WRITE_MAX = 20;
+
 const tradingReadRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
   const userId = req.userId!;
   const now = Date.now();
@@ -69,6 +77,32 @@ const tradingWriteRateLimit = (req: AuthRequest, res: Response, next: NextFuncti
   }
   timestamps.push(now);
   tradingWriteRateLimitMap.set(userId, timestamps);
+  next();
+};
+
+const diaryReadRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const userId = req.userId!;
+  const now = Date.now();
+  const timestamps = (diaryReadRateLimitMap.get(userId) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= DIARY_READ_MAX) {
+    logWarn('stock_diary_read_rate_limit_exceeded', { userId });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+  timestamps.push(now);
+  diaryReadRateLimitMap.set(userId, timestamps);
+  next();
+};
+
+const diaryWriteRateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const userId = req.userId!;
+  const now = Date.now();
+  const timestamps = (diaryWriteRateLimitMap.get(userId) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= DIARY_WRITE_MAX) {
+    logWarn('stock_diary_write_rate_limit_exceeded', { userId });
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+  timestamps.push(now);
+  diaryWriteRateLimitMap.set(userId, timestamps);
   next();
 };
 
@@ -466,10 +500,26 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
       [userId]
     );
 
-    // Build market summary
-    const marketSummary = quotes.map(q =>
-      `${q.name}(${q.code}): 现价${q.currentPrice}, 涨跌幅${q.changePercent > 0 ? '+' : ''}${q.changePercent}%, 成交额${(q.amount / 1e8).toFixed(2)}亿`
-    ).join('\n');
+    // Build market summary with quantitative metrics
+    const marketSummary = quotes.map(q => {
+      const priceVsOpen = q.todayOpen > 0 ? ((q.currentPrice - q.todayOpen) / q.todayOpen * 100).toFixed(2) : 'N/A';
+      const priceRange = q.todayHigh > 0 && q.todayLow > 0 && q.yesterdayClose > 0
+        ? ((q.todayHigh - q.todayLow) / q.yesterdayClose * 100).toFixed(2)
+        : 'N/A';
+      const upperShadow = (q.todayHigh > 0 && q.currentPrice > 0)
+        ? ((q.todayHigh - Math.max(q.currentPrice, q.todayOpen)) / q.todayHigh * 100).toFixed(1)
+        : 'N/A';
+      return [
+        `${q.name}(${q.code}):`,
+        `  现价=${q.currentPrice}`,
+        `  昨收=${q.yesterdayClose} 今开=${q.todayOpen}`,
+        `  涨跌幅=${q.changePercent > 0 ? '+' : ''}${q.changePercent}%`,
+        `  日内相对开盘=${priceVsOpen}%`,
+        `  日振幅=${priceRange}%  上影线=${upperShadow}%`,
+        `  最高=${q.todayHigh}  最低=${q.todayLow}`,
+        `  成交额=${(q.amount / 1e8).toFixed(2)}亿  成交量=${(q.volume / 1e4).toFixed(1)}万手`,
+      ].join('\n');
+    }).join('\n\n');
 
     const holdingsSummary = holdings.length > 0
       ? holdings.map((h: any) => {
@@ -481,31 +531,40 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
         }).join('\n')
       : '暂无持仓';
 
-    const prompt = `你是一位顶尖专业股票交易员，现在需要根据当前行情做出交易决策。
+    const prompt = `你是一位顶尖专业量化股票交易员，使用系统化的计算和量化指标做出交易决策，绝不凭直觉操作。
 
 【可用资金】¥${account.balance.toFixed(2)}
 
-【当前行情】
+【当前行情（含量化指标）】
 ${marketSummary}
 
 【当前持仓】
 ${holdingsSummary}
+
+【量化分析要求】
+在做出每个决策前，你必须对每只股票进行以下量化计算并在reasoning中体现：
+1. 趋势判断：现价与今开的偏离度（正/负），判断日内趋势方向
+2. 动量信号：涨跌幅大小及方向，判断短期动量强弱
+3. 波动率评估：日振幅是否异常（>3%为高波动）
+4. 成交量信号：成交额是否放量（对比常规水平）
+5. 风险回报比：基于当前价位和振幅计算潜在收益/风险
 
 【交易规则】
 1. 只能在以上行情列表中的股票进行交易
 2. 买入时每次买入金额不超过可用资金的20%
 3. 卖出时每次卖出不超过持仓的50%
 4. 若现价为0则不交易（市场收盘或停牌）
+5. 每个决策必须有量化数据支撑，不得仅凭感觉
 
-请进行深度分析，给出你的交易决策。以JSON格式返回：
+请先进行量化分析，再给出交易决策。以JSON格式返回：
 {
-  "analysis": "市场总体分析（100字以内）",
+  "analysis": "量化市场总体分析，需包含具体数据（如各股涨跌幅、振幅、成交量对比等），100字以内",
   "decisions": [
     {
       "code": "股票代码（如sh600036）",
       "action": "buy 或 sell 或 hold",
       "quantity": 交易数量（hold时为0，必须是100的整数倍）,
-      "reasoning": "该决策的理由（50字以内）"
+      "reasoning": "基于量化指标的决策理由，必须包含具体数值（如涨跌幅X%、振幅Y%、动量Z方向），50字以内"
     }
   ]
 }`;
@@ -513,7 +572,7 @@ ${holdingsSummary}
     let llmResponse: string;
     try {
       const result = await chatCompletion([
-        { role: 'system', content: '你是专业股票交易员，只返回JSON格式的交易决策，不要有任何其他文字。' },
+        { role: 'system', content: '你是专业量化股票交易员，每个决策必须基于量化数据计算，只返回JSON格式的交易决策，不要有任何其他文字。' },
         { role: 'user', content: prompt },
       ]);
       llmResponse = result.content;
@@ -848,6 +907,103 @@ router.get('/trading/stats', authMiddleware, tradingReadRateLimit, async (req: A
     res.json({ stats, total_realized_pnl });
   } catch (error) {
     logError('stock_trading_stats_error', error as Error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// ─── Trading Diary ────────────────────────────────────────────────────────────
+
+// GET /api/stock-market/diary  (list all diary entries for the user)
+router.get('/diary', authMiddleware, diaryReadRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const entries = await dbAll(
+      'SELECT id, title, content, mood, tags, created_at, updated_at FROM stock_trading_diary WHERE user_id = ? ORDER BY created_at DESC',
+      [req.userId]
+    );
+    res.json({ entries: entries.map((e: any) => ({ ...e, tags: JSON.parse(e.tags || '[]') })) });
+  } catch (error) {
+    logError('stock_diary_list_error', error as Error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// POST /api/stock-market/diary  (create a new diary entry)
+router.post('/diary', authMiddleware, diaryWriteRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, content, mood, tags } = req.body;
+    if (!title || typeof title !== 'string' || title.trim().length === 0) {
+      return res.status(400).json({ error: '标题不能为空' });
+    }
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: '内容不能为空' });
+    }
+    const tagsJson = JSON.stringify(Array.isArray(tags) ? tags.map(String) : []);
+    const result = await dbRun(
+      'INSERT INTO stock_trading_diary (user_id, title, content, mood, tags) VALUES (?, ?, ?, ?, ?)',
+      [req.userId, title.trim().slice(0, DIARY_MAX_TITLE_LENGTH), content.trim().slice(0, DIARY_MAX_CONTENT_LENGTH), mood || null, tagsJson]
+    );
+    const entry = await dbGet(
+      'SELECT id, title, content, mood, tags, created_at, updated_at FROM stock_trading_diary WHERE id = ?',
+      [result.lastID]
+    );
+    logInfo('stock_diary_created', { userId: req.userId, id: result.lastID });
+    res.status(201).json({ entry: { ...entry, tags: JSON.parse(entry.tags || '[]') } });
+  } catch (error) {
+    logError('stock_diary_create_error', error as Error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// PUT /api/stock-market/diary/:id  (update a diary entry)
+router.put('/diary/:id', authMiddleware, diaryWriteRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '无效的ID' });
+    const existing = await dbGet(
+      'SELECT id FROM stock_trading_diary WHERE id = ? AND user_id = ?',
+      [id, req.userId]
+    );
+    if (!existing) return res.status(404).json({ error: '日记不存在' });
+
+    const { title, content, mood, tags } = req.body;
+    if (!title || typeof title !== 'string' || title.trim().length === 0) {
+      return res.status(400).json({ error: '标题不能为空' });
+    }
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: '内容不能为空' });
+    }
+    const tagsJson = JSON.stringify(Array.isArray(tags) ? tags.map(String) : []);
+    await dbRun(
+      'UPDATE stock_trading_diary SET title = ?, content = ?, mood = ?, tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+      [title.trim().slice(0, DIARY_MAX_TITLE_LENGTH), content.trim().slice(0, DIARY_MAX_CONTENT_LENGTH), mood || null, tagsJson, id, req.userId]
+    );
+    const entry = await dbGet(
+      'SELECT id, title, content, mood, tags, created_at, updated_at FROM stock_trading_diary WHERE id = ?',
+      [id]
+    );
+    logInfo('stock_diary_updated', { userId: req.userId, id });
+    res.json({ entry: { ...entry, tags: JSON.parse(entry.tags || '[]') } });
+  } catch (error) {
+    logError('stock_diary_update_error', error as Error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// DELETE /api/stock-market/diary/:id  (delete a diary entry)
+router.delete('/diary/:id', authMiddleware, diaryWriteRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ error: '无效的ID' });
+    const existing = await dbGet(
+      'SELECT id FROM stock_trading_diary WHERE id = ? AND user_id = ?',
+      [id, req.userId]
+    );
+    if (!existing) return res.status(404).json({ error: '日记不存在' });
+    await dbRun('DELETE FROM stock_trading_diary WHERE id = ? AND user_id = ?', [id, req.userId]);
+    logInfo('stock_diary_deleted', { userId: req.userId, id });
+    res.json({ message: '日记已删除' });
+  } catch (error) {
+    logError('stock_diary_delete_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
   }
 });
