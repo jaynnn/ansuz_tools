@@ -535,8 +535,8 @@ export const stockMarketAPI = {
   },
 
   getBotStatus: async (): Promise<{
-    isRunning: boolean; watchlist: string[];
-    logs: Array<{ id: number; action: string; stock_code: string | null; reasoning: string | null; result: string | null; created_at: string }>;
+    isRunning: boolean; watchlist: string[]; balance: number | null;
+    logs: Array<{ id: number; action: string; stock_code: string | null; reasoning: string | null; result: string | null; created_at: string; session_id: number | null }>;
   }> => {
     const response = await api.get('/stock-market/trading/bot/status');
     return response.data;
@@ -553,9 +553,26 @@ export const stockMarketAPI = {
   },
 
   getBotLogs: async (limit?: number): Promise<{ logs: Array<{
-    id: number; action: string; stock_code: string | null; reasoning: string | null; result: string | null; created_at: string;
+    id: number; action: string; stock_code: string | null; reasoning: string | null; result: string | null; created_at: string; session_id: number | null;
   }> }> => {
     const response = await api.get('/stock-market/trading/bot/logs', { params: { limit } });
+    return response.data;
+  },
+
+  clearBotLogs: async (): Promise<{ message: string }> => {
+    const response = await api.delete('/stock-market/trading/bot/logs');
+    return response.data;
+  },
+
+  getTradingStats: async (): Promise<{
+    stats: Array<{
+      stock_code: string; stock_name: string; total_bought: number; total_sold: number;
+      remaining_qty: number; total_buy_amount: number; total_sell_amount: number;
+      buy_count: number; sell_count: number; trade_count: number; realized_pnl: number;
+    }>;
+    total_realized_pnl: number;
+  }> => {
+    const response = await api.get('/stock-market/trading/stats');
     return response.data;
   },
 };

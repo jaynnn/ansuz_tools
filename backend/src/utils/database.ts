@@ -217,6 +217,28 @@ const migrateGoalTaskGoalsTable = async () => {
   }
 };
 
+// Migration function to add session_id column to stock_trading_bot_logs table
+const migrateBotLogsTable = async () => {
+  try {
+    const tableInfo: any = await dbGet(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='stock_trading_bot_logs'"
+    );
+    if (!tableInfo) return;
+
+    const columns: any[] = await dbAll("PRAGMA table_info(stock_trading_bot_logs)");
+    const columnNames = columns.map((col: any) => col.name);
+
+    if (!columnNames.includes('session_id')) {
+      logInfo('bot_logs_migration_start', { reason: 'add_session_id_column' });
+      await dbRun('ALTER TABLE stock_trading_bot_logs ADD COLUMN session_id INTEGER');
+      logInfo('bot_logs_migration_success', { reason: 'added_session_id_column' });
+    }
+  } catch (error) {
+    logError('bot_logs_migration_error', error as Error);
+    throw error;
+  }
+};
+
 // Migration function to add completion_rating column to goal_task_trainings table
 const migrateGoalTaskTrainingsTable = async () => {
   try {
@@ -609,6 +631,7 @@ export const initDatabase = async () => {
     await migrateAnnouncementsTable();
     await migrateGoalTaskGoalsTable();
     await migrateGoalTaskTrainingsTable();
+    await migrateBotLogsTable();
 
     console.log('Database initialized successfully');
     logInfo('database_init_success', { dbPath });
