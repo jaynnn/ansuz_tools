@@ -1011,7 +1011,7 @@ const StockMarketPage: React.FC = () => {
             {botError && <div className="stock-error">{botError}</div>}
 
             <div className="bot-description">
-              <p>🤖 AI交易机器人是一位顶尖专业交易员，使用 DeepSeek LLM 分析行情后，在模拟账户中自动买卖你自选列表中的股票。</p>
+              <p>🤖 AI交易机器人是一位顶尖专业量化交易员，综合分析实时行情、多轮价格趋势、持仓状态和最新财经资讯后，在模拟账户中进行系统化决策，绝不仅凭涨跌幅机械操作。</p>
               <p>你可以实时观察机器人的每一个决策过程和结果。</p>
             </div>
 

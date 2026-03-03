@@ -184,6 +184,81 @@ async function fetchEastmoneyQuotes(codes: string[]): Promise<StockQuote[]> {
   });
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * SQLite's CURRENT_TIMESTAMP stores in UTC as "YYYY-MM-DD HH:MM:SS" without
+ * timezone info. Appending 'Z' turns it into a proper ISO-8601 UTC string so
+ * browsers (and JavaScript's Date constructor) correctly convert it to local time.
+ */
+function normalizeTimestamp(ts: string | null | undefined): string {
+  if (!ts) return '';
+  // Already has timezone info: contains 'T' (ISO format with optional Z/offset) or ends with 'Z'
+  if (ts.includes('T') || ts.endsWith('Z')) return ts;
+  // "YYYY-MM-DD HH:MM:SS" → "YYYY-MM-DDTHH:MM:SSZ"
+  return ts.replace(' ', 'T') + 'Z';
+}
+
+// ─── Financial News ──────────────────────────────────────────────────────────
+
+interface NewsItem {
+  title: string;
+  time: string;
+}
+
+// In-memory news cache to avoid hammering the news API every bot cycle
+let newsCache: { items: NewsItem[]; fetchedAt: number } | null = null;
+const NEWS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+async function fetchFinancialNews(): Promise<NewsItem[]> {
+  const now = Date.now();
+  if (newsCache && now - newsCache.fetchedAt < NEWS_CACHE_TTL_MS) {
+    return newsCache.items;
+  }
+
+  return new Promise((resolve) => {
+    // EastMoney 快讯 (flash news) – publicly accessible, no auth required
+    const path = '/kuaixun/v1/getlistbyft.aspx?rtntype=2&ft=f&pageindex=1&pagesize=8';
+    const req = https.request(
+      {
+        hostname: 'newsapi.eastmoney.com',
+        port: 443,
+        path,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://www.eastmoney.com',
+        },
+        timeout: 8000,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          try {
+            const text = Buffer.concat(chunks).toString('utf-8');
+            // The response may be JSONP – strip callback wrapper if present
+            const jsonText = text.replace(/^[^(]*\(/, '').replace(/\)[^)]*$/, '').trim();
+            const json = JSON.parse(jsonText.length ? jsonText : text);
+            const list: any[] = json?.LiveList ?? json?.list ?? [];
+            const items: NewsItem[] = list.slice(0, 8).map((item: any) => ({
+              title: item.title || item.Title || '',
+              time: item.showtime || item.ShowTime || item.ctime || '',
+            })).filter((i: NewsItem) => i.title);
+            newsCache = { items, fetchedAt: Date.now() };
+            resolve(items);
+          } catch {
+            resolve(newsCache?.items ?? []);
+          }
+        });
+      }
+    );
+    req.on('timeout', () => { req.destroy(); resolve(newsCache?.items ?? []); });
+    req.on('error', () => resolve(newsCache?.items ?? []));
+    req.end();
+  });
+}
+
 // ─── Watchlist ───────────────────────────────────────────────────────────────
 
 // GET /api/stock-market/watchlist
@@ -435,7 +510,7 @@ router.get('/trading/orders', authMiddleware, tradingReadRateLimit, async (req: 
       'SELECT * FROM stock_trading_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 100',
       [req.userId]
     );
-    res.json({ orders });
+    res.json({ orders: orders.map((o: any) => ({ ...o, created_at: normalizeTimestamp(o.created_at) })) });
   } catch (error) {
     logError('stock_trading_orders_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
@@ -460,12 +535,27 @@ router.post('/trading/reset', authMiddleware, tradingWriteRateLimit, async (req:
 
 // ─── AI Trading Bot ───────────────────────────────────────────────────────────
 
-// In-memory bot state: userId -> { timer, watchlist, sessionId }
-const runningBots = new Map<number, { timer: ReturnType<typeof setInterval>; watchlist: string[]; sessionId: number }>();
+// In-memory bot state: userId -> { timer, watchlist, sessionId, priceHistory, cycleCount }
+interface BotPriceHistory {
+  [stockCode: string]: number[]; // last N cycle closing prices
+}
+const runningBots = new Map<number, {
+  timer: ReturnType<typeof setInterval>;
+  watchlist: string[];
+  sessionId: number;
+  priceHistory: BotPriceHistory;   // tracks last 3 prices per stock
+  cycleCount: number;              // how many cycles have run
+}>();
 
 const BOT_INTERVAL_MS = parseInt(process.env.STOCK_BOT_INTERVAL_MS || '') || 10 * 60 * 1000; // Default: 10 minutes
+const BOT_PRICE_HISTORY_SIZE = 3; // remember last 3 cycle prices per stock
 
 async function runBotCycle(userId: number, watchlist: string[], sessionId: number) {
+  // Get the mutable bot state so we can update price history
+  const botState = runningBots.get(userId);
+  const priceHistory: BotPriceHistory = botState?.priceHistory ?? {};
+  const cycleCount = (botState?.cycleCount ?? 0) + 1;
+  if (botState) botState.cycleCount = cycleCount;
   try {
     logInfo('stock_bot_cycle_start', { userId, watchlist });
     await dbRun(
@@ -500,7 +590,30 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
       [userId]
     );
 
-    // Build market summary with quantitative metrics
+    // Update price history for each quote (keep last BOT_PRICE_HISTORY_SIZE prices)
+    for (const q of quotes) {
+      if (q.currentPrice > 0) {
+        const hist = priceHistory[q.code] ?? [];
+        hist.push(q.currentPrice);
+        if (hist.length > BOT_PRICE_HISTORY_SIZE) hist.shift();
+        priceHistory[q.code] = hist;
+      }
+    }
+    if (botState) botState.priceHistory = priceHistory;
+
+    // Fetch recent bot orders (last 10) for this user to show trade history context
+    const recentBotOrders = await dbAll(
+      `SELECT stock_code, stock_name, action, quantity, price, created_at
+       FROM stock_trading_orders
+       WHERE user_id = ? AND is_bot = 1
+       ORDER BY created_at DESC LIMIT 10`,
+      [userId]
+    );
+
+    // Fetch financial news (non-blocking – falls back gracefully)
+    const newsItems = await fetchFinancialNews();
+
+    // Build market summary with quantitative metrics + multi-cycle trend
     const marketSummary = quotes.map(q => {
       const priceVsOpen = q.todayOpen > 0 ? ((q.currentPrice - q.todayOpen) / q.todayOpen * 100).toFixed(2) : 'N/A';
       const priceRange = q.todayHigh > 0 && q.todayLow > 0 && q.yesterdayClose > 0
@@ -509,6 +622,15 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
       const upperShadow = (q.todayHigh > 0 && q.currentPrice > 0)
         ? ((q.todayHigh - Math.max(q.currentPrice, q.todayOpen)) / q.todayHigh * 100).toFixed(1)
         : 'N/A';
+      // Multi-cycle trend from price history
+      const hist = priceHistory[q.code] ?? [];
+      let trendDesc = '数据不足';
+      if (hist.length >= 2) {
+        const oldest = hist[0];
+        const newest = hist[hist.length - 1];
+        const trendPct = ((newest - oldest) / oldest * 100).toFixed(2);
+        trendDesc = `近${hist.length}轮${Number(trendPct) >= 0 ? '上涨' : '下跌'}${Math.abs(Number(trendPct))}%`;
+      }
       return [
         `${q.name}(${q.code}):`,
         `  现价=${q.currentPrice}`,
@@ -518,6 +640,7 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
         `  日振幅=${priceRange}%  上影线=${upperShadow}%`,
         `  最高=${q.todayHigh}  最低=${q.todayLow}`,
         `  成交额=${(q.amount / 1e8).toFixed(2)}亿  成交量=${(q.volume / 1e4).toFixed(1)}万手`,
+        `  机器人观测趋势（${cycleCount}轮）：${trendDesc}`,
       ].join('\n');
     }).join('\n\n');
 
@@ -531,7 +654,21 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
         }).join('\n')
       : '暂无持仓';
 
+    // Recent trade history summary to prevent repetitive behaviour
+    const tradeHistorySummary = recentBotOrders.length > 0
+      ? recentBotOrders.map((o: any) => {
+          const ts = normalizeTimestamp(o.created_at);
+          return `  ${o.action === 'buy' ? '买入' : '卖出'} ${o.stock_name}(${o.stock_code}) ${o.quantity}股 @¥${o.price.toFixed(2)} [${new Date(ts).toLocaleString('zh-CN', { timeZone: process.env.SERVER_TIMEZONE || 'Asia/Shanghai' })}]`;
+        }).join('\n')
+      : '  无历史交易记录';
+
+    // News summary section
+    const newsSummary = newsItems.length > 0
+      ? newsItems.map((n, i) => `  ${i + 1}. ${n.title}${n.time ? ' (' + n.time + ')' : ''}`).join('\n')
+      : '  暂无最新资讯';
+
     const prompt = `你是一位顶尖专业量化股票交易员，使用系统化的计算和量化指标做出交易决策，绝不凭直觉操作。
+当前为第 ${cycleCount} 轮决策分析。
 
 【可用资金】¥${account.balance.toFixed(2)}
 
@@ -541,30 +678,39 @@ ${marketSummary}
 【当前持仓】
 ${holdingsSummary}
 
+【机器人最近操作历史】
+${tradeHistorySummary}
+
+【最新财经资讯（供宏观判断参考）】
+${newsSummary}
+
 【量化分析要求】
 在做出每个决策前，你必须对每只股票进行以下量化计算并在reasoning中体现：
-1. 趋势判断：现价与今开的偏离度（正/负），判断日内趋势方向
+1. 趋势判断：结合多轮价格历史，判断是真实趋势还是短暂波动
 2. 动量信号：涨跌幅大小及方向，判断短期动量强弱
 3. 波动率评估：日振幅是否异常（>3%为高波动）
 4. 成交量信号：成交额是否放量（对比常规水平）
-5. 风险回报比：基于当前价位和振幅计算潜在收益/风险
+5. 宏观背景：结合最新资讯判断整体市场情绪
 
-【交易规则】
+【交易规则与行为约束】
 1. 只能在以上行情列表中的股票进行交易
 2. 买入时每次买入金额不超过可用资金的20%
 3. 卖出时每次卖出不超过持仓的50%
 4. 若现价为0则不交易（市场收盘或停牌）
 5. 每个决策必须有量化数据支撑，不得仅凭感觉
+6. 【重要】检查最近操作历史——若某只股票刚刚在近2轮内被买入，必须有更强的信号才能继续加仓；避免在下跌趋势中连续买入同一只股票
+7. 【重要】若多轮观测显示某股价格持续下跌，倾向于卖出或观望，而非继续买入
+8. 在综合判断不明朗时，优先选择 hold（观望），不要为了交易而交易
 
 请先进行量化分析，再给出交易决策。以JSON格式返回：
 {
-  "analysis": "量化市场总体分析，需包含具体数据（如各股涨跌幅、振幅、成交量对比等），100字以内",
+  "analysis": "量化市场总体分析，需包含具体数据（如各股涨跌幅、振幅、成交量对比、宏观资讯影响），100字以内",
   "decisions": [
     {
       "code": "股票代码（如sh600036）",
       "action": "buy 或 sell 或 hold",
       "quantity": 交易数量（hold时为0，必须是100的整数倍）,
-      "reasoning": "基于量化指标的决策理由，必须包含具体数值（如涨跌幅X%、振幅Y%、动量Z方向），50字以内"
+      "reasoning": "基于量化指标的决策理由，必须包含具体数值（如涨跌幅X%、振幅Y%、近N轮趋势），50字以内"
     }
   ]
 }`;
@@ -753,7 +899,7 @@ router.get('/trading/bot/status', authMiddleware, tradingReadRateLimit, async (r
     );
     const account = await dbGet('SELECT balance FROM stock_trading_accounts WHERE user_id = ?', [req.userId]);
     const balance = account?.balance ?? null;
-    res.json({ isRunning, watchlist, logs, balance });
+    res.json({ isRunning, watchlist, logs: logs.map((l: any) => ({ ...l, created_at: normalizeTimestamp(l.created_at) })), balance });
   } catch (error) {
     logError('stock_bot_status_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
@@ -797,7 +943,7 @@ router.post('/trading/bot/start', authMiddleware, tradingWriteRateLimit, async (
     // Run one cycle immediately, then schedule
     runBotCycle(userId, validCodes, sessionId);
     const timer = setInterval(() => runBotCycle(userId, validCodes, sessionId), BOT_INTERVAL_MS);
-    runningBots.set(userId, { timer, watchlist: validCodes, sessionId });
+    runningBots.set(userId, { timer, watchlist: validCodes, sessionId, priceHistory: {}, cycleCount: 0 });
 
     logInfo('stock_bot_started', { userId, watchlist: validCodes, sessionId });
     res.json({ message: '机器人已启动', watchlist: validCodes });
@@ -840,7 +986,7 @@ router.get('/trading/bot/logs', authMiddleware, tradingReadRateLimit, async (req
       'SELECT id, user_id, action, stock_code, reasoning, result, created_at, session_id FROM stock_trading_bot_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
       [req.userId, limit]
     );
-    res.json({ logs });
+    res.json({ logs: logs.map((l: any) => ({ ...l, created_at: normalizeTimestamp(l.created_at) })) });
   } catch (error) {
     logError('stock_bot_logs_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
@@ -920,7 +1066,7 @@ router.get('/diary', authMiddleware, diaryReadRateLimit, async (req: AuthRequest
       'SELECT id, title, content, mood, tags, created_at, updated_at FROM stock_trading_diary WHERE user_id = ? ORDER BY created_at DESC',
       [req.userId]
     );
-    res.json({ entries: entries.map((e: any) => ({ ...e, tags: JSON.parse(e.tags || '[]') })) });
+    res.json({ entries: entries.map((e: any) => ({ ...e, tags: JSON.parse(e.tags || '[]'), created_at: normalizeTimestamp(e.created_at), updated_at: normalizeTimestamp(e.updated_at) })) });
   } catch (error) {
     logError('stock_diary_list_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
@@ -947,7 +1093,7 @@ router.post('/diary', authMiddleware, diaryWriteRateLimit, async (req: AuthReque
       [result.lastID]
     );
     logInfo('stock_diary_created', { userId: req.userId, id: result.lastID });
-    res.status(201).json({ entry: { ...entry, tags: JSON.parse(entry.tags || '[]') } });
+    res.status(201).json({ entry: { ...entry, tags: JSON.parse(entry.tags || '[]'), created_at: normalizeTimestamp(entry.created_at), updated_at: normalizeTimestamp(entry.updated_at) } });
   } catch (error) {
     logError('stock_diary_create_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
@@ -982,7 +1128,7 @@ router.put('/diary/:id', authMiddleware, diaryWriteRateLimit, async (req: AuthRe
       [id]
     );
     logInfo('stock_diary_updated', { userId: req.userId, id });
-    res.json({ entry: { ...entry, tags: JSON.parse(entry.tags || '[]') } });
+    res.json({ entry: { ...entry, tags: JSON.parse(entry.tags || '[]'), created_at: normalizeTimestamp(entry.created_at), updated_at: normalizeTimestamp(entry.updated_at) } });
   } catch (error) {
     logError('stock_diary_update_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
