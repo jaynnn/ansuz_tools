@@ -19,6 +19,7 @@ const GuitarPractice = React.lazy(() => import('./pages/GuitarPractice'));
 const MedicalRecord = React.lazy(() => import('./pages/MedicalRecord'));
 const MindSea = React.lazy(() => import('./pages/MindSea'));
 const MindSeaChat = React.lazy(() => import('./pages/MindSeaChat'));
+const StockMarket = React.lazy(() => import('./pages/StockMarket'));
 
 const LoadingFallback: React.FC = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }} role="status" aria-live="polite">
@@ -33,7 +34,7 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 // Routes (by prefix) where the global footer should be hidden
 // (e.g. full-screen pages that use height: 100vh)
-const HIDDEN_FOOTER_PREFIXES = ['/mindsea/chat/'];
+const HIDDEN_FOOTER_PREFIXES = ['/mindsea/chat/', '/stock-market'];
 
 const AppLayout: React.FC = () => {
   const location = useLocation();
@@ -139,6 +140,14 @@ const AppLayout: React.FC = () => {
               element={
                 <PrivateRoute>
                   <MindSeaChat />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/stock-market"
+              element={
+                <PrivateRoute>
+                  <StockMarket />
                 </PrivateRoute>
               }
             />
