@@ -758,6 +758,7 @@ interface BotState {
   monitorPrices: { [code: string]: number }; // last snapshot prices for anomaly detection
   lastCycleTime: number;          // timestamp of last completed cycle (for debouncing)
   cycleRunning: boolean;          // prevent concurrent cycles
+  conversationHistory: LLMMessage[]; // rolling window of prior user+assistant turns for LLM context
 }
 const runningBots = new Map<number, BotState>();
 
@@ -767,6 +768,9 @@ const MIN_EVENT_CYCLE_GAP_MS = parseInt(process.env.STOCK_BOT_MIN_EVENT_GAP_MS |
 const ANOMALY_TRIGGER_THRESHOLD = parseFloat(process.env.STOCK_BOT_ANOMALY_THRESHOLD || '') || 0.02; // 2% auto-trigger
 const ANOMALY_LLM_THRESHOLD = parseFloat(process.env.STOCK_BOT_ANOMALY_LLM_THRESHOLD || '') || 0.01; // 1% LLM-assisted check
 const BOT_PRICE_HISTORY_SIZE = 3; // remember last 3 cycle prices per stock
+// Number of previous user+assistant turn pairs to keep in LLM conversation history.
+// Each turn pair is roughly 800-1200 tokens; 5 pairs ≈ 4000-6000 extra tokens.
+const BOT_CONV_HISTORY_TURNS = parseInt(process.env.STOCK_BOT_CONV_HISTORY_TURNS || '') || 5;
 
 /**
  * Returns true when the current time is within A-share trading hours.
@@ -1000,8 +1004,10 @@ ${newsSummary}
 
     let llmResponse: string;
     try {
+      const conversationHistory = botState?.conversationHistory ?? [];
       const result = await chatCompletion([
-        { role: 'system', content: '你是专业量化股票交易员，严格遵循趋势识别、量价验证、风险评估、宏观过滤四步分析方法论做出每一笔交易决策，只返回JSON格式的交易决策，不要有任何其他文字。' },
+        { role: 'system', content: '你是专业量化股票交易员，严格遵循趋势识别、量价验证、风险评估、宏观过滤四步分析方法论做出每一笔交易决策，只返回JSON格式的交易决策，不要有任何其他文字。你拥有本次会话中历轮决策的完整上下文，请结合以往分析和决策的连贯逻辑做出本轮判断，避免重复执行相同操作。' },
+        ...conversationHistory,
         { role: 'user', content: prompt },
       ]);
       llmResponse = result.content;
@@ -1033,6 +1039,20 @@ ${newsSummary}
       'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
       [userId, 'analysis', parsed.analysis || '', sessionId]
     );
+
+    // Persist this cycle's user prompt + assistant response into the rolling conversation
+    // history so future cycles have contextual memory of prior reasoning and decisions.
+    if (botState) {
+      botState.conversationHistory.push(
+        { role: 'user', content: prompt },
+        { role: 'assistant', content: llmResponse }
+      );
+      // Cap to last BOT_CONV_HISTORY_TURNS pairs (2 messages per pair)
+      const maxMessages = BOT_CONV_HISTORY_TURNS * 2;
+      if (botState.conversationHistory.length > maxMessages) {
+        botState.conversationHistory = botState.conversationHistory.slice(-maxMessages);
+      }
+    }
 
     // Execute decisions
     let buyCount = 0, sellCount = 0, holdCount = 0;
@@ -1391,6 +1411,7 @@ router.post('/trading/bot/start', authMiddleware, tradingWriteRateLimit, async (
       timer, monitorTimer, watchlist: validCodes, sessionId,
       priceHistory: {}, cycleCount: 0,
       lastSkipReason: null, monitorPrices: {}, lastCycleTime: 0, cycleRunning: false,
+      conversationHistory: [],
     });
 
     logInfo('stock_bot_started', { userId, watchlist: validCodes, sessionId });
