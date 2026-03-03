@@ -1424,3 +1424,70 @@
   border-top: 1px solid var(--border-color);
   flex-shrink: 0;
 }
+
+/* ── Financial term highlight & popup ── */
+.term-highlight {
+  background: rgba(96, 165, 250, 0.25);
+  border-bottom: 1px dashed rgba(96, 165, 250, 0.7);
+  border-radius: 2px;
+  cursor: pointer;
+  padding: 0 1px;
+  transition: background 0.15s;
+}
+
+.term-highlight:hover {
+  background: rgba(96, 165, 250, 0.45);
+}
+
+.term-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+}
+
+.term-popup {
+  position: fixed;
+  transform: translateY(-100%);
+  z-index: 9999;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+  width: 260px;
+  max-width: calc(100vw - 24px);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.term-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.term-popup-term {
+  font-weight: 700;
+  color: rgba(96, 165, 250, 0.95);
+}
+
+.term-popup-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-secondary);
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.term-popup-body {
+  padding: 10px 12px;
+  color: var(--text-primary);
+}
+
+.term-popup-loading {
+  color: var(--text-secondary);
+  font-style: italic;
+}

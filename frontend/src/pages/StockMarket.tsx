@@ -59,6 +59,19 @@ const STORAGE_KEY = 'stock_market_codes';
 const BOT_AUTOREFRESH_KEY = 'stock_bot_autorefresh';
 const BOT_REFRESH_INTERVAL_KEY = 'stock_bot_refresh_interval';
 
+// Financial / economic jargon that will be highlighted in bot trade logs.
+// Sorted longest-first to avoid partial matches (e.g. "量价背离" before "量价").
+const FINANCIAL_TERMS: string[] = [
+  '量价背离', '风险/回报', '风险回报', '风险偏好', '避险情绪', '集合竞价', '连续竞价',
+  '量价关系', '主趋势', '上影线', '下影线', '支撑位', '压力位', '阻力位', '布林带',
+  '换手率', '波动率', '成交额', '成交量', '涨跌幅', '放量', '缩量', '跳空', '缺口',
+  '止损', '止盈', '仓位', '加仓', '减仓', '做多', '做空', '多头', '空头', '看涨', '看跌',
+  '回调', '反弹', '突破', '套牢', '动量', '振幅', '均线', 'MACD', 'RSI', 'KDJ',
+  'T+1', 'T+0', 'K线', 'PE', 'PB', 'ROE',
+];
+// Build a single regex (longest terms first for greedy match)
+const TERM_REGEX = new RegExp(`(${FINANCIAL_TERMS.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
+
 const WELCOME_HINTS = [
   '上证指数今天表现如何？',
   'A股市场近期有哪些热点板块？',
@@ -199,6 +212,15 @@ const StockMarketPage: React.FC = () => {
     return [5, 10, 30, 60].includes(saved) ? saved : 10;
   });
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
+
+  // Financial term tooltip state
+  const [termPopup, setTermPopup] = useState<{
+    term: string;
+    explanation: string | null;
+    loading: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Diary state
   const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>([]);
@@ -591,6 +613,31 @@ const StockMarketPage: React.FC = () => {
   const totalCost = holdings.reduce((sum, h) => sum + h.avg_cost * h.quantity, 0);
   const totalPnl = holdingsValue - totalCost;
 
+  // Handle click on a highlighted financial term: fetch explanation via chat API
+  const handleTermClick = async (term: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    const rect = (event.target as HTMLElement).getBoundingClientRect();
+    setTermPopup({ term, explanation: null, loading: true, x: rect.left + rect.width / 2, y: rect.top });
+    try {
+      const data = await stockMarketAPI.chat([
+        { role: 'user', content: `请用100字以内简洁解释金融术语：${term}` },
+      ]);
+      setTermPopup(prev => prev && prev.term === term ? { ...prev, explanation: data.reply, loading: false } : prev);
+    } catch {
+      setTermPopup(prev => prev && prev.term === term ? { ...prev, explanation: '暂时无法获取解释，请稍后再试。', loading: false } : prev);
+    }
+  };
+
+  // Render text with financial terms highlighted as clickable spans
+  const renderLogText = (text: string): React.ReactNode => {
+    const parts = text.split(TERM_REGEX);
+    return parts.map((part, i) =>
+      FINANCIAL_TERMS.includes(part)
+        ? <span key={i} className="term-highlight" onClick={e => handleTermClick(part, e)}>{part}</span>
+        : part
+    );
+  };
+
   const getBotLogIcon = (action: string) => {
     switch (action) {
       case 'buy': return '🟢';
@@ -607,6 +654,7 @@ const StockMarketPage: React.FC = () => {
   };
 
   return (
+    <>
     <div className="stock-market-page">
       {/* Header */}
       <header className="stock-market-header">
@@ -1074,8 +1122,8 @@ const StockMarketPage: React.FC = () => {
                         <span className="bot-log-session">第{log.session_id}次</span>
                       )}
                     </div>
-                    {log.reasoning && <div className="bot-log-reasoning">{log.reasoning}</div>}
-                    {log.result && <div className="bot-log-result">{log.result}</div>}
+                    {log.reasoning && <div className="bot-log-reasoning">{renderLogText(log.reasoning)}</div>}
+                    {log.result && <div className="bot-log-result">{renderLogText(log.result)}</div>}
                   </div>
                 ))
               )}
@@ -1219,6 +1267,29 @@ const StockMarketPage: React.FC = () => {
         )}
       </div>
     </div>
+
+    {/* ── Financial term explanation popup ── */}
+    {termPopup && (
+      <>
+        <div className="term-popup-overlay" onClick={() => setTermPopup(null)} />
+        <div
+          className="term-popup"
+          style={{ left: Math.min(termPopup.x, window.innerWidth - 280), top: termPopup.y - 8 }}
+        >
+          <div className="term-popup-header">
+            <span className="term-popup-term">{termPopup.term}</span>
+            <button className="term-popup-close" onClick={() => setTermPopup(null)}>×</button>
+          </div>
+          <div className="term-popup-body">
+            {termPopup.loading
+              ? <span className="term-popup-loading">查询中…</span>
+              : <span>{termPopup.explanation}</span>
+            }
+          </div>
+        </div>
+      </>
+    )}
+    </>
   );
 };
 

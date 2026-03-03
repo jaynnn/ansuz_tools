@@ -207,6 +207,44 @@ function getTodayTradeDate(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: process.env.SERVER_TIMEZONE || 'Asia/Shanghai' });
 }
 
+/**
+ * Returns true when a security is a T+0 product (can be bought and sold on the same day).
+ *
+ * A-share T+0 ETF types (per CSRC settlement rules):
+ *   - 跨境/QDII ETF  (cross-border / overseas-index ETF)
+ *   - 债券 ETF        (bond ETF)
+ *   - 黄金 ETF        (gold ETF)
+ *   - 货币 ETF        (monetary / money-market ETF)
+ *   - 商品 ETF        (commodity ETF)
+ *
+ * Everything else — regular A-share stocks and domestic equity/mixed/broad-based ETFs
+ * — follows the T+1 rule (shares bought today cannot be sold until the next trading day).
+ */
+function isT0Product(code: string, name: string): boolean {
+  const n = name;
+  const c = code.toLowerCase();
+
+  // Gold ETF
+  if (/黄金/.test(n)) return true;
+
+  // Monetary / cash-management ETF
+  if (/货币|日利|现金宝/.test(n)) return true;
+
+  // Bond ETF (国债, 政金债, 企债, 公司债, 城投债, 可转债 ETF, etc.)
+  if (/国债ETF|政金债|企债ETF|公司债ETF|债券ETF|可转债ETF/.test(n)) return true;
+
+  // Cross-border / QDII ETF — name references foreign market
+  if (/纳指|纳斯达克|标普|道琼斯|恒生|日经|港股|美股|QDII|A50|印度|越南|德国|法国|韩国|东南亚|海外/.test(n)) return true;
+
+  // Shanghai cross-border ETF codes: sh513xxx
+  if (/^sh513/.test(c)) return true;
+
+  // Commodity ETF
+  if (/原油|豆粕|有色金属|铜ETF|能源ETF|商品ETF/.test(n)) return true;
+
+  return false;
+}
+
 // ─── Financial News ──────────────────────────────────────────────────────────
 
 interface NewsItem {
@@ -529,9 +567,11 @@ router.post('/trading/sell', authMiddleware, tradingWriteRateLimit, async (req: 
       return res.status(400).json({ error: `持仓不足，当前持有 ${holding?.quantity ?? 0} 股` });
     }
 
-    // Enforce A-share T+1: shares bought today cannot be sold until the next trading day
+    // Enforce A-share T+1: domestic equity/mixed/broad-based ETFs and regular stocks
+    // cannot be sold on the same day they were purchased.
+    // Cross-border, bond, gold, monetary, and commodity ETFs are T+0 and are exempt.
     const todayDate = getTodayTradeDate();
-    if (holding.last_buy_date === todayDate) {
+    if (holding.last_buy_date === todayDate && !isT0Product(code, holding.stock_name)) {
       return res.status(400).json({ error: `T+1限制：${holding.stock_name} 今日买入的股份须等到下一个交易日才能卖出` });
     }
 
@@ -716,7 +756,7 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
           const currentVal = q ? q.currentPrice * h.quantity : 0;
           const cost = h.avg_cost * h.quantity;
           const pnl = currentVal - cost;
-          const t1Lock = h.last_buy_date === todayCycleDate ? '【T+1锁定，今日不可卖出】' : '';
+          const t1Lock = h.last_buy_date === todayCycleDate && !isT0Product(h.stock_code, h.stock_name) ? '【T+1锁定，今日不可卖出】' : '';
           return `${h.stock_name}(${h.stock_code}): 持有${h.quantity}股, 均价${h.avg_cost.toFixed(2)}, 现价${q?.currentPrice?.toFixed(2) ?? 'N/A'}, 盈亏${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}${t1Lock}`;
         }).join('\n')
       : '暂无持仓';
@@ -734,7 +774,7 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
       ? newsItems.map((n, i) => `  ${i + 1}. ${n.title}${n.summary ? ': ' + n.summary : ''}`).join('\n')
       : '  暂无最新资讯';
 
-    const prompt = `你是一位顶尖专业量化股票交易员，使用系统化的计算和量化指标做出交易决策，绝不凭直觉操作。
+    const prompt = `你是一位顶尖专业量化股票交易员，采用严格的系统化方法论做出每一笔交易决策。
 当前为第 ${cycleCount} 轮决策分析。
 
 【可用资金】¥${account.balance.toFixed(2)}
@@ -751,34 +791,44 @@ ${tradeHistorySummary}
 【最新财经资讯（供宏观判断参考）】
 ${newsSummary}
 
-【量化分析要求】
-在做出每个决策前，你必须对每只股票进行以下量化计算并在reasoning中体现：
-1. 趋势判断：结合多轮价格历史，判断是真实趋势还是短暂波动
-2. 动量信号：涨跌幅大小及方向，判断短期动量强弱
-3. 波动率评估：日振幅是否异常（>3%为高波动）
-4. 成交量信号：成交额是否放量（对比常规水平）
-5. 宏观背景：结合最新资讯判断整体市场情绪
+【交易分析方法论】
+每笔决策必须经过以下四步分析框架，并在 reasoning 中体现关键数据：
 
-【A股交易规则与行为约束】
-1. 只能在以上行情列表中的股票进行交易
-2. 买入时每次买入金额不超过可用资金的20%
-3. 卖出时每次卖出不超过持仓的50%
-4. 若现价为0则不交易（市场收盘或停牌）
-5. 每个决策必须有量化数据支撑，不得仅凭感觉
-6. 【T+1规则，极其重要】A股实行T+1交割制度：当日买入的股票（含ETF）当日不得卖出，须等到下一个交易日才能卖出。持仓列表中标注【T+1锁定，今日不可卖出】的股票，今日决策只能是 hold，严禁对其下达 sell 指令
-7. 【重要】检查最近操作历史——若某只股票刚刚在近2轮内被买入，必须有更强的信号才能继续加仓；避免在下跌趋势中连续买入同一只股票
-8. 【重要】若多轮观测显示某股价格持续下跌，倾向于卖出或观望，而非继续买入
-9. 在综合判断不明朗时，优先选择 hold（观望），不要为了交易而交易
+第一步 — 趋势识别（Trend Identification）
+· 结合多轮历史价格，区分主趋势与短期噪音
+· 计算近N轮的价格变动幅度及方向，判断趋势强弱与持续性
+· 对比今开与昨收，评估当日缺口性质（跳空高开/低开）
 
-请先进行量化分析，再给出交易决策。以JSON格式返回：
+第二步 — 动量与量价验证（Momentum & Volume Confirmation）
+· 涨跌幅、日内振幅反映价格动能，振幅>3%视为高波动
+· 成交额放量（明显高于历史均值）才能确认趋势有效，缩量反转需谨慎
+· 上影线占比高意味着上方抛压较重，下影线长则显示下方支撑较强
+
+第三步 — 风险评估（Risk Assessment）
+· 买入前评估潜在最大亏损幅度与预期盈利空间（风险/回报比 ≥ 1:2 方可考虑入场）
+· 仓位分配依据市场不确定性调整：波动率高时降低单笔金额，不超过可用资金的20%
+· 卖出时单次减仓不超过持仓的50%，保留仓位以应对反转机会
+
+第四步 — 宏观与情绪过滤（Macro & Sentiment Filter）
+· 综合最新财经资讯，判断当前宏观情绪（风险偏好 / 避险情绪）
+· 若整体市场情绪明显悲观或消息面高度不确定，需降低做多意愿
+· 当分析结论不明确或信号相互矛盾时，hold（观望）优于强行交易
+
+【A股交易制度约束（硬性规则，不可违反）】
+1. 只允许对以上行情列表中的标的进行交易
+2. 若标的现价为0，视为停牌或收盘，不得交易
+3. T+1规则：当日买入的境内股票型ETF、混合型ETF及普通A股，当日不得卖出（须等下一交易日）；持仓中标注【T+1锁定，今日不可卖出】的标的，今日只能 hold
+4. T+0例外：跨境ETF（如纳指ETF、标普ETF、恒生ETF）、债券ETF、黄金ETF、货币ETF、商品ETF当日买入可当日卖出
+
+请按上述方法论完成分析，再给出交易决策。以JSON格式返回：
 {
-  "analysis": "量化市场总体分析，需包含具体数据（如各股涨跌幅、振幅、成交量对比、宏观资讯影响），100字以内",
+  "analysis": "市场总体分析（含关键量化数据），100字以内",
   "decisions": [
     {
       "code": "股票代码（如sh600036）",
       "action": "buy 或 sell 或 hold",
       "quantity": 交易数量（hold时为0，必须是100的整数倍）,
-      "reasoning": "基于量化指标的决策理由，必须包含具体数值（如涨跌幅X%、振幅Y%、近N轮趋势），50字以内"
+      "reasoning": "基于四步分析框架的决策依据，需含具体数值，50字以内"
     }
   ]
 }`;
@@ -786,7 +836,7 @@ ${newsSummary}
     let llmResponse: string;
     try {
       const result = await chatCompletion([
-        { role: 'system', content: '你是专业量化股票交易员，每个决策必须基于量化数据计算，只返回JSON格式的交易决策，不要有任何其他文字。' },
+        { role: 'system', content: '你是专业量化股票交易员，严格遵循趋势识别、量价验证、风险评估、宏观过滤四步分析方法论做出每一笔交易决策，只返回JSON格式的交易决策，不要有任何其他文字。' },
         { role: 'user', content: prompt },
       ]);
       llmResponse = result.content;
@@ -911,8 +961,10 @@ ${newsSummary}
           continue;
         }
 
-        // Enforce A-share T+1: shares bought today cannot be sold until the next trading day
-        if (holding.last_buy_date === todayCycleDate) {
+        // Enforce A-share T+1: domestic equity/mixed/broad-based ETFs and regular stocks
+        // cannot be sold on the day they were bought. T+0 products (cross-border, bond,
+        // gold, monetary, commodity ETFs) are exempt from this restriction.
+        if (holding.last_buy_date === todayCycleDate && !isT0Product(code, quote.name)) {
           holdCount++;
           await dbRun(
             'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
