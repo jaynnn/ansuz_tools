@@ -18,6 +18,12 @@ const PREDEFINED_TOOLS = [
     tags: ['AI', '社交', 'NPC', '模拟'],
   },
   {
+    name: '实时股市AI问答',
+    description: '实时获取A股行情数据，结合AI智能分析，支持自然语言问答股市动态、个股信息和市场趋势',
+    url: '/stock-market',
+    tags: ['AI', '股市', '实时', '问答'],
+  },
+  {
     name: '股票预测',
     description: '记录和分析股票预测结果，提供准确率统计和可视化分析',
     url: '/stock-prediction',
