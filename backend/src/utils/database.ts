@@ -531,6 +531,77 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create stock_trading_accounts table - virtual trading account per user
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS stock_trading_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        balance REAL NOT NULL DEFAULT 1000000,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create stock_trading_holdings table - virtual stock holdings per user
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS stock_trading_holdings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        stock_code TEXT NOT NULL,
+        stock_name TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        avg_cost REAL NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, stock_code)
+      )
+    `);
+
+    // Create stock_trading_orders table - virtual trade history
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS stock_trading_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        stock_code TEXT NOT NULL,
+        stock_name TEXT NOT NULL,
+        action TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        price REAL NOT NULL,
+        total_amount REAL NOT NULL,
+        is_bot INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create stock_trading_bot_logs table - AI bot decision logs
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS stock_trading_bot_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        stock_code TEXT,
+        reasoning TEXT,
+        result TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create stock_watchlist table - persists user's watchlist codes
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS stock_watchlist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        stock_code TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, stock_code)
+      )
+    `);
+
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
     await migrateUsersTable();

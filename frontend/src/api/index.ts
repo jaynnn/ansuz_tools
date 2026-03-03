@@ -492,4 +492,70 @@ export const stockMarketAPI = {
     const response = await api.post('/stock-market/chat', { messages });
     return response.data;
   },
+
+  getWatchlist: async (): Promise<{ codes: string[] }> => {
+    const response = await api.get('/stock-market/watchlist');
+    return response.data;
+  },
+
+  putWatchlist: async (codes: string[]): Promise<{ codes: string[] }> => {
+    const response = await api.put('/stock-market/watchlist', { codes });
+    return response.data;
+  },
+
+  getAccount: async (): Promise<{
+    balance: number;
+    holdings: Array<{ stock_code: string; stock_name: string; quantity: number; avg_cost: number }>;
+  }> => {
+    const response = await api.get('/stock-market/trading/account');
+    return response.data;
+  },
+
+  buy: async (code: string, name: string, quantity: number, price: number): Promise<{ message: string; balance: number }> => {
+    const response = await api.post('/stock-market/trading/buy', { code, name, quantity, price });
+    return response.data;
+  },
+
+  sell: async (code: string, quantity: number, price: number): Promise<{ message: string; balance: number }> => {
+    const response = await api.post('/stock-market/trading/sell', { code, quantity, price });
+    return response.data;
+  },
+
+  getOrders: async (): Promise<{ orders: Array<{
+    id: number; stock_code: string; stock_name: string; action: string;
+    quantity: number; price: number; total_amount: number; is_bot: number; created_at: string;
+  }> }> => {
+    const response = await api.get('/stock-market/trading/orders');
+    return response.data;
+  },
+
+  resetAccount: async (): Promise<{ message: string; balance: number }> => {
+    const response = await api.post('/stock-market/trading/reset');
+    return response.data;
+  },
+
+  getBotStatus: async (): Promise<{
+    isRunning: boolean; watchlist: string[];
+    logs: Array<{ id: number; action: string; stock_code: string | null; reasoning: string | null; result: string | null; created_at: string }>;
+  }> => {
+    const response = await api.get('/stock-market/trading/bot/status');
+    return response.data;
+  },
+
+  startBot: async (watchlist: string[]): Promise<{ message: string; watchlist: string[] }> => {
+    const response = await api.post('/stock-market/trading/bot/start', { watchlist });
+    return response.data;
+  },
+
+  stopBot: async (): Promise<{ message: string }> => {
+    const response = await api.post('/stock-market/trading/bot/stop');
+    return response.data;
+  },
+
+  getBotLogs: async (limit?: number): Promise<{ logs: Array<{
+    id: number; action: string; stock_code: string | null; reasoning: string | null; result: string | null; created_at: string;
+  }> }> => {
+    const response = await api.get('/stock-market/trading/bot/logs', { params: { limit } });
+    return response.data;
+  },
 };
