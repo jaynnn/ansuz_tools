@@ -59,6 +59,10 @@ const STORAGE_KEY = 'stock_market_codes';
 const BOT_AUTOREFRESH_KEY = 'stock_bot_autorefresh';
 const BOT_REFRESH_INTERVAL_KEY = 'stock_bot_refresh_interval';
 
+// Term popup positioning constants (popup width is 260px per CSS)
+const POPUP_HALF_WIDTH = 130;  // half of popup width, used to center popup on clicked term
+const POPUP_VERTICAL_OFFSET = 8; // px gap between popup bottom and term top
+
 const WELCOME_HINTS = [
   '上证指数今天表现如何？',
   'A股市场近期有哪些热点板块？',
@@ -87,7 +91,7 @@ function formatMoney(amount: number): string {
   return amount.toFixed(2);
 }
 
-type TabType = 'market' | 'trading' | 'chat' | 'bot';
+type TabType = 'market' | 'trading' | 'chat' | 'bot' | 'diary';
 
 interface TradingStats {
   stock_code: string;
@@ -101,6 +105,16 @@ interface TradingStats {
   sell_count: number;
   trade_count: number;
   realized_pnl: number;
+}
+
+interface DiaryEntry {
+  id: number;
+  title: string;
+  content: string;
+  mood: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
 }
 
 const StockMarketPage: React.FC = () => {
@@ -190,6 +204,31 @@ const StockMarketPage: React.FC = () => {
   });
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
 
+  // Financial term tooltip state
+  const [termPopup, setTermPopup] = useState<{
+    term: string;
+    explanation: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Per-log-entry annotations: logId → { term: explanation }
+  // Populated asynchronously by the LLM after each new log entry arrives.
+  const [logAnnotations, setLogAnnotations] = useState<Record<number, Record<string, string>>>({});
+  const annotatedIdsRef = useRef<Set<number>>(new Set());
+
+  // Diary state
+  const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>([]);
+  const [diaryLoading, setDiaryLoading] = useState(false);
+  const [diaryError, setDiaryError] = useState<string | null>(null);
+  const [showDiaryForm, setShowDiaryForm] = useState(false);
+  const [editingDiary, setEditingDiary] = useState<DiaryEntry | null>(null);
+  const [diaryFormTitle, setDiaryFormTitle] = useState('');
+  const [diaryFormContent, setDiaryFormContent] = useState('');
+  const [diaryFormMood, setDiaryFormMood] = useState('');
+  const [diaryFormTags, setDiaryFormTags] = useState('');
+  const [diaryViewEntry, setDiaryViewEntry] = useState<DiaryEntry | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const botLogsEndRef = useRef<HTMLDivElement>(null);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -243,6 +282,7 @@ const StockMarketPage: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'trading') loadTradingData();
     if (activeTab === 'bot') loadBotStatus();
+    if (activeTab === 'diary') loadDiaryEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -266,6 +306,29 @@ const StockMarketPage: React.FC = () => {
     return () => { if (botAutoRefreshRef.current) clearInterval(botAutoRefreshRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, botAutoRefresh, botRefreshInterval]);
+
+  // Asynchronously annotate new bot log entries: submit text to LLM, which identifies
+  // financial jargon and returns term→explanation. Highlights appear once ready.
+  useEffect(() => {
+    const newLogs = botLogs.filter(l => {
+      if (!l.reasoning && !l.result) return false;
+      return !annotatedIdsRef.current.has(l.id);
+    });
+    for (const log of newLogs) {
+      annotatedIdsRef.current.add(log.id);
+      const text = [log.reasoning, log.result].filter(Boolean).join(' ');
+      stockMarketAPI.annotateTerms(text)
+        .then(({ terms }) => {
+          if (Object.keys(terms).length > 0) {
+            setLogAnnotations(prev => ({ ...prev, [log.id]: terms }));
+          }
+        })
+        .catch(err => {
+          console.error('[annotate-terms] failed for log', log.id, err);
+          annotatedIdsRef.current.delete(log.id); // allow retry on next render
+        });
+    }
+  }, [botLogs]);
 
   const loadTradingData = async () => {
     try {
@@ -302,6 +365,73 @@ const StockMarketPage: React.FC = () => {
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       setBotError(e?.response?.data?.error || '加载机器人状态失败');
+    }
+  };
+
+  const loadDiaryEntries = async () => {
+    setDiaryLoading(true);
+    setDiaryError(null);
+    try {
+      const data = await stockMarketAPI.getDiaryEntries();
+      setDiaryEntries(data.entries);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setDiaryError(e?.response?.data?.error || '加载日记失败');
+    } finally {
+      setDiaryLoading(false);
+    }
+  };
+
+  const openDiaryCreate = () => {
+    setEditingDiary(null);
+    setDiaryFormTitle('');
+    setDiaryFormContent('');
+    setDiaryFormMood('');
+    setDiaryFormTags('');
+    setShowDiaryForm(true);
+  };
+
+  const openDiaryEdit = (entry: DiaryEntry) => {
+    setEditingDiary(entry);
+    setDiaryFormTitle(entry.title);
+    setDiaryFormContent(entry.content);
+    setDiaryFormMood(entry.mood || '');
+    setDiaryFormTags(entry.tags.join(', '));
+    setDiaryViewEntry(null);
+    setShowDiaryForm(true);
+  };
+
+  const handleDiarySubmit = async () => {
+    if (!diaryFormTitle.trim()) { setDiaryError('请填写标题'); return; }
+    if (!diaryFormContent.trim()) { setDiaryError('请填写内容'); return; }
+    setDiaryError(null);
+    const tags = diaryFormTags.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+    const payload = { title: diaryFormTitle.trim(), content: diaryFormContent.trim(), mood: diaryFormMood.trim() || undefined, tags };
+    try {
+      if (editingDiary) {
+        const data = await stockMarketAPI.updateDiaryEntry(editingDiary.id, payload);
+        setDiaryEntries(prev => prev.map(e => e.id === editingDiary.id ? data.entry : e));
+      } else {
+        const data = await stockMarketAPI.createDiaryEntry(payload);
+        setDiaryEntries(prev => [data.entry, ...prev]);
+      }
+      setShowDiaryForm(false);
+      setEditingDiary(null);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setDiaryError(e?.response?.data?.error || '保存失败，请重试');
+    }
+  };
+
+  const handleDiaryDelete = async (id: number) => {
+    if (!window.confirm('确定要删除这篇日记吗？')) return;
+    try {
+      await stockMarketAPI.deleteDiaryEntry(id);
+      setDiaryEntries(prev => prev.filter(e => e.id !== id));
+      if (diaryViewEntry?.id === id) setDiaryViewEntry(null);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setDiaryError(e?.response?.data?.error || '删除失败');
     }
   };
 
@@ -459,6 +589,8 @@ const StockMarketPage: React.FC = () => {
       await stockMarketAPI.clearBotLogs();
       setBotLogs([]);
       setSelectedSession(null);
+      setLogAnnotations({});
+      annotatedIdsRef.current.clear();
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       setBotError(e?.response?.data?.error || '清空日志失败');
@@ -501,14 +633,49 @@ const StockMarketPage: React.FC = () => {
   const totalCost = holdings.reduce((sum, h) => sum + h.avg_cost * h.quantity, 0);
   const totalPnl = holdingsValue - totalCost;
 
+  // Show a pre-fetched explanation for a highlighted term (no async call needed).
+  const handleTermClick = (term: string, explanation: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    const rect = (event.target as HTMLElement).getBoundingClientRect();
+    const x = Math.min(rect.left + rect.width / 2, window.innerWidth - POPUP_HALF_WIDTH);
+    setTermPopup({ term, explanation, x, y: rect.top });
+  };
+
+  // Render log text with LLM-identified financial terms highlighted.
+  // Terms are only highlighted after the async annotation for this log entry completes.
+  const renderLogText = (text: string, logId: number): React.ReactNode => {
+    const annotations = logAnnotations[logId];
+    if (!annotations) return text;
+    const terms = Object.keys(annotations);
+    if (terms.length === 0) return text;
+    // Sort longest first to avoid partial matches
+    terms.sort((a, b) => b.length - a.length);
+    const regex = new RegExp(
+      `(${terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+      'g'
+    );
+    const parts = text.split(regex);
+    return parts.map((part, i) =>
+      annotations[part] !== undefined
+        ? <span
+            key={i}
+            className="term-highlight"
+            role="button"
+            tabIndex={0}
+            onClick={e => handleTermClick(part, annotations[part], e)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTermClick(part, annotations[part], e as unknown as React.MouseEvent); } }}
+          >{part}</span>
+        : part
+    );
+  };
+
   const getBotLogIcon = (action: string) => {
     switch (action) {
       case 'buy': return '🟢';
       case 'sell': return '🔴';
       case 'hold': return '⚪';
       case 'analysis': return '🔍';
-      case 'analysis_start': return '▶️';
-      case 'analysis_end': return '✅';
+      case 'cycle_summary': return '📊';
       case 'start': return '🚀';
       case 'stop': return '⏹️';
       case 'error': return '❌';
@@ -518,6 +685,7 @@ const StockMarketPage: React.FC = () => {
   };
 
   return (
+    <>
     <div className="stock-market-page">
       {/* Header */}
       <header className="stock-market-header">
@@ -531,6 +699,7 @@ const StockMarketPage: React.FC = () => {
             { key: 'trading', label: '模拟交易' },
             { key: 'chat', label: 'AI助手' },
             { key: 'bot', label: 'AI机器人' },
+            { key: 'diary', label: '交易日记' },
           ] as { key: TabType; label: string }[]).map(tab => (
             <button
               key={tab.key}
@@ -920,7 +1089,7 @@ const StockMarketPage: React.FC = () => {
             {botError && <div className="stock-error">{botError}</div>}
 
             <div className="bot-description">
-              <p>🤖 AI交易机器人是一位顶尖专业交易员，使用 DeepSeek LLM 分析行情后，在模拟账户中自动买卖你自选列表中的股票。</p>
+              <p>🤖 AI交易机器人是一位顶尖专业量化交易员，综合分析实时行情、多轮价格趋势、持仓状态和最新财经资讯后，在模拟账户中进行系统化决策，绝不仅凭涨跌幅机械操作。</p>
               <p>你可以实时观察机器人的每一个决策过程和结果。</p>
             </div>
 
@@ -984,8 +1153,8 @@ const StockMarketPage: React.FC = () => {
                         <span className="bot-log-session">第{log.session_id}次</span>
                       )}
                     </div>
-                    {log.reasoning && <div className="bot-log-reasoning">{log.reasoning}</div>}
-                    {log.result && <div className="bot-log-result">{log.result}</div>}
+                    {log.reasoning && <div className="bot-log-reasoning">{renderLogText(log.reasoning, log.id)}</div>}
+                    {log.result && <div className="bot-log-result">{renderLogText(log.result, log.id)}</div>}
                   </div>
                 ))
               )}
@@ -993,8 +1162,160 @@ const StockMarketPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* ── 交易日记 Tab ── */}
+        {activeTab === 'diary' && (
+          <div className="diary-panel">
+            <div className="diary-panel-header">
+              <h2>📒 交易日记</h2>
+              <button className="diary-new-btn" onClick={openDiaryCreate}>✏️ 写日记</button>
+            </div>
+
+            {diaryError && <div className="stock-error">{diaryError}</div>}
+
+            {/* Diary form modal */}
+            {showDiaryForm && (
+              <div className="diary-form-overlay" onClick={() => setShowDiaryForm(false)}>
+                <div className="diary-form-modal" onClick={e => e.stopPropagation()}>
+                  <div className="diary-form-header">
+                    <h3>{editingDiary ? '编辑日记' : '写新日记'}</h3>
+                    <button className="diary-modal-close" onClick={() => setShowDiaryForm(false)}>✕</button>
+                  </div>
+                  <div className="diary-form-body">
+                    <input
+                      className="diary-form-input"
+                      placeholder="标题（必填）"
+                      value={diaryFormTitle}
+                      onChange={e => setDiaryFormTitle(e.target.value)}
+                      maxLength={200}
+                    />
+                    <div className="diary-form-row">
+                      <input
+                        className="diary-form-input diary-form-input-half"
+                        placeholder="心情（如：😊 乐观、😐 平静、😰 焦虑）"
+                        value={diaryFormMood}
+                        onChange={e => setDiaryFormMood(e.target.value)}
+                        maxLength={50}
+                      />
+                      <input
+                        className="diary-form-input diary-form-input-half"
+                        placeholder="标签（逗号分隔，如：复盘,策略,总结）"
+                        value={diaryFormTags}
+                        onChange={e => setDiaryFormTags(e.target.value)}
+                        maxLength={200}
+                      />
+                    </div>
+                    <textarea
+                      className="diary-form-textarea"
+                      placeholder="记录你的交易心得、市场观察、决策过程和总结反思…"
+                      value={diaryFormContent}
+                      onChange={e => setDiaryFormContent(e.target.value)}
+                      rows={12}
+                      maxLength={10000}
+                    />
+                  </div>
+                  <div className="diary-form-footer">
+                    <span className="diary-form-char-count">{diaryFormContent.length}/10000</span>
+                    <div className="diary-form-actions">
+                      <button className="diary-cancel-btn" onClick={() => setShowDiaryForm(false)}>取消</button>
+                      <button className="diary-save-btn" onClick={handleDiarySubmit}>保存</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Diary view modal */}
+            {diaryViewEntry && !showDiaryForm && (
+              <div className="diary-form-overlay" onClick={() => setDiaryViewEntry(null)}>
+                <div className="diary-view-modal" onClick={e => e.stopPropagation()}>
+                  <div className="diary-form-header">
+                    <div className="diary-view-title-area">
+                      <h3>{diaryViewEntry.title}</h3>
+                      {diaryViewEntry.mood && <span className="diary-entry-mood">{diaryViewEntry.mood}</span>}
+                    </div>
+                    <button className="diary-modal-close" onClick={() => setDiaryViewEntry(null)}>✕</button>
+                  </div>
+                  <div className="diary-view-meta">
+                    <span>{new Date(diaryViewEntry.created_at).toLocaleString('zh-CN')}</span>
+                    {diaryViewEntry.updated_at !== diaryViewEntry.created_at && (
+                      <span>（编辑于 {new Date(diaryViewEntry.updated_at).toLocaleString('zh-CN')}）</span>
+                    )}
+                  </div>
+                  {diaryViewEntry.tags.length > 0 && (
+                    <div className="diary-view-tags">
+                      {diaryViewEntry.tags.map(tag => <span key={tag} className="diary-tag">{tag}</span>)}
+                    </div>
+                  )}
+                  <div className="diary-view-content">{diaryViewEntry.content}</div>
+                  <div className="diary-view-footer">
+                    <button className="diary-edit-btn" onClick={() => openDiaryEdit(diaryViewEntry)}>编辑</button>
+                    <button className="diary-delete-btn" onClick={() => handleDiaryDelete(diaryViewEntry.id)}>删除</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Diary list */}
+            <div className="diary-list">
+              {diaryLoading ? (
+                <div className="stock-empty">加载中...</div>
+              ) : diaryEntries.length === 0 ? (
+                <div className="diary-empty">
+                  <p>📝 还没有日记</p>
+                  <p>记录你的交易心得、市场观察和决策过程，让经验成为财富</p>
+                  <button className="diary-new-btn" onClick={openDiaryCreate}>写第一篇日记</button>
+                </div>
+              ) : (
+                diaryEntries.map(entry => (
+                  <div
+                    key={entry.id}
+                    className="diary-entry-card"
+                    onClick={() => setDiaryViewEntry(entry)}
+                  >
+                    <div className="diary-entry-card-header">
+                      <div className="diary-entry-title">{entry.title}</div>
+                      {entry.mood && <span className="diary-entry-mood">{entry.mood}</span>}
+                    </div>
+                    <div className="diary-entry-preview">{entry.content.slice(0, 120)}{entry.content.length > 120 ? '…' : ''}</div>
+                    {entry.tags.length > 0 && (
+                      <div className="diary-entry-tags">
+                        {entry.tags.map(tag => <span key={tag} className="diary-tag">{tag}</span>)}
+                      </div>
+                    )}
+                    <div className="diary-entry-footer">
+                      <span className="diary-entry-date">{new Date(entry.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <div className="diary-entry-actions" onClick={e => e.stopPropagation()}>
+                        <button className="diary-edit-btn" onClick={() => openDiaryEdit(entry)}>编辑</button>
+                        <button className="diary-delete-btn" onClick={() => handleDiaryDelete(entry.id)}>删除</button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
+
+    {/* ── Financial term explanation popup ── */}
+    {termPopup && (
+      <>
+        <div className="term-popup-overlay" onClick={() => setTermPopup(null)} />
+        <div
+          className="term-popup"
+          style={{ left: termPopup.x - POPUP_HALF_WIDTH, top: termPopup.y - POPUP_VERTICAL_OFFSET }}
+        >
+          <div className="term-popup-header">
+            <span className="term-popup-term">{termPopup.term}</span>
+            <button className="term-popup-close" onClick={() => setTermPopup(null)}>×</button>
+          </div>
+          <div className="term-popup-body">{termPopup.explanation}</div>
+        </div>
+      </>
+    )}
+    </>
   );
 };
 

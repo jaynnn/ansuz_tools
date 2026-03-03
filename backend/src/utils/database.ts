@@ -239,7 +239,27 @@ const migrateBotLogsTable = async () => {
   }
 };
 
-// Migration function to add completion_rating column to goal_task_trainings table
+// Migration function to add last_buy_date column to stock_trading_holdings table (T+1 enforcement)
+const migrateStockHoldingsTable = async () => {
+  try {
+    const tableInfo: any = await dbGet(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='stock_trading_holdings'"
+    );
+    if (!tableInfo) return;
+
+    const columns: any[] = await dbAll("PRAGMA table_info(stock_trading_holdings)");
+    const columnNames = columns.map((col: any) => col.name);
+
+    if (!columnNames.includes('last_buy_date')) {
+      logInfo('stock_holdings_migration_start', { reason: 'add_last_buy_date_column' });
+      await dbRun("ALTER TABLE stock_trading_holdings ADD COLUMN last_buy_date TEXT");
+      logInfo('stock_holdings_migration_success', { reason: 'added_last_buy_date_column' });
+    }
+  } catch (error) {
+    logError('stock_holdings_migration_error', error as Error);
+    throw error;
+  }
+};
 const migrateGoalTaskTrainingsTable = async () => {
   try {
     const tableInfo: any = await dbGet(
@@ -624,6 +644,21 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create stock_trading_diary table - user trading journal entries
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS stock_trading_diary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        mood TEXT,
+        tags TEXT NOT NULL DEFAULT '[]',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
     await migrateUsersTable();
@@ -632,6 +667,7 @@ export const initDatabase = async () => {
     await migrateGoalTaskGoalsTable();
     await migrateGoalTaskTrainingsTable();
     await migrateBotLogsTable();
+    await migrateStockHoldingsTable();
 
     console.log('Database initialized successfully');
     logInfo('database_init_success', { dbPath });
