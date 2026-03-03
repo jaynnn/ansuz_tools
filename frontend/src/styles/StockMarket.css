@@ -925,3 +925,95 @@
     gap: 10px;
   }
 }
+
+/* ── Bot balance bar ── */
+.bot-balance-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.bot-balance-label {
+  color: var(--text-secondary);
+}
+
+.bot-balance-value {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ── Bot logs controls (right side of header) ── */
+.bot-logs-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bot-session-select,
+.bot-interval-select {
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bot-autorefresh-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.bot-autorefresh-label input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.bot-clear-logs-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #ef4444;
+  background: transparent;
+  color: #ef4444;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.bot-clear-logs-btn:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+/* ── Bot log session badge ── */
+.bot-log-session {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+}
+
+/* ── Trading stats summary ── */
+.trading-stats-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}

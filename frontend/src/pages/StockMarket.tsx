@@ -51,10 +51,13 @@ interface BotLog {
   reasoning: string | null;
   result: string | null;
   created_at: string;
+  session_id: number | null;
 }
 
 const DEFAULT_CODES = ['sh000001', 'sz399001', 'sz399006', 'sh000688'];
 const STORAGE_KEY = 'stock_market_codes';
+const BOT_AUTOREFRESH_KEY = 'stock_bot_autorefresh';
+const BOT_REFRESH_INTERVAL_KEY = 'stock_bot_refresh_interval';
 
 const WELCOME_HINTS = [
   '上证指数今天表现如何？',
@@ -86,6 +89,20 @@ function formatMoney(amount: number): string {
 
 type TabType = 'market' | 'trading' | 'chat' | 'bot';
 
+interface TradingStats {
+  stock_code: string;
+  stock_name: string;
+  total_bought: number;
+  total_sold: number;
+  remaining_qty: number;
+  total_buy_amount: number;
+  total_sell_amount: number;
+  buy_count: number;
+  sell_count: number;
+  trade_count: number;
+  realized_pnl: number;
+}
+
 const StockMarketPage: React.FC = () => {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
@@ -112,21 +129,34 @@ const StockMarketPage: React.FC = () => {
   const codesRef = useRef(codes);
   useEffect(() => { codesRef.current = codes; }, [codes]);
 
-  // Persist codes to localStorage and backend whenever they change
+  // Whether the server watchlist has been loaded (prevents overwriting server data on new devices)
+  const serverLoadedRef = useRef(false);
+
+  // Persist codes to localStorage and backend whenever they change,
+  // but only sync to backend after the server data has been loaded to avoid
+  // overwriting server-side watchlist with local defaults on a new device.
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(codes));
-    // Sync to backend (fire-and-forget)
-    stockMarketAPI.putWatchlist(codes).catch(() => {});
+    if (serverLoadedRef.current) {
+      stockMarketAPI.putWatchlist(codes).catch(() => {});
+    }
   }, [codes]);
 
   // Load codes from backend on mount (backend is source of truth if available)
   useEffect(() => {
     document.title = '股市行情 - 工具箱';
     stockMarketAPI.getWatchlist().then(({ codes: serverCodes }) => {
+      serverLoadedRef.current = true;
       if (serverCodes.length > 0) {
         setCodes(serverCodes);
+      } else {
+        // Server has no watchlist yet – push our local codes to initialize it.
+        // serverLoadedRef is now true so subsequent local changes will sync to backend normally.
+        stockMarketAPI.putWatchlist(codesRef.current).catch(() => {});
       }
-    }).catch(() => {});
+    }).catch(() => {
+      serverLoadedRef.current = true;
+    });
   }, []);
 
   // Chat state
@@ -143,18 +173,28 @@ const StockMarketPage: React.FC = () => {
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [tradeSuccess, setTradeSuccess] = useState<string | null>(null);
   const [loadingTrade, setLoadingTrade] = useState(false);
-  const [tradingSubTab, setTradingSubTab] = useState<'holdings' | 'orders'>('holdings');
+  const [tradingSubTab, setTradingSubTab] = useState<'holdings' | 'orders' | 'stats'>('holdings');
+  const [tradingStats, setTradingStats] = useState<TradingStats[]>([]);
+  const [totalRealizedPnl, setTotalRealizedPnl] = useState<number>(0);
 
   // Bot state
   const [botRunning, setBotRunning] = useState(false);
   const [botLogs, setBotLogs] = useState<BotLog[]>([]);
+  const [botBalance, setBotBalance] = useState<number | null>(null);
   const [botError, setBotError] = useState<string | null>(null);
   const [loadingBot, setLoadingBot] = useState(false);
+  const [botAutoRefresh, setBotAutoRefresh] = useState(() => localStorage.getItem(BOT_AUTOREFRESH_KEY) === 'true');
+  const [botRefreshInterval, setBotRefreshInterval] = useState(() => {
+    const saved = parseInt(localStorage.getItem(BOT_REFRESH_INTERVAL_KEY) || '');
+    return [5, 10, 30, 60].includes(saved) ? saved : 10;
+  });
+  const [selectedSession, setSelectedSession] = useState<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const botLogsEndRef = useRef<HTMLDivElement>(null);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const botPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const botAutoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load quotes using codesRef to avoid stale closure
   const loadQuotes = useCallback(async (showLoading = true) => {
@@ -190,6 +230,15 @@ const StockMarketPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  // Persist bot auto-refresh preferences to localStorage
+  useEffect(() => {
+    localStorage.setItem(BOT_AUTOREFRESH_KEY, String(botAutoRefresh));
+  }, [botAutoRefresh]);
+
+  useEffect(() => {
+    localStorage.setItem(BOT_REFRESH_INTERVAL_KEY, String(botRefreshInterval));
+  }, [botRefreshInterval]);
+
   // Load trading data when tab switches to 'trading'
   useEffect(() => {
     if (activeTab === 'trading') loadTradingData();
@@ -197,7 +246,7 @@ const StockMarketPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  // Poll bot status every 10s when bot tab is active
+  // Poll bot status every 10s when bot tab is active (background polling for running state)
   useEffect(() => {
     if (activeTab === 'bot') {
       botPollRef.current = setInterval(loadBotStatus, 10000);
@@ -207,6 +256,16 @@ const StockMarketPage: React.FC = () => {
     return () => { if (botPollRef.current) clearInterval(botPollRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  // Bot log auto-refresh with user-configurable interval
+  useEffect(() => {
+    if (botAutoRefreshRef.current) clearInterval(botAutoRefreshRef.current);
+    if (activeTab === 'bot' && botAutoRefresh) {
+      botAutoRefreshRef.current = setInterval(loadBotStatus, botRefreshInterval * 1000);
+    }
+    return () => { if (botAutoRefreshRef.current) clearInterval(botAutoRefreshRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, botAutoRefresh, botRefreshInterval]);
 
   const loadTradingData = async () => {
     try {
@@ -223,11 +282,23 @@ const StockMarketPage: React.FC = () => {
     }
   };
 
+  const loadTradingStats = async () => {
+    try {
+      const data = await stockMarketAPI.getTradingStats();
+      setTradingStats(data.stats);
+      setTotalRealizedPnl(data.total_realized_pnl);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setTradeError(e?.response?.data?.error || '加载统计数据失败');
+    }
+  };
+
   const loadBotStatus = async () => {
     try {
       const data = await stockMarketAPI.getBotStatus();
       setBotRunning(data.isRunning);
       setBotLogs(data.logs);
+      if (data.balance !== null) setBotBalance(data.balance);
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } } };
       setBotError(e?.response?.data?.error || '加载机器人状态失败');
@@ -381,6 +452,43 @@ const StockMarketPage: React.FC = () => {
       setLoadingBot(false);
     }
   };
+
+  const handleClearBotLogs = async () => {
+    if (!window.confirm('确定要清空所有决策日志吗？此操作不可恢复。')) return;
+    try {
+      await stockMarketAPI.clearBotLogs();
+      setBotLogs([]);
+      setSelectedSession(null);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setBotError(e?.response?.data?.error || '清空日志失败');
+    }
+  };
+
+  // Group bot logs into sessions by session_id
+  const botSessions = React.useMemo(() => {
+    const sessionMap = new Map<number, BotLog[]>();
+    const noSession: BotLog[] = [];
+    for (const log of botLogs) {
+      if (log.session_id != null) {
+        if (!sessionMap.has(log.session_id)) sessionMap.set(log.session_id, []);
+        sessionMap.get(log.session_id)!.push(log);
+      } else {
+        noSession.push(log);
+      }
+    }
+    const sessions = Array.from(sessionMap.entries())
+      .sort((a, b) => b[0] - a[0]) // newest session first
+      .map(([sid, logs]) => ({ sessionId: sid, logs }));
+    if (noSession.length > 0) sessions.push({ sessionId: -1, logs: noSession });
+    return sessions;
+  }, [botLogs]);
+
+  const displayedLogs = React.useMemo(() => {
+    if (selectedSession === null) return botLogs;
+    if (selectedSession === -1) return botLogs.filter(l => l.session_id == null);
+    return botLogs.filter(l => l.session_id === selectedSession);
+  }, [botLogs, selectedSession]);
 
   const quoteMap = new Map(quotes.map((q) => [q.code, q]));
 
@@ -587,6 +695,10 @@ const StockMarketPage: React.FC = () => {
                 className={`trading-subtab-btn${tradingSubTab === 'orders' ? ' active' : ''}`}
                 onClick={() => setTradingSubTab('orders')}
               >交易记录</button>
+              <button
+                className={`trading-subtab-btn${tradingSubTab === 'stats' ? ' active' : ''}`}
+                onClick={() => { setTradingSubTab('stats'); loadTradingStats(); }}
+              >得失分析</button>
             </div>
 
             {tradingSubTab === 'holdings' && (
@@ -654,6 +766,48 @@ const StockMarketPage: React.FC = () => {
                           <td style={{ fontSize: 11 }}>{o.is_bot ? '🤖机器人' : '👤手动'}</td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {tradingSubTab === 'stats' && (
+              <div className="stock-table-container">
+                <div className="trading-stats-summary">
+                  <span>已实现总盈亏：</span>
+                  <span className={totalRealizedPnl >= 0 ? 'stock-change-up' : 'stock-change-down'}>
+                    {totalRealizedPnl >= 0 ? '+' : ''}¥{formatMoney(totalRealizedPnl)}
+                  </span>
+                </div>
+                {tradingStats.length === 0 ? (
+                  <div className="stock-empty">暂无历史交易数据</div>
+                ) : (
+                  <table className="stock-table">
+                    <thead>
+                      <tr>
+                        <th>代码</th><th>名称</th><th>买入次</th><th>卖出次</th>
+                        <th>买入总量</th><th>卖出总量</th><th>剩余</th><th>已实现盈亏</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tradingStats.map(s => {
+                        const pnlCls = s.realized_pnl >= 0 ? 'stock-change-up' : 'stock-change-down';
+                        return (
+                          <tr key={s.stock_code}>
+                            <td>{s.stock_code.toUpperCase()}</td>
+                            <td>{s.stock_name}</td>
+                            <td>{s.buy_count}</td>
+                            <td>{s.sell_count}</td>
+                            <td>{s.total_bought}</td>
+                            <td>{s.total_sold}</td>
+                            <td>{s.remaining_qty}</td>
+                            <td className={pnlCls}>
+                              {s.realized_pnl >= 0 ? '+' : ''}¥{formatMoney(s.realized_pnl)}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}
@@ -741,6 +895,14 @@ const StockMarketPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Bot account balance */}
+            {botBalance !== null && (
+              <div className="bot-balance-bar">
+                <span className="bot-balance-label">模拟账户余额：</span>
+                <span className="bot-balance-value">¥{formatMoney(botBalance)}</span>
+              </div>
+            )}
+
             <div className="bot-watchlist">
               <span className="bot-watchlist-label">监控股票：</span>
               {codes.length === 0 ? (
@@ -764,18 +926,63 @@ const StockMarketPage: React.FC = () => {
 
             <div className="bot-logs-header">
               <span>决策日志</span>
-              <button className="stock-chat-clear-btn" onClick={loadBotStatus}>刷新</button>
+              <div className="bot-logs-controls">
+                {/* Session selector */}
+                {botSessions.length > 0 && (
+                  <select
+                    className="bot-session-select"
+                    value={selectedSession ?? ''}
+                    onChange={(e) => setSelectedSession(e.target.value === '' ? null : Number(e.target.value))}
+                  >
+                    <option value="">全部日志</option>
+                    {botSessions.map(s => (
+                      <option key={s.sessionId} value={s.sessionId}>
+                        {s.sessionId === -1 ? '旧日志' : `第 ${s.sessionId} 次运行`}
+                        {` (${s.logs.length}条)`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {/* Auto-refresh controls */}
+                <label className="bot-autorefresh-label">
+                  <input
+                    type="checkbox"
+                    checked={botAutoRefresh}
+                    onChange={(e) => setBotAutoRefresh(e.target.checked)}
+                  />
+                  自动刷新
+                </label>
+                {botAutoRefresh && (
+                  <select
+                    className="bot-interval-select"
+                    value={botRefreshInterval}
+                    onChange={(e) => setBotRefreshInterval(Number(e.target.value))}
+                  >
+                    <option value={5}>5秒</option>
+                    <option value={10}>10秒</option>
+                    <option value={30}>30秒</option>
+                    <option value={60}>1分钟</option>
+                  </select>
+                )}
+                <button className="stock-chat-clear-btn" onClick={loadBotStatus}>刷新</button>
+                {botLogs.length > 0 && (
+                  <button className="bot-clear-logs-btn" onClick={handleClearBotLogs}>清空日志</button>
+                )}
+              </div>
             </div>
             <div className="bot-logs-container">
-              {botLogs.length === 0 ? (
+              {displayedLogs.length === 0 ? (
                 <div className="stock-empty">暂无日志，启动机器人后会在此显示决策过程</div>
               ) : (
-                botLogs.map(log => (
+                displayedLogs.map(log => (
                   <div key={log.id} className={`bot-log-entry bot-log-${log.action}`}>
                     <div className="bot-log-meta">
                       <span className="bot-log-icon">{getBotLogIcon(log.action)}</span>
                       <span className="bot-log-time">{new Date(log.created_at).toLocaleString('zh-CN')}</span>
                       {log.stock_code && <span className="bot-log-code">{log.stock_code.toUpperCase()}</span>}
+                      {log.session_id != null && selectedSession === null && (
+                        <span className="bot-log-session">第{log.session_id}次</span>
+                      )}
                     </div>
                     {log.reasoning && <div className="bot-log-reasoning">{log.reasoning}</div>}
                     {log.result && <div className="bot-log-result">{log.result}</div>}

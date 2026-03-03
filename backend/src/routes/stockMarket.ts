@@ -426,17 +426,17 @@ router.post('/trading/reset', authMiddleware, tradingWriteRateLimit, async (req:
 
 // ─── AI Trading Bot ───────────────────────────────────────────────────────────
 
-// In-memory bot state: userId -> { timer, watchlist }
-const runningBots = new Map<number, { timer: ReturnType<typeof setInterval>; watchlist: string[] }>();
+// In-memory bot state: userId -> { timer, watchlist, sessionId }
+const runningBots = new Map<number, { timer: ReturnType<typeof setInterval>; watchlist: string[]; sessionId: number }>();
 
 const BOT_INTERVAL_MS = parseInt(process.env.STOCK_BOT_INTERVAL_MS || '') || 10 * 60 * 1000; // Default: 10 minutes
 
-async function runBotCycle(userId: number, watchlist: string[]) {
+async function runBotCycle(userId: number, watchlist: string[], sessionId: number) {
   try {
     logInfo('stock_bot_cycle_start', { userId, watchlist });
     await dbRun(
-      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning) VALUES (?, ?, ?)',
-      [userId, 'analysis_start', `开始分析 ${watchlist.join(', ')} ...`]
+      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+      [userId, 'analysis_start', `开始分析 ${watchlist.join(', ')} ...`, sessionId]
     );
 
     // Fetch current quotes
@@ -445,16 +445,16 @@ async function runBotCycle(userId: number, watchlist: string[]) {
       quotes = await fetchEastmoneyQuotes(watchlist);
     } catch (err) {
       await dbRun(
-        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning) VALUES (?, ?, ?)',
-        [userId, 'error', `获取行情失败: ${(err as Error).message}`]
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'error', `获取行情失败: ${(err as Error).message}`, sessionId]
       );
       return;
     }
 
     if (quotes.length === 0) {
       await dbRun(
-        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning) VALUES (?, ?, ?)',
-        [userId, 'error', '未能获取任何行情数据（市场可能已收盘）']
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'error', '未能获取任何行情数据（市场可能已收盘）', sessionId]
       );
       return;
     }
@@ -519,8 +519,8 @@ ${holdingsSummary}
       llmResponse = result.content;
     } catch (err) {
       await dbRun(
-        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning) VALUES (?, ?, ?)',
-        [userId, 'error', `LLM请求失败: ${(err as Error).message}`]
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'error', `LLM请求失败: ${(err as Error).message}`, sessionId]
       );
       return;
     }
@@ -534,16 +534,16 @@ ${holdingsSummary}
       parsed = JSON.parse(jsonMatch[0]);
     } catch (err) {
       await dbRun(
-        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, result) VALUES (?, ?, ?, ?)',
-        [userId, 'error', `解析LLM响应失败: ${(err as Error).message}`, llmResponse.slice(0, 500)]
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?)',
+        [userId, 'error', `解析LLM响应失败: ${(err as Error).message}`, llmResponse.slice(0, 500), sessionId]
       );
       return;
     }
 
     // Log the analysis
     await dbRun(
-      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning) VALUES (?, ?, ?)',
-      [userId, 'analysis', parsed.analysis || '']
+      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+      [userId, 'analysis', parsed.analysis || '', sessionId]
     );
 
     // Execute decisions
@@ -554,16 +554,16 @@ ${holdingsSummary}
       const quote = quotes.find(q => q.code === code);
       if (!quote || quote.currentPrice <= 0) {
         await dbRun(
-          'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result) VALUES (?, ?, ?, ?, ?)',
-          [userId, 'skip', code, reasoning || '', '价格为0，跳过']
+          'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+          [userId, 'skip', code, reasoning || '', '价格为0，跳过', sessionId]
         );
         continue;
       }
 
       if (action === 'hold' || !decision.quantity || decision.quantity <= 0) {
         await dbRun(
-          'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result) VALUES (?, ?, ?, ?, ?)',
-          [userId, 'hold', code, reasoning || '', `持有观望 ${quote.name}`]
+          'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+          [userId, 'hold', code, reasoning || '', `持有观望 ${quote.name}`, sessionId]
         );
         continue;
       }
@@ -581,8 +581,8 @@ ${holdingsSummary}
 
         if (quantity <= 0) {
           await dbRun(
-            'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result) VALUES (?, ?, ?, ?, ?)',
-            [userId, 'skip', code, reasoning || '', `可买数量为0（余额${currentBalance.toFixed(2)}，单价${quote.currentPrice.toFixed(2)}）`]
+            'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [userId, 'skip', code, reasoning || '', `可买数量为0（余额${currentBalance.toFixed(2)}，单价${quote.currentPrice.toFixed(2)}）`, sessionId]
           );
           continue;
         }
@@ -618,8 +618,8 @@ ${holdingsSummary}
         );
 
         await dbRun(
-          'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result) VALUES (?, ?, ?, ?, ?)',
-          [userId, 'buy', code, reasoning || '', `买入 ${quote.name} ${quantity}股 @¥${quote.currentPrice.toFixed(2)}，花费¥${total.toFixed(2)}`]
+          'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+          [userId, 'buy', code, reasoning || '', `买入 ${quote.name} ${quantity}股 @¥${quote.currentPrice.toFixed(2)}，花费¥${total.toFixed(2)}`, sessionId]
         );
       } else if (action === 'sell') {
         const holding = await dbGet(
@@ -628,8 +628,8 @@ ${holdingsSummary}
         );
         if (!holding || holding.quantity <= 0) {
           await dbRun(
-            'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result) VALUES (?, ?, ?, ?, ?)',
-            [userId, 'skip', code, reasoning || '', `无持仓，无法卖出`]
+            'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [userId, 'skip', code, reasoning || '', `无持仓，无法卖出`, sessionId]
           );
           continue;
         }
@@ -661,23 +661,23 @@ ${holdingsSummary}
 
         const pnl = (quote.currentPrice - holding.avg_cost) * quantity;
         await dbRun(
-          'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result) VALUES (?, ?, ?, ?, ?)',
-          [userId, 'sell', code, reasoning || '', `卖出 ${holding.stock_name} ${quantity}股 @¥${quote.currentPrice.toFixed(2)}，获得¥${total.toFixed(2)}，盈亏¥${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}`]
+          'INSERT INTO stock_trading_bot_logs (user_id, action, stock_code, reasoning, result, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+          [userId, 'sell', code, reasoning || '', `卖出 ${holding.stock_name} ${quantity}股 @¥${quote.currentPrice.toFixed(2)}，获得¥${total.toFixed(2)}，盈亏¥${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}`, sessionId]
         );
       }
     }
 
     await dbRun(
-      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning) VALUES (?, ?, ?)',
-      [userId, 'analysis_end', '本轮决策执行完毕']
+      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+      [userId, 'analysis_end', '本轮决策执行完毕', sessionId]
     );
     logInfo('stock_bot_cycle_end', { userId });
   } catch (error) {
     logError('stock_bot_cycle_error', error as Error, { userId });
     try {
       await dbRun(
-        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning) VALUES (?, ?, ?)',
-        [userId, 'error', `机器人运行出错: ${(error as Error).message}`]
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'error', `机器人运行出错: ${(error as Error).message}`, sessionId]
       );
     } catch (_) { /* ignore log error */ }
   }
@@ -689,10 +689,12 @@ router.get('/trading/bot/status', authMiddleware, tradingReadRateLimit, async (r
     const isRunning = runningBots.has(req.userId!);
     const watchlist = runningBots.get(req.userId!)?.watchlist ?? [];
     const logs = await dbAll(
-      'SELECT * FROM stock_trading_bot_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+      'SELECT id, user_id, action, stock_code, reasoning, result, created_at, session_id FROM stock_trading_bot_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 100',
       [req.userId]
     );
-    res.json({ isRunning, watchlist, logs });
+    const account = await dbGet('SELECT balance FROM stock_trading_accounts WHERE user_id = ?', [req.userId]);
+    const balance = account?.balance ?? null;
+    res.json({ isRunning, watchlist, logs, balance });
   } catch (error) {
     logError('stock_bot_status_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
@@ -721,17 +723,24 @@ router.post('/trading/bot/start', authMiddleware, tradingWriteRateLimit, async (
       return res.status(400).json({ error: '没有有效的股票代码' });
     }
 
+    // Compute next session_id for this user
+    const maxRow = await dbGet(
+      'SELECT MAX(session_id) as max_sid FROM stock_trading_bot_logs WHERE user_id = ?',
+      [userId]
+    );
+    const sessionId = (maxRow?.max_sid ?? 0) + 1;
+
     await dbRun(
-      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning) VALUES (?, ?, ?)',
-      [userId, 'start', `机器人启动，监控股票: ${validCodes.join(', ')}`]
+      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+      [userId, 'start', `机器人启动，监控股票: ${validCodes.join(', ')}`, sessionId]
     );
 
     // Run one cycle immediately, then schedule
-    runBotCycle(userId, validCodes);
-    const timer = setInterval(() => runBotCycle(userId, validCodes), BOT_INTERVAL_MS);
-    runningBots.set(userId, { timer, watchlist: validCodes });
+    runBotCycle(userId, validCodes, sessionId);
+    const timer = setInterval(() => runBotCycle(userId, validCodes, sessionId), BOT_INTERVAL_MS);
+    runningBots.set(userId, { timer, watchlist: validCodes, sessionId });
 
-    logInfo('stock_bot_started', { userId, watchlist: validCodes });
+    logInfo('stock_bot_started', { userId, watchlist: validCodes, sessionId });
     res.json({ message: '机器人已启动', watchlist: validCodes });
   } catch (error) {
     logError('stock_bot_start_error', error as Error);
@@ -752,8 +761,8 @@ router.post('/trading/bot/stop', authMiddleware, tradingWriteRateLimit, async (r
     runningBots.delete(userId);
 
     await dbRun(
-      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning) VALUES (?, ?, ?)',
-      [userId, 'stop', '机器人已停止']
+      'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+      [userId, 'stop', '机器人已停止', bot.sessionId]
     );
 
     logInfo('stock_bot_stopped', { userId });
@@ -767,14 +776,78 @@ router.post('/trading/bot/stop', authMiddleware, tradingWriteRateLimit, async (r
 // GET /api/stock-market/trading/bot/logs
 router.get('/trading/bot/logs', authMiddleware, tradingReadRateLimit, async (req: AuthRequest, res: Response) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
     const logs = await dbAll(
-      'SELECT * FROM stock_trading_bot_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
+      'SELECT id, user_id, action, stock_code, reasoning, result, created_at, session_id FROM stock_trading_bot_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
       [req.userId, limit]
     );
     res.json({ logs });
   } catch (error) {
     logError('stock_bot_logs_error', error as Error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// DELETE /api/stock-market/trading/bot/logs  (clear all bot logs for the user)
+router.delete('/trading/bot/logs', authMiddleware, tradingWriteRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    await dbRun('DELETE FROM stock_trading_bot_logs WHERE user_id = ?', [req.userId]);
+    logInfo('stock_bot_logs_cleared', { userId: req.userId });
+    res.json({ message: '日志已清空' });
+  } catch (error) {
+    logError('stock_bot_logs_clear_error', error as Error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// GET /api/stock-market/trading/stats  (P&L statistics per stock)
+router.get('/trading/stats', authMiddleware, tradingReadRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const rows = await dbAll(
+      `SELECT
+        stock_code,
+        stock_name,
+        SUM(CASE WHEN action='buy' THEN quantity ELSE 0 END) AS total_bought,
+        SUM(CASE WHEN action='sell' THEN quantity ELSE 0 END) AS total_sold,
+        SUM(CASE WHEN action='buy' THEN total_amount ELSE 0 END) AS total_buy_amount,
+        SUM(CASE WHEN action='sell' THEN total_amount ELSE 0 END) AS total_sell_amount,
+        SUM(CASE WHEN action='buy' THEN 1 ELSE 0 END) AS buy_count,
+        SUM(CASE WHEN action='sell' THEN 1 ELSE 0 END) AS sell_count,
+        COUNT(*) AS trade_count
+      FROM stock_trading_orders
+      WHERE user_id = ?
+      GROUP BY stock_code
+      ORDER BY trade_count DESC`,
+      [req.userId]
+    );
+
+    // Compute realized P&L per stock using average cost method
+    const stats = rows.map((row: any) => {
+      const remaining = row.total_bought - row.total_sold;
+      let realized_pnl = 0;
+      if (row.total_bought > 0) {
+        const avg_buy_price = row.total_buy_amount / row.total_bought;
+        realized_pnl = row.total_sell_amount - avg_buy_price * row.total_sold;
+      }
+      return {
+        stock_code: row.stock_code,
+        stock_name: row.stock_name,
+        total_bought: row.total_bought,
+        total_sold: row.total_sold,
+        remaining_qty: remaining,
+        total_buy_amount: row.total_buy_amount,
+        total_sell_amount: row.total_sell_amount,
+        buy_count: row.buy_count,
+        sell_count: row.sell_count,
+        trade_count: row.trade_count,
+        realized_pnl,
+      };
+    });
+
+    const total_realized_pnl = stats.reduce((sum: number, s: any) => sum + s.realized_pnl, 0);
+    res.json({ stats, total_realized_pnl });
+  } catch (error) {
+    logError('stock_trading_stats_error', error as Error);
     res.status(500).json({ error: (error as Error).message });
   }
 });
