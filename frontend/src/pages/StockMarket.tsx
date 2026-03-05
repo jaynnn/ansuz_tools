@@ -684,6 +684,8 @@ const StockMarketPage: React.FC = () => {
       case 'stop': return '⏹️';
       case 'error': return '❌';
       case 'skip': return '⏭️';
+      case 'signals': return '📡';
+      case 'news': return '📰';
       default: return '📝';
     }
   };

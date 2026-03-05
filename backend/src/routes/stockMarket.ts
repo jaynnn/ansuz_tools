@@ -760,7 +760,7 @@ interface BotState {
   monitorTimer: ReturnType<typeof setInterval>;
   watchlist: string[];
   sessionId: number;
-  priceHistory: BotPriceHistory;   // tracks last 3 prices per stock (for trend analysis)
+  priceHistory: BotPriceHistory;   // tracks last BOT_PRICE_HISTORY_SIZE prices per stock (for technical analysis)
   cycleCount: number;              // how many cycles have run
   lastSkipReason: string | null;  // tracks last skip reason to avoid log spam
   monitorPrices: { [code: string]: number }; // last snapshot prices for anomaly detection
@@ -775,7 +775,104 @@ const BOT_MONITOR_INTERVAL_MS = parseInt(process.env.STOCK_BOT_MONITOR_INTERVAL_
 const MIN_EVENT_CYCLE_GAP_MS = parseInt(process.env.STOCK_BOT_MIN_EVENT_GAP_MS || '') || 3 * 60 * 1000; // Min 3 min between event-triggered cycles
 const ANOMALY_TRIGGER_THRESHOLD = parseFloat(process.env.STOCK_BOT_ANOMALY_THRESHOLD || '') || 0.02; // 2% auto-trigger
 const ANOMALY_LLM_THRESHOLD = parseFloat(process.env.STOCK_BOT_ANOMALY_LLM_THRESHOLD || '') || 0.01; // 1% LLM-assisted check
-const BOT_PRICE_HISTORY_SIZE = 3; // remember last 3 cycle prices per stock
+// Keep 26 cycle prices per stock: enough for MA5/MA10/MA20, TD Sequential (13), and basic MACD (26).
+const BOT_PRICE_HISTORY_SIZE = 26;
+
+// ─── Technical Signal Computation ────────────────────────────────────────────
+
+/**
+ * Calculate Simple Moving Average for the last `period` values of an array.
+ * Returns null if there's insufficient data.
+ */
+function calcSMA(prices: number[], period: number): number | null {
+  if (prices.length < period) return null;
+  const slice = prices.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / period;
+}
+
+interface TechnicalSignals {
+  goldenCross: boolean;   // MA5 just crossed above MA10
+  deathCross: boolean;    // MA5 just crossed below MA10
+  tdBuyCount: number;     // TD Sequential buy setup count (consecutive closes < close[i-4]), max 9
+  tdSellCount: number;    // TD Sequential sell setup count (consecutive closes > close[i-4]), max 9
+  ma5: number | null;
+  ma10: number | null;
+  ma20: number | null;
+  descriptions: string[]; // Human-readable signal descriptions
+}
+
+/**
+ * Detect technical signals from a price history array (oldest → newest).
+ * Prices are intraday cycle snapshots (~10-min intervals).
+ */
+function detectTechnicalSignals(prices: number[]): TechnicalSignals {
+  const n = prices.length;
+  const ma5  = calcSMA(prices, 5);
+  const ma10 = calcSMA(prices, 10);
+  const ma20 = calcSMA(prices, 20);
+  const descriptions: string[] = [];
+
+  // ── MA5/MA10 golden cross / death cross ─────────────────────────────────
+  // Compute previous-cycle MAs directly from the n-1 prefix to avoid double slicing.
+  let goldenCross = false;
+  let deathCross  = false;
+  if (n >= 11 && ma5 !== null && ma10 !== null) {
+    // Previous period MA5: sum of prices[n-6..n-2] / 5
+    const prevMa5Sum  = prices.slice(n - 6, n - 1).reduce((a, b) => a + b, 0);
+    const prevMa10Sum = prices.slice(n - 11, n - 1).reduce((a, b) => a + b, 0);
+    const prevMa5  = prevMa5Sum  / 5;
+    const prevMa10 = prevMa10Sum / 10;
+    // Use strict inequalities on both sides to detect a true crossover
+    if (prevMa5 < prevMa10 && ma5 > ma10) {
+      goldenCross = true;
+      descriptions.push(`金叉：MA5(${ma5.toFixed(2)})上穿MA10(${ma10.toFixed(2)})`);
+    } else if (prevMa5 > prevMa10 && ma5 < ma10) {
+      deathCross = true;
+      descriptions.push(`死叉：MA5(${ma5.toFixed(2)})下穿MA10(${ma10.toFixed(2)})`);
+    }
+  }
+
+  // MA arrangement (shown only when no cross occurred this cycle)
+  if (!goldenCross && !deathCross) {
+    if (ma5 !== null && ma10 !== null) {
+      descriptions.push(ma5 > ma10
+        ? `MA5(${ma5.toFixed(2)})>MA10(${ma10.toFixed(2)})，多头排列`
+        : `MA5(${ma5.toFixed(2)})<MA10(${ma10.toFixed(2)})，空头排列`);
+    }
+  }
+
+  if (ma20 !== null && n > 0) {
+    const cur = prices[n - 1];
+    descriptions.push(cur > ma20
+      ? `现价(${cur.toFixed(2)})>MA20(${ma20.toFixed(2)})，站稳中期均线`
+      : `现价(${cur.toFixed(2)})<MA20(${ma20.toFixed(2)})，跌破中期均线`);
+  }
+
+  // ── TD Sequential setup (九转) ────────────────────────────────────────────
+  // Buy setup:  close[i] < close[i-4] for consecutive recent bars (max 9)
+  // Sell setup: close[i] > close[i-4] for consecutive recent bars (max 9)
+  // Forward pass with reset: count the length of the streak ending at the last bar.
+  let tdBuyCount  = 0;
+  let tdSellCount = 0;
+  if (n >= 5) {
+    for (let i = 4; i < n; i++) {
+      tdBuyCount  = prices[i] < prices[i - 4] ? Math.min(tdBuyCount  + 1, 9) : 0;
+      tdSellCount = prices[i] > prices[i - 4] ? Math.min(tdSellCount + 1, 9) : 0;
+    }
+  }
+
+  if (tdBuyCount === 9) {
+    descriptions.push(`九转买入完成(9/9)：连续9轮收价低于4轮前，可能见底反转`);
+  } else if (tdSellCount === 9) {
+    descriptions.push(`九转卖出完成(9/9)：连续9轮收价高于4轮前，可能见顶回落`);
+  } else if (tdBuyCount >= 5) {
+    descriptions.push(`九转买入进行中(${tdBuyCount}/9)：连续${tdBuyCount}轮收价低于4轮前`);
+  } else if (tdSellCount >= 5) {
+    descriptions.push(`九转卖出进行中(${tdSellCount}/9)：连续${tdSellCount}轮收价高于4轮前`);
+  }
+
+  return { goldenCross, deathCross, tdBuyCount, tdSellCount, ma5, ma10, ma20, descriptions };
+}
 // Number of previous user+assistant turn pairs to keep in LLM conversation history.
 // Each turn pair is roughly 800-1200 tokens; 5 pairs ≈ 4000-6000 extra tokens.
 const BOT_CONV_HISTORY_TURNS = parseInt(process.env.STOCK_BOT_CONV_HISTORY_TURNS || '') || 5;
@@ -878,7 +975,38 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
     // Fetch financial news (non-blocking – falls back gracefully)
     const newsItems = await fetchFinancialNews();
 
-    // Build market summary with quantitative metrics + multi-cycle trend
+    // Log the news items being analysed so they are visible in the bot log UI
+    if (newsItems.length > 0) {
+      const newsBrief = newsItems.map((n, i) => `${i + 1}. ${n.title}`).join('\n');
+      await dbRun(
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'news', `已获取${newsItems.length}条最新财经资讯（全妙/东方财富）供宏观判断参考：\n${newsBrief}`, sessionId]
+      );
+    }
+
+    // Compute technical signals for each stock and collect alerts for important events
+    const technicalSignalsByCode: { [code: string]: TechnicalSignals } = {};
+    const importantSignals: string[] = [];
+    for (const q of quotes) {
+      const hist = priceHistory[q.code] ?? [];
+      if (hist.length < 2) continue;
+      const signals = detectTechnicalSignals(hist);
+      technicalSignalsByCode[q.code] = signals;
+      // Collect major signals that deserve a dedicated log entry
+      if (signals.goldenCross) importantSignals.push(`${q.name}(${q.code}) 金叉：MA5上穿MA10`);
+      if (signals.deathCross)  importantSignals.push(`${q.name}(${q.code}) 死叉：MA5下穿MA10`);
+      if (signals.tdBuyCount  === 9) importantSignals.push(`${q.name}(${q.code}) 九转买入完成(9/9)`);
+      if (signals.tdSellCount === 9) importantSignals.push(`${q.name}(${q.code}) 九转卖出完成(9/9)`);
+    }
+    // Emit a dedicated signals log entry when there are noteworthy technical events
+    if (importantSignals.length > 0) {
+      await dbRun(
+        'INSERT INTO stock_trading_bot_logs (user_id, action, reasoning, session_id) VALUES (?, ?, ?, ?)',
+        [userId, 'signals', `第${cycleCount}轮技术信号预警：\n${importantSignals.join('\n')}`, sessionId]
+      );
+    }
+
+    // Build market summary with quantitative metrics + multi-cycle trend + technical signals
     const marketSummary = quotes.map(q => {
       const priceVsOpen = q.todayOpen > 0 ? ((q.currentPrice - q.todayOpen) / q.todayOpen * 100).toFixed(2) : 'N/A';
       const priceRange = q.todayHigh > 0 && q.todayLow > 0 && q.yesterdayClose > 0
@@ -896,6 +1024,13 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
         const trendPct = ((newest - oldest) / oldest * 100).toFixed(2);
         trendDesc = `近${hist.length}轮${Number(trendPct) >= 0 ? '上涨' : '下跌'}${Math.abs(Number(trendPct))}%`;
       }
+      // Technical signals
+      const signals = technicalSignalsByCode[q.code];
+      const signalsLine = signals
+        ? (signals.descriptions.length > 0
+            ? `  技术信号：${signals.descriptions.join('；')}`
+            : '')
+        : '  技术信号：数据不足（需至少5轮数据）';
       // Price limits
       const limitPct = getPriceLimitPct(q.code, q.name);
       const limitUpPrice = q.yesterdayClose > 0 ? parseFloat((q.yesterdayClose * (1 + limitPct / 100)).toFixed(2)) : null;
@@ -913,6 +1048,7 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
         `  最高=${q.todayHigh}  最低=${q.todayLow}`,
         `  成交额=${(q.amount / 1e8).toFixed(2)}亿  成交量=${(q.volume / 1e4).toFixed(1)}万手`,
         `  机器人观测趋势（${cycleCount}轮）：${trendDesc}`,
+        ...(signalsLine ? [signalsLine] : []),
       ].join('\n');
     }).join('\n\n');
 
@@ -946,7 +1082,7 @@ async function runBotCycle(userId: number, watchlist: string[], sessionId: numbe
 
 【可用资金】¥${account.balance.toFixed(2)}
 
-【当前行情（含量化指标）】
+【当前行情（含量化指标与技术信号）】
 ${marketSummary}
 
 【当前持仓】
@@ -965,6 +1101,7 @@ ${newsSummary}
 · 结合多轮历史价格，区分主趋势与短期噪音
 · 计算近N轮的价格变动幅度及方向，判断趋势强弱与持续性
 · 对比今开与昨收，评估当日缺口性质（跳空高开/低开）
+· 参考技术信号（金叉/死叉/九转等），辅助判断趋势转折点
 
 第二步 — 动量与量价验证（Momentum & Volume Confirmation）
 · 涨跌幅、日内振幅反映价格动能，振幅>3%视为高波动
