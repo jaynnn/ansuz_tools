@@ -2,7 +2,11 @@ import { Router, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import https from 'https';
 import http from 'http';
+import path from 'path';
+import fs from 'fs';
 import { NpcModel, NpcDoc, ImpressionFeature } from '../models/npcModel';
+import { SceneModel, SceneDoc } from '../models/sceneModel';
+import { PlayerCharacterModel } from '../models/playerCharacterModel';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { chatCompletion } from '../utils/llmService';
 import { sendToUser } from '../utils/wsManager';
@@ -63,6 +67,9 @@ function clamp(val: number, min: number, max: number) {
 
 // ─── Relationship stage thresholds and per-stage max raw delta ───────────────
 const INTROVERT_PERSONALITY_TRAITS = ['内敛', '内向', '腼腆', '安静', '孤僻', '神秘', '沉静'];
+
+/** Default intimacy value for a newly created NPC – used to detect "never interacted yet". */
+const DEFAULT_INTIMACY = 10;
 
 // Maximum single-turn relationship delta by intimacy stage
 function getStageMaxDelta(intimacy: number): number {
@@ -321,17 +328,111 @@ async function seedDefaultNpcs(): Promise<void> {
 
 // Register seed to run after MongoDB connects
 onMongoConnected(() => seedDefaultNpcs().catch(e => logError('mindsea_seed_error', e as Error)));
+onMongoConnected(() => seedDefaultScenes().catch(e => logError('mindsea_scene_seed_error', e as Error)));
+
+// ─── scene seeding ───────────────────────────────────────────────────────────
+
+async function seedDefaultScenes(): Promise<void> {
+  if (!isMongoConnected()) return;
+  const count = await SceneModel.countDocuments({ is_preset: true });
+  if (count > 0) return;
+
+  const configPath = path.resolve(__dirname, '../../config/scenes.json');
+  if (!fs.existsSync(configPath)) {
+    logWarn('mindsea_scene_config_missing', { configPath });
+    return;
+  }
+
+  const rawScenes: Array<{
+    id: string;
+    name: string;
+    description: string;
+    era: string;
+    setting: string;
+    theme: string;
+    color: number[];
+    background_hint: string;
+    language_constraints: string;
+    default_npcs?: Array<Record<string, unknown>>;
+  }> = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+
+  for (const s of rawScenes) {
+    const scene = await SceneModel.create({
+      _id: s.id,
+      name: s.name,
+      description: s.description,
+      era: s.era,
+      setting: s.setting,
+      theme: s.theme,
+      color: s.color,
+      background_hint: s.background_hint,
+      language_constraints: s.language_constraints,
+      is_preset: true,
+      owner_user_id: null,
+    });
+
+    // Seed default NPCs for this scene
+    if (Array.isArray(s.default_npcs)) {
+      for (const npcData of s.default_npcs) {
+        await NpcModel.create({
+          ...npcData,
+          scene_id: scene._id,
+          system_prompt: buildSceneNpcSystemPrompt(s, npcData as Record<string, unknown>),
+          impression_features: JSON.parse(JSON.stringify(DEFAULT_IMPRESSION_FEATURES)),
+          impression_reactions: [],
+          relationship: {
+            affinity: 10, trust: 10, respect: 10, fear: 0, familiarity: 5,
+            intimacy: 10, loyalty: 10, dependency: 0, authority_gap: 50,
+            interest_alignment: 50, utility: 20, debt: 0, competition: 0,
+            history: 0, promise: 0, betrayal: 0, secret_shared: 0,
+            moral_alignment: 50, faction_alignment: 50, cooperation: 50,
+            hostility: 10, information_share: 30, safety: 10, commitment: 10,
+          },
+          fatigue: {
+            energy: 100, attention: 100, patience: 100, social_battery: 100,
+            interest: 70, novelty: 80, trust_willingness: 60, emotional_load: 0,
+            cognitive_load: 0, time_budget: 100, curiosity: 70,
+            politeness_constraint: 80, annoyance: 0, safety_guard: 50,
+            goal_conflict: 0, conversation_momentum: 50, exit_urge: 0,
+            mental_energy: 100, dialogue_benefit: 0, fatigue_score: 0,
+          },
+          memories: [],
+          npc2npc_impression: [],
+          dialogue_history: [],
+          is_public: true,
+          owner_user_id: null,
+          background_image: null,
+        });
+      }
+    }
+  }
+  logInfo('mindsea_scenes_seeded', { count: rawScenes.length });
+}
+
+function buildSceneNpcSystemPrompt(
+  scene: { name: string; setting: string; language_constraints: string },
+  npc: Record<string, unknown>,
+): string {
+  const name = String(npc.name || '');
+  const occupation = String(npc.occupation || '');
+  const background = String(npc.background || '');
+  const personality = Array.isArray(npc.personality) ? (npc.personality as string[]).join('、') : '';
+  return `你是${name}，${occupation}，身处「${scene.name}」场景。${background ? `背景：${background}` : ''}${personality ? `你的性格：${personality}。` : ''}${scene.language_constraints}`;
+}
 
 // ─── routes ─────────────────────────────────────────────────────────────────
 
-// GET / - list all NPCs for user
+// GET / - list all NPCs for user (optionally filtered by scene)
 router.get('/', authMiddleware, rateLimit(60), async (req: AuthRequest, res: Response) => {
   if (!mongoGuard(res)) return;
   try {
     const userId = req.userId!;
-    const npcs = await NpcModel.find({
+    const { scene_id } = req.query;
+    const filter: Record<string, unknown> = {
       $or: [{ is_public: true }, { owner_user_id: userId }],
-    }).select('-dialogue_history').lean();
+    };
+    if (scene_id) filter.scene_id = scene_id;
+    const npcs = await NpcModel.find(filter).select('-dialogue_history').lean();
     return res.json({ npcs });
   } catch (err) {
     logError('mindsea_list_error', err as Error);
@@ -965,5 +1066,262 @@ router.post('/:id/generate-chat-background', authMiddleware, rateLimit(10), asyn
     return res.status(500).json({ error: '聊天背景生成失败' });
   }
 });
+
+// ─── scene routes ────────────────────────────────────────────────────────────
+
+// GET /scenes - list all scenes (preset + user's own)
+router.get('/scenes', authMiddleware, rateLimit(60), async (req: AuthRequest, res: Response) => {
+  if (!mongoGuard(res)) return;
+  try {
+    const userId = req.userId!;
+    const scenes = await SceneModel.find({
+      $or: [{ is_preset: true }, { owner_user_id: userId }],
+    }).lean();
+    return res.json({ scenes });
+  } catch (err) {
+    logError('mindsea_scenes_list_error', err as Error);
+    return res.status(500).json({ error: '获取场景列表失败' });
+  }
+});
+
+// GET /scenes/:sceneId - get single scene
+router.get('/scenes/:sceneId', authMiddleware, rateLimit(60), async (req: AuthRequest, res: Response) => {
+  if (!mongoGuard(res)) return;
+  try {
+    const userId = req.userId!;
+    const scene = await SceneModel.findOne({
+      _id: req.params.sceneId,
+      $or: [{ is_preset: true }, { owner_user_id: userId }],
+    }).lean();
+    if (!scene) return res.status(404).json({ error: '场景不存在' });
+    return res.json({ scene });
+  } catch (err) {
+    logError('mindsea_scene_get_error', err as Error);
+    return res.status(500).json({ error: '获取场景失败' });
+  }
+});
+
+// POST /scenes - create custom scene
+router.post('/scenes', authMiddleware, rateLimit(10), async (req: AuthRequest, res: Response) => {
+  if (!mongoGuard(res)) return;
+  try {
+    const userId = req.userId!;
+    const { name, description, era, setting, theme, color, background_hint, language_constraints } = req.body;
+    if (!name) return res.status(400).json({ error: '场景名称不能为空' });
+    const scene = await SceneModel.create({
+      name,
+      description: description || '',
+      era: era || '',
+      setting: setting || '',
+      theme: theme || '',
+      color: color || [100, 150, 200],
+      background_hint: background_hint || '',
+      language_constraints: language_constraints || '',
+      is_preset: false,
+      owner_user_id: userId,
+    });
+    return res.status(201).json({ scene });
+  } catch (err) {
+    logError('mindsea_scene_create_error', err as Error);
+    return res.status(500).json({ error: '创建场景失败' });
+  }
+});
+
+// PUT /scenes/:sceneId - update custom scene
+router.put('/scenes/:sceneId', authMiddleware, rateLimit(20), async (req: AuthRequest, res: Response) => {
+  if (!mongoGuard(res)) return;
+  try {
+    const userId = req.userId!;
+    const scene = await SceneModel.findOne({ _id: req.params.sceneId });
+    if (!scene) return res.status(404).json({ error: '场景不存在' });
+    if (scene.is_preset) return res.status(403).json({ error: '不能修改预设场景' });
+    if (scene.owner_user_id !== userId) return res.status(403).json({ error: '无权修改此场景' });
+    const disallowed = ['_id', 'is_preset', 'owner_user_id', 'created_at'];
+    for (const key of disallowed) delete req.body[key];
+    Object.assign(scene, req.body);
+    scene.updated_at = new Date();
+    await scene.save();
+    return res.json({ scene });
+  } catch (err) {
+    logError('mindsea_scene_update_error', err as Error);
+    return res.status(500).json({ error: '更新场景失败' });
+  }
+});
+
+// DELETE /scenes/:sceneId - delete custom scene
+router.delete('/scenes/:sceneId', authMiddleware, rateLimit(10), async (req: AuthRequest, res: Response) => {
+  if (!mongoGuard(res)) return;
+  try {
+    const userId = req.userId!;
+    const scene = await SceneModel.findOne({ _id: req.params.sceneId });
+    if (!scene) return res.status(404).json({ error: '场景不存在' });
+    if (scene.is_preset) return res.status(403).json({ error: '不能删除预设场景' });
+    if (scene.owner_user_id !== userId) return res.status(403).json({ error: '无权删除此场景' });
+    await SceneModel.deleteOne({ _id: req.params.sceneId });
+    // Also delete user NPCs in this scene
+    await NpcModel.deleteMany({ scene_id: req.params.sceneId, owner_user_id: userId });
+    return res.json({ success: true });
+  } catch (err) {
+    logError('mindsea_scene_delete_error', err as Error);
+    return res.status(500).json({ error: '删除场景失败' });
+  }
+});
+
+// ─── player character routes ─────────────────────────────────────────────────
+
+// GET /player-characters/:sceneId - get player's character in a scene
+router.get('/player-characters/:sceneId', authMiddleware, rateLimit(60), async (req: AuthRequest, res: Response) => {
+  if (!mongoGuard(res)) return;
+  try {
+    const userId = req.userId!;
+    const character = await PlayerCharacterModel.findOne({
+      scene_id: req.params.sceneId,
+      user_id: userId,
+    }).lean();
+    return res.json({ character });
+  } catch (err) {
+    logError('mindsea_player_char_get_error', err as Error);
+    return res.status(500).json({ error: '获取玩家角色失败' });
+  }
+});
+
+// POST /player-characters/:sceneId - create or update player's character in a scene
+router.post('/player-characters/:sceneId', authMiddleware, rateLimit(20), async (req: AuthRequest, res: Response) => {
+  if (!mongoGuard(res)) return;
+  try {
+    const userId = req.userId!;
+    const sceneId = req.params.sceneId;
+    const scene = await SceneModel.findOne({
+      _id: sceneId,
+      $or: [{ is_preset: true }, { owner_user_id: userId }],
+    }).lean();
+    if (!scene) return res.status(404).json({ error: '场景不存在' });
+
+    const { name, age, occupation, background, personality, goals, abilities, appearance } = req.body;
+    if (!name) return res.status(400).json({ error: '角色名称不能为空' });
+
+    const character = await PlayerCharacterModel.findOneAndUpdate(
+      { scene_id: sceneId, user_id: userId },
+      {
+        $set: {
+          name, age: age || '', occupation: occupation || '',
+          background: background || '', personality: personality || [],
+          goals: goals || '', abilities: abilities || '',
+          appearance: appearance || '', updated_at: new Date(),
+        },
+        $setOnInsert: { scene_id: sceneId, user_id: userId, created_at: new Date(), avatar: null },
+      },
+      { upsert: true, new: true },
+    ).lean();
+
+    // After creating / updating a player character, trigger LLM to update NPC initial impressions
+    // in the background (fire-and-forget)
+    generateNpcInitialImpressions(String(sceneId), userId, character as typeof character).catch(
+      (err) => logError('mindsea_npc_initial_impression_error', err as Error),
+    );
+
+    return res.status(201).json({ character });
+  } catch (err) {
+    logError('mindsea_player_char_create_error', err as Error);
+    return res.status(500).json({ error: '保存玩家角色失败' });
+  }
+});
+
+/**
+ * Fire-and-forget: ask LLM to generate initial NPC-to-player relationship values and
+ * impressions for all NPCs in the given scene that haven't been customised yet.
+ */
+async function generateNpcInitialImpressions(
+  sceneId: string,
+  userId: number,
+  playerChar: { name: string; occupation: string; background: string } | null,
+): Promise<void> {
+  if (!playerChar) return;
+
+  const scene = await SceneModel.findOne({ _id: sceneId }).lean();
+  if (!scene) return;
+
+  const npcs = await NpcModel.find({
+    scene_id: sceneId,
+    $or: [{ is_public: true }, { owner_user_id: userId }],
+  });
+
+  for (const npc of npcs) {
+    // Only generate if intimacy is at default (meaning no interaction yet)
+    if (npc.relationship.intimacy > DEFAULT_INTIMACY) continue;
+
+    const prompt = `你是一个角色扮演游戏的AI系统。
+
+场景：${scene.name}（${scene.era}，${scene.setting}）
+
+NPC资料：
+- 姓名：${npc.name}
+- 职业：${npc.occupation}
+- 背景：${npc.background}
+- 性格：${npc.personality?.join('、') || ''}
+
+玩家扮演的角色：
+- 姓名：${playerChar.name}
+- 职业：${playerChar.occupation}
+- 背景：${playerChar.background}
+
+请根据以上信息，判断${npc.name}对玩家角色的初始印象和关系值。以JSON格式输出：
+{
+  "relationship": {
+    "affinity": <0-100>,
+    "trust": <0-100>,
+    "respect": <0-100>,
+    "fear": <0-100>,
+    "familiarity": <0-100>,
+    "intimacy": <0-100>,
+    "loyalty": <0-100>,
+    "hostility": <0-100>,
+    "cooperation": <0-100>,
+    "faction_alignment": <0-100>,
+    "interest_alignment": <0-100>
+  },
+  "player_impression": {
+    "first_impression": "<简短描述>",
+    "current_impression": "<简短描述>",
+    "appearance": "<描述或空字符串>",
+    "personality_impression": "<描述或空字符串>",
+    "status_impression": "<描述或空字符串>",
+    "relation_impression": "<描述：朋友、同僚、对手等>"
+  }
+}`;
+
+    try {
+      const resp = await chatCompletion([
+        { role: 'system', content: '你是一个角色扮演游戏的AI后端，只输出JSON，不输出任何多余内容。' },
+        { role: 'user', content: prompt },
+      ]);
+
+      const jsonText = resp.content.replace(/```json\n?|\n?```/g, '').trim();
+      let parsed: { relationship?: Partial<NpcDoc['relationship']>; player_impression?: Partial<NpcDoc['player_impression']> };
+      try {
+        parsed = JSON.parse(jsonText) as typeof parsed;
+      } catch {
+        logWarn('mindsea_npc_initial_impression_parse_failed', {
+          npcId: npc._id,
+          sceneId,
+          raw: jsonText.substring(0, 200),
+        });
+        continue;
+      }
+
+      if (parsed.relationship) {
+        Object.assign(npc.relationship, parsed.relationship);
+      }
+      if (parsed.player_impression) {
+        Object.assign(npc.player_impression, parsed.player_impression);
+      }
+      npc.updated_at = new Date();
+      await npc.save();
+      logInfo('mindsea_npc_initial_impression_generated', { npcId: npc._id, sceneId });
+    } catch (err) {
+      logError('mindsea_npc_initial_impression_llm_error', err as Error);
+    }
+  }
+}
 
 export default router;

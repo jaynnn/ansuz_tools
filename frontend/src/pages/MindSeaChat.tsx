@@ -6,14 +6,32 @@ import { mindseaAPI } from '../api';
 import '../styles/MindSeaChat.css';
 
 interface NpcRelationship {
+  // core dimensions
+  affinity: number;
   trust: number;
-  intimacy: number;
   respect: number;
+  fear: number;
+  familiarity: number;
+  intimacy: number;
+  loyalty: number;
+  hostility: number;
+  cooperation: number;
+  // legacy
   safety: number;
   commitment: number;
 }
 
 interface FatigueState {
+  // new dimensions
+  energy: number;
+  attention: number;
+  patience: number;
+  social_battery: number;
+  interest: number;
+  curiosity: number;
+  annoyance: number;
+  exit_urge: number;
+  // legacy
   cognitive_load: number;
   mental_energy: number;
   dialogue_benefit: number;
@@ -302,11 +320,15 @@ const MindSeaChat: React.FC = () => {
   };
 
   const relMap: Array<{ key: keyof NpcRelationship; label: string }> = [
-    { key: 'trust', label: '信任' },
     { key: 'intimacy', label: '亲密' },
+    { key: 'affinity', label: '好感' },
+    { key: 'trust', label: '信任' },
     { key: 'respect', label: '尊重' },
-    { key: 'safety', label: '安全' },
-    { key: 'commitment', label: '承诺' },
+    { key: 'familiarity', label: '熟悉' },
+    { key: 'loyalty', label: '忠诚' },
+    { key: 'fear', label: '恐惧' },
+    { key: 'hostility', label: '敌意' },
+    { key: 'cooperation', label: '合作' },
   ];
 
   if (!npc) {

@@ -423,8 +423,9 @@ export const guitarPracticeAPI = {
 
 // MindSea APIs
 export const mindseaAPI = {
-  getNpcs: async () => {
-    const response = await api.get('/mindsea');
+  getNpcs: async (sceneId?: string) => {
+    const params = sceneId ? { scene_id: sceneId } : {};
+    const response = await api.get('/mindsea', { params });
     return response.data;
   },
   getNpc: async (id: string) => {
@@ -465,6 +466,36 @@ export const mindseaAPI = {
   },
   clearHistory: async (id: string) => {
     const response = await api.delete(`/mindsea/${id}/history`);
+    return response.data;
+  },
+  // Scene APIs
+  getScenes: async () => {
+    const response = await api.get('/mindsea/scenes');
+    return response.data;
+  },
+  getScene: async (sceneId: string) => {
+    const response = await api.get(`/mindsea/scenes/${sceneId}`);
+    return response.data;
+  },
+  createScene: async (data: Record<string, unknown>) => {
+    const response = await api.post('/mindsea/scenes', data);
+    return response.data;
+  },
+  updateScene: async (sceneId: string, data: Record<string, unknown>) => {
+    const response = await api.put(`/mindsea/scenes/${sceneId}`, data);
+    return response.data;
+  },
+  deleteScene: async (sceneId: string) => {
+    const response = await api.delete(`/mindsea/scenes/${sceneId}`);
+    return response.data;
+  },
+  // Player character APIs
+  getPlayerCharacter: async (sceneId: string) => {
+    const response = await api.get(`/mindsea/player-characters/${sceneId}`);
+    return response.data;
+  },
+  savePlayerCharacter: async (sceneId: string, data: Record<string, unknown>) => {
+    const response = await api.post(`/mindsea/player-characters/${sceneId}`, data);
     return response.data;
   },
 };
