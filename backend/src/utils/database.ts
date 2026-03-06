@@ -659,6 +659,20 @@ export const initDatabase = async () => {
       )
     `);
 
+    // Create notes table - Notion-like personal notes
+    await dbRun(`
+      CREATE TABLE IF NOT EXISTS notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL DEFAULT '无标题',
+        content TEXT NOT NULL DEFAULT '[]',
+        icon TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     // Run migrations to update existing tables if needed
     await migrateStockPredictionsTable();
     await migrateUsersTable();

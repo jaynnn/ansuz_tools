@@ -154,3 +154,21 @@ export interface ContactVotes {
   falseCount: number;
   myVote: 'true' | 'false' | null;
 }
+
+export type NoteBlockType =
+  | 'text'
+  | 'heading1'
+  | 'heading2'
+  | 'heading3'
+  | 'bulleted_list'
+  | 'numbered_list'
+  | 'quote'
+  | 'divider'
+  | 'todo';
+
+export interface NoteBlock {
+  id: string;
+  type: NoteBlockType;
+  content: string;
+  checked?: boolean;
+}
