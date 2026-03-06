@@ -71,6 +71,12 @@ const PREDEFINED_TOOLS = [
     url: '/medical-record',
     tags: ['健康', '医疗', 'AI', '记录'],
   },
+  {
+    name: '笔记',
+    description: '类Notion个人笔记工具，支持多种块类型（标题、列表、待办、引用等），实时自动保存，让你随时记录灵感与想法',
+    url: '/notes',
+    tags: ['笔记', '效率', '记录'],
+  },
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [], highlightToolName }) => {

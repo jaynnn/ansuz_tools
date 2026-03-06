@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Tool, UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, AddedUser, ContactVotes } from '../types/index';
+import type { Tool, UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, AddedUser, ContactVotes, NoteBlock } from '../types/index';
 import type { StockPrediction } from '../types/stock';
 
 // Use relative URL in production (when served by backend)
@@ -605,6 +605,34 @@ export const stockMarketAPI = {
 
   deleteDiaryEntry: async (id: number): Promise<{ message: string }> => {
     const response = await api.delete(`/stock-market/diary/${id}`);
+    return response.data;
+  },
+};
+
+// Notes APIs
+export const notesAPI = {
+  getAll: async (): Promise<{ notes: Array<{ id: number; user_id: number; title: string; icon: string | null; created_at: string; updated_at: string }> }> => {
+    const response = await api.get('/notes');
+    return response.data;
+  },
+
+  getById: async (id: number): Promise<{ note: { id: number; user_id: number; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+    const response = await api.get(`/notes/${id}`);
+    return response.data;
+  },
+
+  create: async (data: { title?: string; content?: NoteBlock[]; icon?: string }): Promise<{ note: { id: number; user_id: number; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+    const response = await api.post('/notes', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: { title?: string; content?: NoteBlock[]; icon?: string }): Promise<{ note: { id: number; user_id: number; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+    const response = await api.put(`/notes/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/notes/${id}`);
     return response.data;
   },
 };
