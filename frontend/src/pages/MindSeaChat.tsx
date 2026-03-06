@@ -60,6 +60,7 @@ interface NpcDoc {
   location: string;
   current_action: string;
   system_prompt: string;
+  scene_id: string | null;
   relationship: NpcRelationship;
   fatigue: FatigueState;
   impression_features: ImpressionFeature[];
@@ -144,6 +145,7 @@ const MindSeaChat: React.FC = () => {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [extraPromptText, setExtraPromptText] = useState('');
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [backPath, setBackPath] = useState('/mindsea');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -176,6 +178,8 @@ const MindSeaChat: React.FC = () => {
       setRelationship(n.relationship);
       setFatigue(n.fatigue);
       setImpressionFeatures(n.impression_features || []);
+      // Set back path based on scene_id
+      if (n.scene_id) setBackPath(`/mindsea/scene/${n.scene_id}`);
       // Load dialogue history into messages
       const history: ChatMessage[] = n.dialogue_history.map((h, i) => ({
         role: h.role === 'user' ? 'user' as const : 'npc' as const,
@@ -411,7 +415,7 @@ const MindSeaChat: React.FC = () => {
             >🗑</button>
             <button
               className="btn btn-icon"
-              onClick={() => navigate('/mindsea')}
+              onClick={() => navigate(backPath)}
               title="返回"
             >←</button>
           </div>
@@ -519,22 +523,38 @@ const MindSeaChat: React.FC = () => {
                   {/* Fatigue */}
                   {fatigue && (
                     <div className="status-section">
-                      <h4>疲劳状态</h4>
+                      <h4>对话疲劳</h4>
                       <div className="fatigue-grid">
                         <div className="fatigue-item">
-                          <div className="fatigue-item-label">认知负荷</div>
-                          <div className="fatigue-item-val">{fatigue.cognitive_load}</div>
+                          <div className="fatigue-item-label">精力</div>
+                          <div className="fatigue-item-val">{Math.round(fatigue.energy ?? fatigue.mental_energy)}</div>
                         </div>
                         <div className="fatigue-item">
-                          <div className="fatigue-item-label">精神能量</div>
-                          <div className="fatigue-item-val">{fatigue.mental_energy}</div>
+                          <div className="fatigue-item-label">注意力</div>
+                          <div className="fatigue-item-val">{Math.round(fatigue.attention ?? 100)}</div>
                         </div>
                         <div className="fatigue-item">
-                          <div className="fatigue-item-label">对话收益</div>
-                          <div className="fatigue-item-val">{fatigue.dialogue_benefit}</div>
+                          <div className="fatigue-item-label">耐心</div>
+                          <div className="fatigue-item-val">{Math.round(fatigue.patience ?? 100)}</div>
                         </div>
                         <div className="fatigue-item">
-                          <div className="fatigue-item-label">疲劳分数</div>
+                          <div className="fatigue-item-label">好奇心</div>
+                          <div className="fatigue-item-val">{Math.round(fatigue.curiosity ?? 70)}</div>
+                        </div>
+                        <div className="fatigue-item">
+                          <div className="fatigue-item-label">烦躁</div>
+                          <div className="fatigue-item-val" style={{ color: (fatigue.annoyance ?? 0) > 50 ? '#f97316' : 'inherit' }}>
+                            {Math.round(fatigue.annoyance ?? 0)}
+                          </div>
+                        </div>
+                        <div className="fatigue-item">
+                          <div className="fatigue-item-label">退出冲动</div>
+                          <div className="fatigue-item-val" style={{ color: (fatigue.exit_urge ?? 0) > 60 ? '#ef4444' : 'inherit' }}>
+                            {Math.round(fatigue.exit_urge ?? 0)}
+                          </div>
+                        </div>
+                        <div className="fatigue-item" style={{ gridColumn: '1 / -1' }}>
+                          <div className="fatigue-item-label">综合疲劳分</div>
                           <div className="fatigue-item-val" style={{ color: fatigue.fatigue_score > 70 ? '#ef4444' : 'inherit' }}>
                             {Math.round(fatigue.fatigue_score)}
                           </div>
@@ -625,7 +645,7 @@ const MindSeaChat: React.FC = () => {
             >🗑 清除记录</button>
             <button
               className="header-mobile-menu-item"
-              onClick={() => navigate('/mindsea')}
+              onClick={() => navigate(backPath)}
             >← 返回</button>
           </div>
         </div>

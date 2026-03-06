@@ -331,6 +331,24 @@
   margin-bottom: 4px;
 }
 
+/* NPC-to-NPC relation tags in hover card */
+.scene-npc-hover-relations {
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scene-npc-rel-tag {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.scene-npc-rel-tag span {
+  color: #c4b5fd;
+  font-weight: 500;
+}
+
 .btn-xs {
   padding: 3px 8px;
   font-size: 11px;

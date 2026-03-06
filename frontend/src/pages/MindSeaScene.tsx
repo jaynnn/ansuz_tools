@@ -42,6 +42,12 @@ interface NpcDoc {
   scene_id: string | null;
   background_image: string | null;
   dialogue_history: Array<{ role: string; content: string }>;
+  npc2npc_impression: Array<{
+    npc_id: string;
+    relationship: string;
+    summary: string;
+    key_impressions: string[];
+  }>;
 }
 
 interface PlayerCharacter {
@@ -263,36 +269,78 @@ const MindSeaScene: React.FC = () => {
 
   const orbits = buildOrbits(npcs);
 
-  // Connection lines: draw lines between NPCs that have relationship
-  // We draw simple SVG lines to show NPC-to-NPC connections
+  // Connection lines: draw lines between NPCs based on their mutual npc2npc_impression
+  // Classify relationship type by keyword to determine line style
+  const classifyRelationship = (rel: string): 'intimate' | 'friendly' | 'tense' | 'none' => {
+    const intimate = ['亲密', '深交', '挚友', '情', '爱', '伴侣', '知己'];
+    const friendly = ['盟友', '朋友', '同僚', '同伴', '师生', '搭档', '合作', '支持'];
+    const tense = ['仇', '敌', '对手', '竞争', '厌恶', '忌惮', '警惕'];
+    const relLower = rel.toLowerCase();
+    if (intimate.some(k => relLower.includes(k))) return 'intimate';
+    if (friendly.some(k => relLower.includes(k))) return 'friendly';
+    if (tense.some(k => relLower.includes(k))) return 'tense';
+    return 'none';
+  };
+
   const renderConnections = () => {
     if (npcs.length < 2) return null;
-    const center = { x: 50, y: 50 };
-    const R = 34; // radius in percentage units
+    const R = 34; // orbit radius in percentage units
 
     return (
       <svg className="scene-connections" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
         {orbits.map((o, i) => {
           const angle = (o.angle - 90) * (Math.PI / 180);
-          const x = center.x + R * Math.cos(angle);
-          const y = center.y + R * Math.sin(angle);
+          const x = 50 + R * Math.cos(angle);
+          const y = 50 + R * Math.sin(angle);
+
+          // Find if this NPC has an impression of another NPC
           return orbits.slice(i + 1).map((o2) => {
             const angle2 = (o2.angle - 90) * (Math.PI / 180);
-            const x2 = center.x + R * Math.cos(angle2);
-            const y2 = center.y + R * Math.sin(angle2);
-            const intimacy = o.npc.relationship?.intimacy ?? 0;
-            if (intimacy < 40) return null;
-            const opacity = Math.min((intimacy - 40) / 60, 1) * 0.6;
-            const strokeWidth = intimacy >= 80 ? 0.8 : 0.4;
+            const x2 = 50 + R * Math.cos(angle2);
+            const y2 = 50 + R * Math.sin(angle2);
+
+            // Check npc2npc from either direction
+            const impression = o.npc.npc2npc_impression?.find(
+              imp => imp.npc_id === o2.npc._id,
+            ) ?? o2.npc.npc2npc_impression?.find(
+              imp => imp.npc_id === o.npc._id,
+            );
+
+            if (!impression) return null;
+
+            const relType = classifyRelationship(impression.relationship);
+            if (relType === 'none') {
+              // Show faint line for any known relationship
+              return (
+                <line
+                  key={`${o.npc._id}-${o2.npc._id}`}
+                  x1={x} y1={y} x2={x2} y2={y2}
+                  stroke="rgba(255,255,255,0.15)"
+                  strokeWidth={0.3}
+                  strokeDasharray="3 3"
+                />
+              );
+            }
+            const color = relType === 'intimate'
+              ? 'rgba(236,72,153,0.9)'
+              : relType === 'tense'
+              ? 'rgba(239,68,68,0.7)'
+              : 'rgba(167,139,250,0.8)';
+            const strokeWidth = relType === 'intimate' ? 1.0 : 0.5;
+            const dash = relType === 'friendly' ? '4 2' : undefined;
+
             return (
               <line
                 key={`${o.npc._id}-${o2.npc._id}`}
                 x1={x} y1={y} x2={x2} y2={y2}
-                stroke="rgba(167,139,250,1)"
+                stroke={color}
                 strokeWidth={strokeWidth}
-                strokeOpacity={opacity}
-                strokeDasharray={intimacy >= 80 ? undefined : '2 2'}
-              />
+                strokeDasharray={dash}
+                aria-label={`${o.npc.name} 与 ${o2.npc.name}: ${impression.relationship}`}
+                role="img"
+              >
+                <title>{o.npc.name} ↔ {o2.npc.name}: {impression.relationship}</title>
+              </line>
             );
           });
         })}
@@ -435,6 +483,19 @@ const MindSeaScene: React.FC = () => {
                   <div className="scene-npc-hover-occ">{npc.occupation}</div>
                   {npc.current_action && (
                     <div className="scene-npc-hover-action">💬 {npc.current_action}</div>
+                  )}
+                  {/* NPC-to-NPC relationships */}
+                  {npc.npc2npc_impression?.length > 0 && (
+                    <div className="scene-npc-hover-relations">
+                      {npc.npc2npc_impression.slice(0, 3).map(imp => {
+                        const other = npcs.find(n => n._id === imp.npc_id);
+                        return other ? (
+                          <div key={imp.npc_id} className="scene-npc-rel-tag">
+                            {other.name}: <span>{imp.relationship}</span>
+                          </div>
+                        ) : null;
+                      })}
+                    </div>
                   )}
                   <div className="scene-npc-hover-btns">
                     <button
