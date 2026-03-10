@@ -377,8 +377,12 @@ const GoalTask: React.FC = () => {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('main');
   const [theme, setTheme] = useState<string>(() => {
-    const stored = localStorage.getItem('gt-theme');
-    return stored && THEME_OPTIONS.some(t => t.id === stored) ? stored : 'warm';
+    try {
+      const stored = localStorage.getItem('gt-theme');
+      return stored && THEME_OPTIONS.some(t => t.id === stored) ? stored : 'warm';
+    } catch {
+      return 'warm';
+    }
   });
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -446,7 +450,7 @@ const GoalTask: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('gt-theme', theme);
+    try { localStorage.setItem('gt-theme', theme); } catch { /* ignore */ }
   }, [theme]);
 
   const fetchGoals = async () => {
@@ -1330,6 +1334,7 @@ const GoalTask: React.FC = () => {
               style={{ background: t.color }}
               onClick={() => { setTheme(t.id); setShowThemePicker(false); }}
               title={t.label}
+              aria-label={t.label}
             />
           ))}
         </div>
