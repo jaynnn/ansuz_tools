@@ -287,6 +287,16 @@ xx/100
 ## 4. 具体建议`;
 };
 
+// ─── Theme options ────────────────────────────────────────────────────────────
+
+const THEME_OPTIONS = [
+  { id: 'warm', label: '暖沙', color: '#c8956c' },
+  { id: 'ocean', label: '海洋', color: '#3d8bcd' },
+  { id: 'lavender', label: '薰衣草', color: '#9575cd' },
+  { id: 'mint', label: '薄荷', color: '#44a88e' },
+  { id: 'rose', label: '玫瑰', color: '#d4748a' },
+];
+
 // ─── GoalItem component ───────────────────────────────────────────────────────
 
 interface GoalItemProps {
@@ -366,6 +376,15 @@ const GoalItem: React.FC<GoalItemProps> = ({ goal, onDelete, onHistory, onClick 
 const GoalTask: React.FC = () => {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('main');
+  const [theme, setTheme] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('gt-theme');
+      return stored && THEME_OPTIONS.some(t => t.id === stored) ? stored : 'warm';
+    } catch {
+      return 'warm';
+    }
+  });
+  const [showThemePicker, setShowThemePicker] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -429,6 +448,10 @@ const GoalTask: React.FC = () => {
     fetchGoals();
     setPresetGoals(getRandomPresets(4));
   }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem('gt-theme', theme); } catch { /* ignore */ }
+  }, [theme]);
 
   const fetchGoals = async () => {
     try {
@@ -779,7 +802,7 @@ const GoalTask: React.FC = () => {
   // History view
   if (viewMode === 'history') {
     return (
-      <div className="gt-page">
+      <div className="gt-page" data-gt-theme={theme}>
         <div className="gt-nav-bar">
           <button className="gt-back-btn" onClick={() => setViewMode('main')}>‹ 返回</button>
           <h1 className="gt-nav-title">任务历史</h1>
@@ -822,7 +845,7 @@ const GoalTask: React.FC = () => {
   // Add Goal view – step 1
   if (viewMode === 'add-goal') {
     return (
-      <div className="gt-page">
+      <div className="gt-page" data-gt-theme={theme}>
         <div className="gt-nav-bar">
           <button className="gt-back-btn" onClick={() => setViewMode('main')}>‹ 返回</button>
           <h1 className="gt-nav-title">添加目标</h1>
@@ -873,7 +896,7 @@ const GoalTask: React.FC = () => {
   // Add Goal view – step 2 (level selection)
   if (viewMode === 'add-level') {
     return (
-      <div className="gt-page">
+      <div className="gt-page" data-gt-theme={theme}>
         <div className="gt-nav-bar">
           <button className="gt-back-btn" onClick={() => setViewMode('add-goal')}>‹ 返回</button>
           <h1 className="gt-nav-title">当前水平</h1>
@@ -921,7 +944,7 @@ const GoalTask: React.FC = () => {
   if (viewMode === 'task-details') {
     const allDone = trainingItems.length > 0 && trainingItems.every(t => t.is_completed);
     return (
-      <div className="gt-page">
+      <div className="gt-page" data-gt-theme={theme}>
         <div className="gt-nav-bar">
           <button className="gt-back-btn" onClick={() => { setViewMode('main'); fetchGoals(); }}>‹ 返回</button>
           <h1 className="gt-nav-title">训练细则</h1>
@@ -1032,7 +1055,7 @@ const GoalTask: React.FC = () => {
         ? !isMathAnswered
         : !practiceAnswer.trim();
     return (
-      <div className="gt-page gt-practice-page">
+      <div className="gt-page gt-practice-page" data-gt-theme={theme}>
         <div className="gt-nav-bar">
           <button className="gt-back-btn" onClick={() => setViewMode('task-details')}>‹ 返回</button>
           <h1 className="gt-nav-title">{typeName}练习</h1>
@@ -1153,7 +1176,7 @@ const GoalTask: React.FC = () => {
 
   // Training Chat view
   if (viewMode === 'training-chat') {    return (
-      <div className="gt-page gt-chat-page">
+      <div className="gt-page gt-chat-page" data-gt-theme={theme}>
         <div className="gt-nav-bar">
           <button className="gt-back-btn" onClick={() => setViewMode('task-details')}>‹ 返回</button>
           <h1 className="gt-nav-title">训练详情</h1>
@@ -1197,7 +1220,7 @@ const GoalTask: React.FC = () => {
 
   // Main view
   return (
-    <div className="gt-page gt-main">
+    <div className="gt-page gt-main" data-gt-theme={theme}>
       <div className="gt-nav-bar">
           <button className="gt-back-btn" onClick={() => navigate('/')}>‹ 返回</button>
         </div>
@@ -1291,6 +1314,29 @@ const GoalTask: React.FC = () => {
               取出任务纸
             </button>
           )}
+        </div>
+      )}
+
+      {/* Theme picker */}
+      <button
+        className="gt-theme-toggle"
+        onClick={() => setShowThemePicker(!showThemePicker)}
+        aria-label="切换主题"
+      >
+        🎨
+      </button>
+      {showThemePicker && (
+        <div className="gt-theme-picker">
+          {THEME_OPTIONS.map(t => (
+            <button
+              key={t.id}
+              className={`gt-theme-dot ${theme === t.id ? 'active' : ''}`}
+              style={{ background: t.color }}
+              onClick={() => { setTheme(t.id); setShowThemePicker(false); }}
+              title={t.label}
+              aria-label={t.label}
+            />
+          ))}
         </div>
       )}
     </div>
