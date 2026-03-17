@@ -41,6 +41,20 @@ const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
   next();
 };
 
+// Rate limiter for public endpoints (uses IP only)
+const publicRateLimit = (req: Request, res: Response, next: NextFunction) => {
+  const key = `pub:${req.ip}`;
+  const now = Date.now();
+  const timestamps = (rateLimitMap.get(key) || []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    logWarn('notes_public_rate_limit_exceeded', { key });
+    return res.status(429).json({ error: '操作太频繁，请稍后再试。' });
+  }
+  timestamps.push(now);
+  rateLimitMap.set(key, timestamps);
+  next();
+};
+
 // ─── Image upload setup ──────────────────────────────────────────────────────
 
 const UPLOADS_DIR = path.join(__dirname, '../../uploads/notes');
@@ -72,7 +86,7 @@ const upload = multer({
 // ─── Public endpoints (no auth required) ─────────────────────────────────────
 
 // GET /api/notes/public/:shareId  –  get a published note by share ID
-router.get('/public/:shareId', async (req: Request, res: Response) => {
+router.get('/public/:shareId', publicRateLimit, async (req: Request, res: Response) => {
   try {
     const note = await dbGet(
       'SELECT * FROM notes WHERE share_id = ? AND is_published = 1',
@@ -88,7 +102,7 @@ router.get('/public/:shareId', async (req: Request, res: Response) => {
 });
 
 // GET /api/notes/public/:shareId/tree  –  get published note + subtree for sidebar
-router.get('/public/:shareId/tree', async (req: Request, res: Response) => {
+router.get('/public/:shareId/tree', publicRateLimit, async (req: Request, res: Response) => {
   try {
     const root = await dbGet(
       'SELECT id, user_id, parent_id, title, icon, share_id, is_published, created_at, updated_at FROM notes WHERE share_id = ? AND is_published = 1',
@@ -120,7 +134,7 @@ router.get('/public/:shareId/tree', async (req: Request, res: Response) => {
 });
 
 // GET /api/notes/public/:shareId/note/:noteId  –  get a specific note within a published tree
-router.get('/public/:shareId/note/:noteId', async (req: Request, res: Response) => {
+router.get('/public/:shareId/note/:noteId', publicRateLimit, async (req: Request, res: Response) => {
   try {
     // First verify the shareId root is published
     const root = await dbGet(
@@ -289,7 +303,7 @@ router.post('/:id/publish', authMiddleware, rateLimit, async (req: AuthRequest, 
 });
 
 // POST /api/notes/upload-image  –  upload an image for notes
-router.post('/upload-image', authMiddleware, upload.single('image'), async (req: AuthRequest, res: Response) => {
+router.post('/upload-image', authMiddleware, rateLimit, upload.single('image'), async (req: AuthRequest, res: Response) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No image file provided' });
     const url = `/api/notes/uploads/${req.file.filename}`;
@@ -302,7 +316,7 @@ router.post('/upload-image', authMiddleware, upload.single('image'), async (req:
 });
 
 // GET /api/notes/uploads/:filename  –  serve uploaded images
-router.get('/uploads/:filename', (req: Request, res: Response) => {
+router.get('/uploads/:filename', publicRateLimit, (req: Request, res: Response) => {
   const filename = path.basename(req.params.filename); // strip directory components
   const filePath = path.resolve(UPLOADS_DIR, filename);
   // Ensure resolved path is within UPLOADS_DIR
