@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Tool, UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, AddedUser, ContactVotes, NoteBlock } from '../types/index';
+import type { Tool, UserImpression, MatchedUser, UserProfile, Notification, PrivateInfo, AddedUser, ContactVotes, NoteBlock, WhiteboardDocSummary, WhiteboardDoc, WhiteboardElement, WhiteboardAppState } from '../types/index';
 import type { StockPrediction } from '../types/stock';
 
 // Use relative URL in production (when served by backend)
@@ -663,6 +663,42 @@ export const notesAPI = {
 
   getPublicTreeNote: async (shareId: string, noteId: number): Promise<{ note: { id: number; user_id: number; parent_id: number | null; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
     const response = await api.get(`/notes/public/${shareId}/note/${noteId}`);
+    return response.data;
+  },
+};
+
+// Whiteboard APIs
+export const whiteboardAPI = {
+  listDocuments: async (): Promise<{ documents: WhiteboardDocSummary[] }> => {
+    const response = await api.get('/whiteboard/documents');
+    return response.data;
+  },
+
+  createDocument: async (name?: string): Promise<{ document: { docId: string; name: string; version: number } }> => {
+    const response = await api.post('/whiteboard/documents', { name });
+    return response.data;
+  },
+
+  getDocument: async (docId: string): Promise<{ document: WhiteboardDoc }> => {
+    const response = await api.get(`/whiteboard/documents/${docId}`);
+    return response.data;
+  },
+
+  updateDocument: async (
+    docId: string,
+    data: {
+      elements?: WhiteboardElement[];
+      appState?: WhiteboardAppState;
+      name?: string;
+      version: number;
+    },
+  ): Promise<{ document: { docId: string; name: string; version: number; updatedAt: string } }> => {
+    const response = await api.put(`/whiteboard/documents/${docId}`, data);
+    return response.data;
+  },
+
+  deleteDocument: async (docId: string): Promise<{ success: boolean }> => {
+    const response = await api.delete(`/whiteboard/documents/${docId}`);
     return response.data;
   },
 };

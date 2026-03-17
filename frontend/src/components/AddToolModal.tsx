@@ -77,6 +77,12 @@ const PREDEFINED_TOOLS = [
     url: '/notes',
     tags: ['笔记', '效率', '记录'],
   },
+  {
+    name: '白板绘图',
+    description: '类Excalidraw在线白板，支持矩形、椭圆、箭头、自由画笔、文字等图形绘制，支持撤销重做、缩放平移、导出PNG',
+    url: '/whiteboard',
+    tags: ['绘图', '白板', '效率', '设计'],
+  },
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [], highlightToolName }) => {
