@@ -318,6 +318,7 @@ const BlockItem: React.FC<BlockProps> = ({
     const cols = block.columns || [[], []];
     return (
       <div className="notes-block-wrapper" tabIndex={0} onKeyDown={(e) => {
+        // Only delete when the wrapper itself is focused, not its nested textareas
         if ((e.key === 'Backspace' || e.key === 'Delete') && e.target === e.currentTarget) { e.preventDefault(); onBackspace(block.id, true); }
       }} onFocus={() => onFocus(block.id)}>
         <div className="notes-block-content">
@@ -867,7 +868,9 @@ const Notes: React.FC = () => {
     return count;
   };
 
-  // Type menu keyboard navigation
+  // Type menu keyboard navigation – useLayoutEffect ensures the handler is
+  // attached synchronously after DOM updates (before paint) so there is no gap
+  // where arrow/enter keystrokes could be lost right after the menu opens.
   useLayoutEffect(() => {
     if (!typeMenuBlockId) return;
     const handler = (e: KeyboardEvent) => {
