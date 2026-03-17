@@ -317,7 +317,7 @@ router.post('/upload-image', authMiddleware, rateLimit, upload.single('image'), 
 
 // GET /api/notes/uploads/:filename  –  serve uploaded images
 router.get('/uploads/:filename', publicRateLimit, (req: Request, res: Response) => {
-  const filename = path.basename(req.params.filename); // strip directory components
+  const filename = path.basename(String(req.params.filename)); // strip directory components
   const filePath = path.resolve(UPLOADS_DIR, filename);
   // Ensure resolved path is within UPLOADS_DIR
   if (!filePath.startsWith(path.resolve(UPLOADS_DIR) + path.sep) && filePath !== path.resolve(UPLOADS_DIR, filename)) {
@@ -344,7 +344,7 @@ router.delete('/:id', authMiddleware, rateLimit, async (req: AuthRequest, res: R
       }
       await dbRun('DELETE FROM notes WHERE id = ?', [parentId]);
     };
-    await deleteDescendants(req.params.id);
+    await deleteDescendants(String(req.params.id));
 
     logInfo('note_deleted', { userId: req.userId, id: req.params.id });
     res.json({ message: 'Note deleted' });
