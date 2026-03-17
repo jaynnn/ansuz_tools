@@ -1,16 +1,44 @@
-import { Router, Response } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { WhiteboardModel } from '../models/whiteboardModel';
 import { sanitizeString } from '../utils/sanitize';
+import { logWarn } from '../utils/logger';
 
 const router = Router();
 
 // Max elements per document to stay well within MongoDB's 16 MB limit
 const MAX_ELEMENTS = 5000;
 
+// Rate limiter: 60 requests per minute per user
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 60;
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, timestamps] of rateLimitMap) {
+    const valid = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+    if (valid.length === 0) rateLimitMap.delete(key);
+    else rateLimitMap.set(key, valid);
+  }
+}, 5 * 60 * 1000).unref();
+
+const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const key = String(req.userId || req.ip);
+  const now = Date.now();
+  const timestamps = (rateLimitMap.get(key) || []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    logWarn('whiteboard_rate_limit_exceeded', { key });
+    return res.status(429).json({ error: '操作太频繁，请稍后再试。' });
+  }
+  timestamps.push(now);
+  rateLimitMap.set(key, timestamps);
+  next();
+};
+
 // ─── List all whiteboard documents for the current user ─────────────────────
-router.get('/documents', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/documents', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const docs = await WhiteboardModel.find(
       { userId: req.userId },
@@ -24,7 +52,7 @@ router.get('/documents', authMiddleware, async (req: AuthRequest, res: Response)
 });
 
 // ─── Create a new whiteboard document ───────────────────────────────────────
-router.post('/documents', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/documents', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const name = sanitizeString(req.body.name || '未命名白板', 200);
     const docId = uuidv4();
@@ -46,7 +74,7 @@ router.post('/documents', authMiddleware, async (req: AuthRequest, res: Response
 });
 
 // ─── Get a single whiteboard document ───────────────────────────────────────
-router.get('/documents/:docId', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/documents/:docId', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const doc = await WhiteboardModel.findOne({
       docId: req.params.docId,
@@ -65,7 +93,7 @@ router.get('/documents/:docId', authMiddleware, async (req: AuthRequest, res: Re
 });
 
 // ─── Update a whiteboard document (optimistic concurrency via version) ──────
-router.put('/documents/:docId', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.put('/documents/:docId', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const { elements, appState, name, version } = req.body;
 
@@ -119,7 +147,7 @@ router.put('/documents/:docId', authMiddleware, async (req: AuthRequest, res: Re
 });
 
 // ─── Delete a whiteboard document ───────────────────────────────────────────
-router.delete('/documents/:docId', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.delete('/documents/:docId', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const result = await WhiteboardModel.deleteOne({
       docId: req.params.docId,
