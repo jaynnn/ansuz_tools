@@ -595,7 +595,9 @@ const Whiteboard: React.FC = () => {
 
   /* ─── Pointer handlers ─────────────────────────────────────────────── */
   const getWorldPos = useCallback((e: React.PointerEvent): [number, number] => {
-    const rect = canvasRef.current!.getBoundingClientRect();
+    const canvas = canvasRef.current;
+    if (!canvas) return [0, 0];
+    const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     return screenToWorld(sx, sy, appStateRef.current.zoom, appStateRef.current.offsetX, appStateRef.current.offsetY);
@@ -712,7 +714,8 @@ const Whiteboard: React.FC = () => {
     if (mode === 'idle') return;
 
     if (mode === 'panning') {
-      const ps = panStartRef.current!;
+      const ps = panStartRef.current;
+      if (!ps) return;
       const dx = e.clientX - ps.sx;
       const dy = e.clientY - ps.sy;
       const newState = { ...appStateRef.current, offsetX: ps.origOffsetX + dx, offsetY: ps.origOffsetY + dy };
@@ -740,7 +743,8 @@ const Whiteboard: React.FC = () => {
     }
 
     if (mode === 'dragging') {
-      const ds = dragStartRef.current!;
+      const ds = dragStartRef.current;
+      if (!ds) return;
       const dx = wx - ds.wx;
       const dy = wy - ds.wy;
       const ids = selectedIdsRef.current;
@@ -757,7 +761,8 @@ const Whiteboard: React.FC = () => {
     }
 
     if (mode === 'resizing') {
-      const rs = resizeRef.current!;
+      const rs = resizeRef.current;
+      if (!rs) return;
       const { handle, origEl, startWx, startWy } = rs;
       const dx = wx - startWx;
       const dy = wy - startWy;
@@ -844,7 +849,9 @@ const Whiteboard: React.FC = () => {
   /* ─── Zoom via scroll ──────────────────────────────────────────────── */
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    const rect = canvasRef.current!.getBoundingClientRect();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const factor = e.deltaY < 0 ? 1.1 : 0.9;

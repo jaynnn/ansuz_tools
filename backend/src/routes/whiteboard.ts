@@ -78,6 +78,17 @@ router.put('/documents/:docId', authMiddleware, async (req: AuthRequest, res: Re
       return res.status(400).json({ error: `Too many elements (max ${MAX_ELEMENTS})` });
     }
 
+    // Validate appState if provided
+    if (appState !== undefined) {
+      if (typeof appState !== 'object' || appState === null ||
+          typeof appState.zoom !== 'number' || typeof appState.offsetX !== 'number' || typeof appState.offsetY !== 'number') {
+        return res.status(400).json({ error: 'Invalid appState: must contain numeric zoom, offsetX, offsetY' });
+      }
+      if (appState.zoom < 0.1 || appState.zoom > 10) {
+        return res.status(400).json({ error: 'appState.zoom must be between 0.1 and 10' });
+      }
+    }
+
     const updateFields: Record<string, unknown> = { updatedAt: new Date() };
     if (elements !== undefined) updateFields.elements = elements;
     if (appState !== undefined) updateFields.appState = appState;
