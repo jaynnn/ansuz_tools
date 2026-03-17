@@ -1,0 +1,304 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Whiteboard – Styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Document list ─────────────────────────────────────────────────────── */
+.wb-list-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.wb-list-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.wb-list-header h1 {
+  flex: 1;
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.wb-back-btn {
+  background: none;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-color, #333);
+}
+.wb-back-btn:hover {
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.wb-create-btn {
+  background: var(--primary-color, #4a90d9);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.wb-create-btn:hover {
+  opacity: 0.9;
+}
+
+.wb-loading,
+.wb-empty {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-secondary, #888);
+}
+
+.wb-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.wb-doc-card {
+  position: relative;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 10px;
+  padding: 1.2rem;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+  background: var(--card-bg, #fff);
+}
+.wb-doc-card:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.wb-doc-card-name {
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-doc-card-time {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #888);
+}
+
+.wb-doc-card-delete {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: var(--danger-color, #e74c3c);
+  cursor: pointer;
+  font-size: 0.8rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.wb-doc-card:hover .wb-doc-card-delete {
+  opacity: 1;
+}
+
+/* ─── Editor page ───────────────────────────────────────────────────────── */
+.wb-editor-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-color, #fafafa);
+}
+
+/* ─── Top bar ───────────────────────────────────────────────────────────── */
+.wb-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.8rem;
+  border-bottom: 1px solid var(--border-color, #ddd);
+  background: var(--card-bg, #fff);
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.wb-doc-name-input {
+  flex: 1;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  font-size: 1rem;
+  background: transparent;
+  color: var(--text-color, #333);
+  min-width: 0;
+}
+.wb-doc-name-input:hover,
+.wb-doc-name-input:focus {
+  border-color: var(--border-color, #ccc);
+  outline: none;
+}
+
+.wb-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.wb-topbar-actions button {
+  background: none;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--text-color, #333);
+}
+.wb-topbar-actions button:hover {
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.wb-zoom-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #888);
+  min-width: 3.5rem;
+  text-align: center;
+}
+
+/* ─── Toolbar ───────────────────────────────────────────────────────────── */
+.wb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.8rem;
+  border-bottom: 1px solid var(--border-color, #ddd);
+  background: var(--card-bg, #fff);
+  z-index: 10;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.wb-tool-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.3rem 0.65rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-color, #333);
+  transition: background 0.15s, border-color 0.15s;
+}
+.wb-tool-btn:hover {
+  background: var(--hover-bg, #f0f0f0);
+}
+.wb-tool-btn.active {
+  background: var(--primary-color, #4a90d9);
+  color: #fff;
+  border-color: var(--primary-color, #4a90d9);
+}
+
+.wb-tool-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color, #ddd);
+  margin: 0 0.3rem;
+}
+
+.wb-color-label,
+.wb-stroke-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #666);
+}
+
+.wb-color-label input[type='color'] {
+  width: 24px;
+  height: 24px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.wb-clear-bg {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: var(--text-secondary, #888);
+  padding: 0 2px;
+}
+
+.wb-stroke-label input[type='range'] {
+  width: 60px;
+}
+.wb-stroke-label span {
+  min-width: 2.2rem;
+  text-align: right;
+}
+
+/* ─── Canvas container ──────────────────────────────────────────────────── */
+.wb-canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.wb-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* ─── Inline text input ─────────────────────────────────────────────────── */
+.wb-text-input {
+  position: absolute;
+  border: 2px solid var(--primary-color, #4a90d9);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 2px 4px;
+  outline: none;
+  z-index: 20;
+  box-sizing: border-box;
+  font-family: sans-serif;
+}
+
+/* ─── Dark theme support ────────────────────────────────────────────────── */
+[data-theme='dark'] .wb-editor-page {
+  background: #1a1a2e;
+}
+[data-theme='dark'] .wb-topbar,
+[data-theme='dark'] .wb-toolbar {
+  background: #1e1e3a;
+  border-color: #333;
+}
+[data-theme='dark'] .wb-doc-name-input {
+  color: #eee;
+}
+[data-theme='dark'] .wb-tool-btn {
+  color: #ccc;
+}
+[data-theme='dark'] .wb-tool-btn:hover {
+  background: #2a2a4a;
+}
+[data-theme='dark'] .wb-canvas {
+  background: #16213e;
+}
+[data-theme='dark'] .wb-doc-card {
+  background: #1e1e3a;
+  border-color: #333;
+  color: #eee;
+}
+[data-theme='dark'] .wb-back-btn,
+[data-theme='dark'] .wb-topbar-actions button {
+  color: #ccc;
+  border-color: #444;
+}
+[data-theme='dark'] .wb-back-btn:hover,
+[data-theme='dark'] .wb-topbar-actions button:hover {
+  background: #2a2a4a;
+}

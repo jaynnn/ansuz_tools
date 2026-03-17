@@ -177,3 +177,46 @@ export interface NoteBlock {
   caption?: string;
   columns?: NoteBlock[][];
 }
+
+// ─── Whiteboard types ───────────────────────────────────────────────────────
+
+export type WhiteboardElementType = 'rectangle' | 'ellipse' | 'arrow' | 'free_draw' | 'text';
+
+export interface WhiteboardElement {
+  id: string;
+  type: WhiteboardElementType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  angle: number;
+  strokeColor: string;
+  backgroundColor: string;
+  strokeWidth: number;
+  points?: number[][];
+  text?: string;
+}
+
+export interface WhiteboardAppState {
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export interface WhiteboardDocSummary {
+  docId: string;
+  name: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WhiteboardDoc {
+  docId: string;
+  name: string;
+  elements: WhiteboardElement[];
+  appState: WhiteboardAppState;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -23,6 +23,7 @@ import medicalRecordRoutes from './routes/medicalRecord';
 import mindseaRoutes from './routes/mindsea';
 import stockMarketRoutes from './routes/stockMarket';
 import notesRoutes from './routes/notes';
+import whiteboardRoutes from './routes/whiteboard';
 
 // Load environment variables
 dotenv.config();
@@ -95,6 +96,7 @@ app.use('/api/medical-record', medicalRecordRoutes);
 app.use('/api/mindsea', mindseaRoutes);
 app.use('/api/stock-market', stockMarketRoutes);
 app.use('/api/notes', notesRoutes);
+app.use('/api/whiteboard', whiteboardRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
