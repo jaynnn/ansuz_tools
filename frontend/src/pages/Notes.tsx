@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notesAPI, llmAPI } from '../api';
 import type { NoteBlock, NoteBlockType } from '../types/index';
@@ -215,7 +215,9 @@ const BlockItem: React.FC<BlockProps> = ({
 
   if (block.type === 'divider') {
     return (
-      <div className="notes-block-wrapper">
+      <div className="notes-block-wrapper" tabIndex={0} onKeyDown={(e) => {
+        if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); onBackspace(block.id, true); }
+      }} onFocus={() => onFocus(block.id)}>
         <hr className="notes-block-divider" />
       </div>
     );
@@ -276,7 +278,9 @@ const BlockItem: React.FC<BlockProps> = ({
   if (block.type === 'image') {
     const fileInputRef = React.createRef<HTMLInputElement>();
     return (
-      <div className="notes-block-wrapper">
+      <div className="notes-block-wrapper" tabIndex={0} onKeyDown={(e) => {
+        if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); onBackspace(block.id, true); }
+      }} onFocus={() => onFocus(block.id)}>
         <div className="notes-block-content">
           {block.imageUrl ? (
             <div className="notes-block-image-container">
@@ -313,7 +317,9 @@ const BlockItem: React.FC<BlockProps> = ({
   if (block.type === 'columns') {
     const cols = block.columns || [[], []];
     return (
-      <div className="notes-block-wrapper">
+      <div className="notes-block-wrapper" tabIndex={0} onKeyDown={(e) => {
+        if ((e.key === 'Backspace' || e.key === 'Delete') && e.target === e.currentTarget) { e.preventDefault(); onBackspace(block.id, true); }
+      }} onFocus={() => onFocus(block.id)}>
         <div className="notes-block-content">
           <div className="notes-block-columns">
             {cols.map((col, colIdx) => (
@@ -539,6 +545,16 @@ const Notes: React.FC = () => {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainResult, setExplainResult] = useState<string | null>(null);
+  const [toolbarMenuOpen, setToolbarMenuOpen] = useState(false);
+
+  // Settings & Trash state
+  const [showSettings, setShowSettings] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
+  const [trashItems, setTrashItems] = useState<Array<{ id: number; title: string; icon: string | null; content: NoteBlock[]; deletedAt: string }>>([]);
+  const [autoCleanDays, setAutoCleanDays] = useState<number>(() => {
+    const stored = localStorage.getItem('notes-auto-clean-days');
+    return stored ? parseInt(stored, 10) : 30;
+  });
 
   const blockRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -552,6 +568,21 @@ const Notes: React.FC = () => {
   useEffect(() => {
     document.title = '笔记 - 工具箱';
     fetchNotes();
+    // Load trash from localStorage and auto-clean expired items
+    try {
+      const storedTrash = localStorage.getItem('notes-trash');
+      if (storedTrash) {
+        const items = JSON.parse(storedTrash) as Array<{ id: number; title: string; icon: string | null; content: NoteBlock[]; deletedAt: string }>;
+        const storedDays = localStorage.getItem('notes-auto-clean-days');
+        const days = storedDays ? parseInt(storedDays, 10) : 30;
+        const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+        const filtered = days > 0 ? items.filter((item) => new Date(item.deletedAt).getTime() > cutoff) : items;
+        setTrashItems(filtered);
+        if (filtered.length !== items.length) {
+          localStorage.setItem('notes-trash', JSON.stringify(filtered));
+        }
+      }
+    } catch { /* ignore */ }
   }, []);
 
   const fetchNotes = async () => {
@@ -661,11 +692,26 @@ const Notes: React.FC = () => {
       if (idx === -1) return prev;
 
       const currentBlock = prev.content[idx];
+      const continuedTypes: NoteBlockType[] = ['bulleted_list', 'numbered_list', 'todo'];
+
+      // If the block is a list type and the content is empty, convert to plain text
+      if (continuedTypes.includes(currentBlock.type) && currentContent === '') {
+        const content = prev.content.map((b) =>
+          b.id === id ? { ...b, type: 'text' as NoteBlockType, content: '' } : b
+        );
+        const next = { ...prev, content };
+        scheduleSave(next);
+        setTimeout(() => {
+          const el = blockRefs.current[id];
+          if (el) el.focus();
+        }, 10);
+        return next;
+      }
+
       const before = currentContent.slice(0, caretPos);
       const after = currentContent.slice(caretPos);
 
       const updatedBlock = { ...currentBlock, content: before };
-      const continuedTypes: NoteBlockType[] = ['bulleted_list', 'numbered_list', 'todo'];
       const newType: NoteBlockType = continuedTypes.includes(currentBlock.type) ? currentBlock.type : 'text';
       const newBlock: NoteBlock = { ...createBlock(newType), content: after };
 
@@ -759,10 +805,21 @@ const Notes: React.FC = () => {
     }, 10);
   }, [scheduleSave]);
 
+  const addToTrash = (note: { id: number; title: string; icon: string | null; content: NoteBlock[] }) => {
+    const trashItem = { ...note, deletedAt: new Date().toISOString() };
+    setTrashItems((prev) => {
+      const next = [trashItem, ...prev];
+      localStorage.setItem('notes-trash', JSON.stringify(next));
+      return next;
+    });
+  };
+
   const handleDeleteNote = async () => {
     if (!activeNote) return;
     if (!window.confirm('确定要删除这篇笔记吗？子笔记也会一同删除。')) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    // Save to trash before deleting
+    addToTrash({ id: activeNote.id, title: activeNote.title, icon: activeNote.icon, content: activeNote.content });
     try {
       await notesAPI.delete(activeNote.id);
       setActiveNote(null);
@@ -811,7 +868,7 @@ const Notes: React.FC = () => {
   };
 
   // Type menu keyboard navigation
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!typeMenuBlockId) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
@@ -838,9 +895,38 @@ const Notes: React.FC = () => {
       if (!target.closest('.notes-block-type-menu')) setTypeMenuBlockId(null);
       if (!target.closest('.notes-icon-picker') && !target.closest('.notes-note-icon')) setShowIconPicker(false);
       if (!target.closest('.notes-context-menu')) setContextMenu(null);
+      if (!target.closest('.notes-toolbar-dropdown') && !target.closest('.notes-toolbar-menu-btn')) setToolbarMenuOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Ctrl+A to select all blocks
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        const editorEl = editorRef.current;
+        if (!editorEl) return;
+        // Check if the active element is a textarea within the editor
+        const activeEl = document.activeElement as HTMLTextAreaElement | null;
+        if (activeEl && activeEl.tagName === 'TEXTAREA' && editorEl.contains(activeEl)) {
+          // If all text in the current textarea is already selected, select the entire editor
+          if (activeEl.selectionStart === 0 && activeEl.selectionEnd === activeEl.value.length) {
+            e.preventDefault();
+            const sel = window.getSelection();
+            if (sel) {
+              const range = document.createRange();
+              range.selectNodeContents(editorEl);
+              sel.removeAllRanges();
+              sel.addRange(range);
+            }
+          }
+          // Otherwise, let the browser handle the native Ctrl+A (selects text in the textarea)
+        }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, []);
 
   // Cleanup save timer on unmount
@@ -853,54 +939,89 @@ const Notes: React.FC = () => {
 
   // Selection / floating toolbar
   useEffect(() => {
-    const handleSelectionChange = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || !sel.rangeCount) {
-        setTimeout(() => {
-          const sel2 = window.getSelection();
-          if (!sel2 || sel2.isCollapsed) {
-            setFloatingToolbar(null);
-            setSelectedText('');
-            setExplainResult(null);
-          }
-        }, 200);
-        return;
-      }
-
-      const text = sel.toString().trim();
-      if (!text) {
-        setFloatingToolbar(null);
-        setSelectedText('');
-        return;
-      }
-
-      const range = sel.getRangeAt(0);
+    const checkTextareaSelection = () => {
       const editorEl = editorRef.current;
-      if (!editorEl || !editorEl.contains(range.commonAncestorContainer)) return;
+      if (!editorEl) return;
 
-      const rect = range.getBoundingClientRect();
-      const editorRect = editorEl.getBoundingClientRect();
+      const activeEl = document.activeElement as HTMLTextAreaElement | null;
+      if (activeEl && activeEl.tagName === 'TEXTAREA' && editorEl.contains(activeEl)) {
+        const start = activeEl.selectionStart;
+        const end = activeEl.selectionEnd;
+        if (start !== end) {
+          const text = activeEl.value.slice(start, end).trim();
+          if (text) {
+            const rect = activeEl.getBoundingClientRect();
+            const editorRect = editorEl.getBoundingClientRect();
 
-      setFloatingToolbar({
-        top: rect.top - editorRect.top - 48 + editorEl.scrollTop,
-        left: rect.left - editorRect.left + rect.width / 2,
-      });
-      setSelectedText(text);
+            // Estimate selection position within the textarea
+            const lineHeight = parseFloat(getComputedStyle(activeEl).lineHeight) || 26;
+            const linesBeforeStart = activeEl.value.slice(0, start).split('\n').length - 1;
 
-      // Find which block the selection is in
-      const ancestor = range.commonAncestorContainer;
-      const ancestorEl = ancestor.nodeType === Node.ELEMENT_NODE
-        ? (ancestor as HTMLElement)
-        : ancestor.parentElement;
-      const textarea = ancestorEl?.closest?.('textarea');
-      if (textarea) {
-        const blockId = Object.entries(blockRefs.current).find(([, el]) => el === textarea)?.[0];
-        if (blockId) setSelectedBlockId(blockId);
+            setFloatingToolbar({
+              top: rect.top - editorRect.top + linesBeforeStart * lineHeight - 48 + editorEl.scrollTop,
+              left: rect.left - editorRect.left + rect.width / 2,
+            });
+            setSelectedText(text);
+
+            // Find block id
+            const blockId = Object.entries(blockRefs.current).find(([, el]) => el === activeEl)?.[0];
+            if (blockId) setSelectedBlockId(blockId);
+            return;
+          }
+        }
       }
+
+      // Fallback: check window.getSelection() for non-textarea selections
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.rangeCount) {
+        const text = sel.toString().trim();
+        if (text) {
+          const range = sel.getRangeAt(0);
+          if (editorEl.contains(range.commonAncestorContainer)) {
+            const rect = range.getBoundingClientRect();
+            const editorRect = editorEl.getBoundingClientRect();
+            setFloatingToolbar({
+              top: rect.top - editorRect.top - 48 + editorEl.scrollTop,
+              left: rect.left - editorRect.left + rect.width / 2,
+            });
+            setSelectedText(text);
+
+            const ancestor = range.commonAncestorContainer;
+            const ancestorEl = ancestor.nodeType === Node.ELEMENT_NODE
+              ? (ancestor as HTMLElement)
+              : ancestor.parentElement;
+            const textarea = ancestorEl?.closest?.('textarea');
+            if (textarea) {
+              const blockId = Object.entries(blockRefs.current).find(([, el]) => el === textarea)?.[0];
+              if (blockId) setSelectedBlockId(blockId);
+            }
+            return;
+          }
+        }
+      }
+
+      // No selection
+      setFloatingToolbar(null);
+      setSelectedText('');
+      setExplainResult(null);
     };
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleSelectionChange = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(checkTextareaSelection, 100);
+    };
+
+    // Listen to both selectionchange and mouse/keyboard events for textarea selection
     document.addEventListener('selectionchange', handleSelectionChange);
-    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+    document.addEventListener('mouseup', handleSelectionChange);
+    document.addEventListener('keyup', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      document.removeEventListener('mouseup', handleSelectionChange);
+      document.removeEventListener('keyup', handleSelectionChange);
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
   }, []);
 
   const handleFormat = (prefix: string, suffix: string) => {
@@ -1000,7 +1121,106 @@ const Notes: React.FC = () => {
             ))
           )}
         </div>
+
+        {/* Sidebar footer */}
+        <div className="notes-sidebar-footer">
+          <button className="notes-sidebar-footer-btn" onClick={() => setShowTrash(true)} title="垃圾箱">
+            🗑️ 垃圾箱{trashItems.length > 0 && <span className="notes-sidebar-badge">{trashItems.length}</span>}
+          </button>
+          <button className="notes-sidebar-footer-btn" onClick={() => setShowSettings(true)} title="设置">
+            ⚙️ 设置
+          </button>
+        </div>
       </aside>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="notes-modal-overlay" onClick={() => setShowSettings(false)}>
+          <div className="notes-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <span>⚙️ 设置</span>
+              <button className="notes-modal-close" onClick={() => setShowSettings(false)}>✕</button>
+            </div>
+            <div className="notes-modal-body">
+              <div className="notes-setting-item">
+                <label className="notes-setting-label">垃圾箱自动清除（天）</label>
+                <div className="notes-setting-desc">设为 0 则不自动清除，需手动清除</div>
+                <input
+                  type="number"
+                  className="notes-setting-input"
+                  min={0}
+                  max={365}
+                  value={autoCleanDays}
+                  onChange={(e) => {
+                    const val = Math.max(0, Math.min(365, parseInt(e.target.value, 10) || 0));
+                    setAutoCleanDays(val);
+                    localStorage.setItem('notes-auto-clean-days', String(val));
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trash Modal */}
+      {showTrash && (
+        <div className="notes-modal-overlay" onClick={() => setShowTrash(false)}>
+          <div className="notes-modal notes-modal-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <span>🗑️ 垃圾箱</span>
+              <button className="notes-modal-close" onClick={() => setShowTrash(false)}>✕</button>
+            </div>
+            <div className="notes-modal-body">
+              {trashItems.length === 0 ? (
+                <div className="notes-trash-empty">垃圾箱为空</div>
+              ) : (
+                <>
+                  <div className="notes-trash-actions">
+                    <button
+                      className="notes-trash-clear-btn"
+                      onClick={() => {
+                        if (window.confirm('确定要清空垃圾箱吗？此操作不可撤销。')) {
+                          setTrashItems([]);
+                          localStorage.setItem('notes-trash', '[]');
+                        }
+                      }}
+                    >
+                      🧹 清空垃圾箱
+                    </button>
+                  </div>
+                  <div className="notes-trash-list">
+                    {trashItems.map((item, idx) => (
+                      <div key={`${item.id}-${idx}`} className="notes-trash-item">
+                        <span className="notes-trash-item-icon">{item.icon || '📄'}</span>
+                        <div className="notes-trash-item-info">
+                          <span className="notes-trash-item-title">{item.title || '无标题'}</span>
+                          <span className="notes-trash-item-date">
+                            删除于 {new Date(item.deletedAt).toLocaleString('zh-CN')}
+                          </span>
+                        </div>
+                        <button
+                          className="notes-trash-item-delete"
+                          title="永久删除"
+                          onClick={() => {
+                            setTrashItems((prev) => {
+                              const next = prev.filter((_, i) => i !== idx);
+                              localStorage.setItem('notes-trash', JSON.stringify(next));
+                              return next;
+                            });
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (
@@ -1015,6 +1235,16 @@ const Notes: React.FC = () => {
             <div className="notes-context-item danger" onClick={async () => {
               if (!window.confirm('确定要删除这篇笔记吗？')) return;
               try {
+                // Try to save to trash with current info
+                const noteInfo = notes.find((n) => n.id === contextMenu.noteId);
+                if (noteInfo) {
+                  try {
+                    const detail = await notesAPI.getById(contextMenu.noteId!);
+                    addToTrash({ id: detail.note.id, title: detail.note.title, icon: detail.note.icon, content: detail.note.content });
+                  } catch {
+                    addToTrash({ id: noteInfo.id, title: noteInfo.title, icon: noteInfo.icon, content: [] });
+                  }
+                }
                 await notesAPI.delete(contextMenu.noteId!);
                 if (activeNote?.id === contextMenu.noteId) setActiveNote(null);
                 // Re-fetch to get accurate list after cascade delete
@@ -1083,29 +1313,45 @@ const Notes: React.FC = () => {
                 <span className="notes-save-indicator">
                   {saveStatus === 'saving' ? '保存中...' : saveStatus === 'unsaved' ? '未保存' : '✓ 已保存'}
                 </span>
-                <button
-                  className={`notes-toolbar-btn${activeNote.is_published ? ' published' : ''}`}
-                  onClick={handlePublish}
-                  title={activeNote.is_published ? '点击取消发布' : '发布为网页'}
-                >
-                  {activeNote.is_published ? '🌐 已发布' : '🔗 发布'}
-                </button>
-                {activeNote.is_published && activeNote.share_id && (
+                <div style={{ position: 'relative' }}>
                   <button
-                    className="notes-toolbar-btn"
-                    onClick={() => {
-                      const url = `${window.location.origin}/p/${activeNote.share_id}`;
-                      navigator.clipboard.writeText(url).catch(() => {});
-                      alert(`链接已复制：\n${url}`);
-                    }}
-                    title="复制分享链接"
+                    className="notes-toolbar-btn notes-toolbar-menu-btn"
+                    onClick={() => setToolbarMenuOpen((v) => !v)}
+                    title="更多操作"
                   >
-                    📋
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>
                   </button>
-                )}
-                <button className="notes-toolbar-btn danger" onClick={handleDeleteNote} title="删除笔记">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M2 3.5h10M5 3.5V2.5a1 1 0 011-1h2a1 1 0 011 1v1M11 3.5l-.5 8a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5L3 3.5"/></svg>
-                </button>
+                  {toolbarMenuOpen && (
+                    <div className="notes-toolbar-dropdown">
+                      <div
+                        className={`notes-toolbar-dropdown-item${activeNote.is_published ? ' published' : ''}`}
+                        onClick={() => { handlePublish(); setToolbarMenuOpen(false); }}
+                      >
+                        {activeNote.is_published ? '🌐 取消发布' : '🔗 发布为网页'}
+                      </div>
+                      {activeNote.is_published && activeNote.share_id && (
+                        <div
+                          className="notes-toolbar-dropdown-item"
+                          onClick={() => {
+                            const url = `${window.location.origin}/p/${activeNote.share_id}`;
+                            navigator.clipboard.writeText(url).catch(() => {});
+                            alert(`链接已复制：\n${url}`);
+                            setToolbarMenuOpen(false);
+                          }}
+                        >
+                          📋 复制分享链接
+                        </div>
+                      )}
+                      <div className="notes-toolbar-dropdown-divider" />
+                      <div
+                        className="notes-toolbar-dropdown-item danger"
+                        onClick={() => { handleDeleteNote(); setToolbarMenuOpen(false); }}
+                      >
+                        🗑️ 删除笔记
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
