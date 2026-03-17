@@ -12,12 +12,16 @@ interface NoteSummary {
   parent_id: number | null;
   title: string;
   icon: string | null;
+  share_id: string | null;
+  is_published: number;
   created_at: string;
   updated_at: string;
 }
 
 interface NoteDetail extends NoteSummary {
   content: NoteBlock[];
+  share_id: string | null;
+  is_published: number;
 }
 
 interface TreeNode extends NoteSummary {
@@ -36,6 +40,8 @@ const BLOCK_TYPE_OPTIONS: Array<{ type: NoteBlockType; icon: string; label: stri
   { type: 'todo', icon: '☑', label: '待办事项', desc: '任务清单' },
   { type: 'quote', icon: '❝', label: '引用', desc: '引用文本' },
   { type: 'divider', icon: '─', label: '分割线', desc: '水平分隔' },
+  { type: 'image', icon: '🖼', label: '图片', desc: '插入图片' },
+  { type: 'columns', icon: '▥', label: '分栏', desc: '网格布局（2列）' },
 ];
 
 const ICON_OPTIONS = [
@@ -52,6 +58,7 @@ const createBlock = (type: NoteBlockType = 'text'): NoteBlock => ({
   type,
   content: '',
   checked: false,
+  ...(type === 'columns' ? { columns: [[{ id: newBlockId(), type: 'text', content: '' }], [{ id: newBlockId(), type: 'text', content: '' }]] } : {}),
 });
 
 // ─── Markdown shortcut patterns ───────────────────────────────────────────────
@@ -110,13 +117,14 @@ interface BlockProps {
   onArrowUp: (id: string) => void;
   onArrowDown: (id: string) => void;
   onTypeMenuOpen: (id: string) => void;
+  onImageUpload: (id: string, file: File) => void;
   isFocused: boolean;
   isTypeMenuOpen: boolean;
   inputRef: (el: HTMLTextAreaElement | null) => void;
 }
 
 const BlockItem: React.FC<BlockProps> = ({
-  block, numberedIndex, onChange, onEnter, onBackspace, onFocus, onArrowUp, onArrowDown, onTypeMenuOpen, isFocused, isTypeMenuOpen, inputRef,
+  block, numberedIndex, onChange, onEnter, onBackspace, onFocus, onArrowUp, onArrowDown, onTypeMenuOpen, onImageUpload, isFocused, isTypeMenuOpen, inputRef,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -260,6 +268,103 @@ const BlockItem: React.FC<BlockProps> = ({
             <div className="notes-block-quote-bar" />
             {textarea}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === 'image') {
+    const fileInputRef = React.createRef<HTMLInputElement>();
+    return (
+      <div className="notes-block-wrapper">
+        <div className="notes-block-content">
+          {block.imageUrl ? (
+            <div className="notes-block-image-container">
+              <img src={block.imageUrl} alt={block.caption || '图片'} className="notes-block-image" />
+              <input
+                type="text"
+                className="notes-block-image-caption"
+                placeholder="添加图片说明..."
+                value={block.caption || ''}
+                onChange={(e) => onChange(block.id, { caption: e.target.value })}
+              />
+            </div>
+          ) : (
+            <div className="notes-block-image-upload" onClick={() => fileInputRef.current?.click()}>
+              <span className="notes-block-image-upload-icon">🖼</span>
+              <span>点击上传图片</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onImageUpload(block.id, file);
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === 'columns') {
+    const cols = block.columns || [[], []];
+    return (
+      <div className="notes-block-wrapper">
+        <div className="notes-block-content">
+          <div className="notes-block-columns">
+            {cols.map((col, colIdx) => (
+              <div key={colIdx} className="notes-block-column">
+                {col.map((innerBlock) => (
+                  <textarea
+                    key={innerBlock.id}
+                    className="notes-block-text"
+                    value={innerBlock.content}
+                    placeholder={`第 ${colIdx + 1} 列内容...`}
+                    rows={1}
+                    onChange={(e) => {
+                      const newCols = cols.map((c, ci) =>
+                        ci === colIdx
+                          ? c.map((b) => (b.id === innerBlock.id ? { ...b, content: e.target.value } : b))
+                          : c
+                      );
+                      onChange(block.id, { columns: newCols });
+                    }}
+                    onFocus={() => onFocus(block.id)}
+                    ref={(el) => {
+                      if (el) {
+                        el.style.height = 'auto';
+                        el.style.height = el.scrollHeight + 'px';
+                      }
+                    }}
+                  />
+                ))}
+                <button
+                  className="notes-column-add-btn"
+                  onClick={() => {
+                    const newCols = cols.map((c, ci) =>
+                      ci === colIdx ? [...c, { id: newBlockId(), type: 'text' as NoteBlockType, content: '' }] : c
+                    );
+                    onChange(block.id, { columns: newCols });
+                  }}
+                >
+                  ＋
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            className="notes-columns-add-col-btn"
+            onClick={() => {
+              const newCols = [...cols, [{ id: newBlockId(), type: 'text' as NoteBlockType, content: '' }]];
+              onChange(block.id, { columns: newCols });
+            }}
+          >
+            ＋ 添加列
+          </button>
         </div>
       </div>
     );
@@ -636,9 +741,13 @@ const Notes: React.FC = () => {
   const changeBlockType = useCallback((blockId: string, newType: NoteBlockType) => {
     setActiveNote((prev) => {
       if (!prev) return prev;
-      const content = prev.content.map((b) =>
-        b.id === blockId ? { ...b, type: newType, content: newType === 'divider' ? '' : b.content } : b
-      );
+      const content = prev.content.map((b) => {
+        if (b.id !== blockId) return b;
+        const patch: Partial<NoteBlock> = { type: newType };
+        if (newType === 'divider') patch.content = '';
+        if (newType === 'columns') patch.columns = [[{ id: newBlockId(), type: 'text', content: '' }], [{ id: newBlockId(), type: 'text', content: '' }]];
+        return { ...b, ...patch };
+      });
       const next = { ...prev, content };
       scheduleSave(next);
       return next;
@@ -662,6 +771,33 @@ const Notes: React.FC = () => {
       setNotes(data.notes);
     } catch {
       alert('删除失败');
+    }
+  };
+
+  const handleImageUpload = async (blockId: string, file: File) => {
+    try {
+      const { url } = await notesAPI.uploadImage(file);
+      handleBlockChange(blockId, { imageUrl: url });
+    } catch {
+      alert('图片上传失败');
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!activeNote) return;
+    try {
+      const result = await notesAPI.publish(activeNote.id);
+      setActiveNote((prev) => prev ? { ...prev, is_published: result.is_published, share_id: result.share_id } : prev);
+      setNotes((prev) => prev.map((n) => n.id === activeNote.id ? { ...n, is_published: result.is_published, share_id: result.share_id } : n));
+      if (result.is_published) {
+        const url = `${window.location.origin}/p/${result.share_id}`;
+        await navigator.clipboard.writeText(url).catch(() => {});
+        alert(`已发布！链接已复制到剪贴板：\n${url}`);
+      } else {
+        alert('已取消发布');
+      }
+    } catch {
+      alert('操作失败');
     }
   };
 
@@ -947,6 +1083,26 @@ const Notes: React.FC = () => {
                 <span className="notes-save-indicator">
                   {saveStatus === 'saving' ? '保存中...' : saveStatus === 'unsaved' ? '未保存' : '✓ 已保存'}
                 </span>
+                <button
+                  className={`notes-toolbar-btn${activeNote.is_published ? ' published' : ''}`}
+                  onClick={handlePublish}
+                  title={activeNote.is_published ? '点击取消发布' : '发布为网页'}
+                >
+                  {activeNote.is_published ? '🌐 已发布' : '🔗 发布'}
+                </button>
+                {activeNote.is_published && activeNote.share_id && (
+                  <button
+                    className="notes-toolbar-btn"
+                    onClick={() => {
+                      const url = `${window.location.origin}/p/${activeNote.share_id}`;
+                      navigator.clipboard.writeText(url).catch(() => {});
+                      alert(`链接已复制：\n${url}`);
+                    }}
+                    title="复制分享链接"
+                  >
+                    📋
+                  </button>
+                )}
                 <button className="notes-toolbar-btn danger" onClick={handleDeleteNote} title="删除笔记">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M2 3.5h10M5 3.5V2.5a1 1 0 011-1h2a1 1 0 011 1v1M11 3.5l-.5 8a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5L3 3.5"/></svg>
                 </button>
@@ -1016,6 +1172,7 @@ const Notes: React.FC = () => {
                       onArrowUp={handleArrowUp}
                       onArrowDown={handleArrowDown}
                       onTypeMenuOpen={(id) => { setTypeMenuBlockId(id); setTypeMenuSelectedIdx(0); }}
+                      onImageUpload={handleImageUpload}
                       isFocused={focusedBlockId === block.id}
                       isTypeMenuOpen={typeMenuBlockId === block.id}
                       inputRef={(el) => { blockRefs.current[block.id] = el; }}

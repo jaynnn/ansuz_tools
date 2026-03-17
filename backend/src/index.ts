@@ -45,7 +45,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "blob:"],
+      imgSrc: ["'self'", "data:", "blob:", "/api/notes/uploads/"],
       mediaSrc: ["'self'", "blob:"],
       connectSrc: ["'self'", "ws:", "wss:"],
     },

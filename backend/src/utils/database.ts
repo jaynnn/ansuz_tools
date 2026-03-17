@@ -296,6 +296,13 @@ const migrateNotesTable = async () => {
       await dbRun("ALTER TABLE notes ADD COLUMN parent_id INTEGER REFERENCES notes(id) ON DELETE CASCADE");
       logInfo('notes_migration_success', { reason: 'added_parent_id_column' });
     }
+
+    if (!columnNames.includes('share_id')) {
+      logInfo('notes_migration_start', { reason: 'add_share_columns' });
+      await dbRun("ALTER TABLE notes ADD COLUMN share_id TEXT UNIQUE");
+      await dbRun("ALTER TABLE notes ADD COLUMN is_published INTEGER NOT NULL DEFAULT 0");
+      logInfo('notes_migration_success', { reason: 'added_share_columns' });
+    }
   } catch (error) {
     logError('notes_migration_error', error as Error);
     throw error;
@@ -689,6 +696,8 @@ export const initDatabase = async () => {
         title TEXT NOT NULL DEFAULT '无标题',
         content TEXT NOT NULL DEFAULT '[]',
         icon TEXT,
+        share_id TEXT UNIQUE,
+        is_published INTEGER NOT NULL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
