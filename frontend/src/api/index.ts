@@ -611,22 +611,22 @@ export const stockMarketAPI = {
 
 // Notes APIs
 export const notesAPI = {
-  getAll: async (): Promise<{ notes: Array<{ id: number; user_id: number; title: string; icon: string | null; created_at: string; updated_at: string }> }> => {
+  getAll: async (): Promise<{ notes: Array<{ id: number; user_id: number; parent_id: number | null; title: string; icon: string | null; created_at: string; updated_at: string }> }> => {
     const response = await api.get('/notes');
     return response.data;
   },
 
-  getById: async (id: number): Promise<{ note: { id: number; user_id: number; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+  getById: async (id: number): Promise<{ note: { id: number; user_id: number; parent_id: number | null; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
     const response = await api.get(`/notes/${id}`);
     return response.data;
   },
 
-  create: async (data: { title?: string; content?: NoteBlock[]; icon?: string }): Promise<{ note: { id: number; user_id: number; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+  create: async (data: { title?: string; content?: NoteBlock[]; icon?: string; parent_id?: number | null }): Promise<{ note: { id: number; user_id: number; parent_id: number | null; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
     const response = await api.post('/notes', data);
     return response.data;
   },
 
-  update: async (id: number, data: { title?: string; content?: NoteBlock[]; icon?: string }): Promise<{ note: { id: number; user_id: number; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+  update: async (id: number, data: { title?: string; content?: NoteBlock[]; icon?: string }): Promise<{ note: { id: number; user_id: number; parent_id: number | null; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
     const response = await api.put(`/notes/${id}`, data);
     return response.data;
   },

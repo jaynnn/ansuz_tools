@@ -41,7 +41,7 @@ const rateLimit = (req: AuthRequest, res: Response, next: NextFunction) => {
 router.get('/', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const notes = await dbAll(
-      'SELECT id, user_id, title, icon, created_at, updated_at FROM notes WHERE user_id = ? ORDER BY updated_at DESC',
+      'SELECT id, user_id, parent_id, title, icon, created_at, updated_at FROM notes WHERE user_id = ? ORDER BY updated_at DESC',
       [req.userId]
     );
     res.json({ notes });
@@ -71,21 +71,31 @@ router.get('/:id', authMiddleware, rateLimit, async (req: AuthRequest, res: Resp
 // POST /api/notes  –  create a new note
 router.post('/', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
-    const { title, content, icon } = req.body;
+    const { title, content, icon, parent_id } = req.body;
 
     const safeTitle = sanitizeString(title || '无标题', 500);
     const safeIcon = icon ? sanitizeString(icon, 10) : null;
     const safeContent = Array.isArray(content) ? JSON.stringify(content) : '[]';
+    const safeParentId = parent_id ? Number(parent_id) : null;
+
+    // Validate parent note exists and belongs to user
+    if (safeParentId) {
+      const parentNote = await dbGet(
+        'SELECT id FROM notes WHERE id = ? AND user_id = ?',
+        [safeParentId, req.userId]
+      );
+      if (!parentNote) return res.status(400).json({ error: 'Parent note not found' });
+    }
 
     const result = await dbRun(
-      'INSERT INTO notes (user_id, title, content, icon) VALUES (?, ?, ?, ?)',
-      [req.userId, safeTitle, safeContent, safeIcon]
+      'INSERT INTO notes (user_id, title, content, icon, parent_id) VALUES (?, ?, ?, ?, ?)',
+      [req.userId, safeTitle, safeContent, safeIcon, safeParentId]
     );
 
     const note = await dbGet('SELECT * FROM notes WHERE id = ?', [(result as any).lastID]);
     note.content = parseContent(note.content);
 
-    logInfo('note_created', { userId: req.userId, id: note.id });
+    logInfo('note_created', { userId: req.userId, id: note.id, parent_id: safeParentId });
     res.status(201).json({ note });
   } catch (error) {
     logError('notes_create_error', error as Error);
@@ -123,7 +133,7 @@ router.put('/:id', authMiddleware, rateLimit, async (req: AuthRequest, res: Resp
   }
 });
 
-// DELETE /api/notes/:id  –  delete a note
+// DELETE /api/notes/:id  –  delete a note and its children
 router.delete('/:id', authMiddleware, rateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const note = await dbGet(
@@ -132,6 +142,8 @@ router.delete('/:id', authMiddleware, rateLimit, async (req: AuthRequest, res: R
     );
     if (!note) return res.status(404).json({ error: 'Note not found' });
 
+    // Delete children first (cascade), then the note itself
+    await dbRun('DELETE FROM notes WHERE parent_id = ? AND user_id = ?', [req.params.id, req.userId]);
     await dbRun('DELETE FROM notes WHERE id = ?', [req.params.id]);
     logInfo('note_deleted', { userId: req.userId, id: req.params.id });
     res.json({ message: 'Note deleted' });

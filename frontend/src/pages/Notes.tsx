@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { notesAPI } from '../api';
+import { notesAPI, llmAPI } from '../api';
 import type { NoteBlock, NoteBlockType } from '../types/index';
 import '../styles/Notes.css';
 
@@ -9,6 +9,7 @@ import '../styles/Notes.css';
 interface NoteSummary {
   id: number;
   user_id: number;
+  parent_id: number | null;
   title: string;
   icon: string | null;
   created_at: string;
@@ -19,18 +20,22 @@ interface NoteDetail extends NoteSummary {
   content: NoteBlock[];
 }
 
+interface TreeNode extends NoteSummary {
+  children: TreeNode[];
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BLOCK_TYPE_OPTIONS: Array<{ type: NoteBlockType; icon: string; label: string }> = [
-  { type: 'text', icon: '¶', label: '正文' },
-  { type: 'heading1', icon: 'H1', label: '一级标题' },
-  { type: 'heading2', icon: 'H2', label: '二级标题' },
-  { type: 'heading3', icon: 'H3', label: '三级标题' },
-  { type: 'bulleted_list', icon: '•', label: '无序列表' },
-  { type: 'numbered_list', icon: '1.', label: '有序列表' },
-  { type: 'todo', icon: '☑', label: '待办事项' },
-  { type: 'quote', icon: '"', label: '引用' },
-  { type: 'divider', icon: '─', label: '分割线' },
+const BLOCK_TYPE_OPTIONS: Array<{ type: NoteBlockType; icon: string; label: string; desc: string }> = [
+  { type: 'text', icon: '\u{1d413}', label: '正文', desc: '普通文本块' },
+  { type: 'heading1', icon: 'H₁', label: '一级标题', desc: '大号标题' },
+  { type: 'heading2', icon: 'H₂', label: '二级标题', desc: '中号标题' },
+  { type: 'heading3', icon: 'H₃', label: '三级标题', desc: '小号标题' },
+  { type: 'bulleted_list', icon: '•', label: '无序列表', desc: '项目符号列表' },
+  { type: 'numbered_list', icon: '1.', label: '有序列表', desc: '编号列表' },
+  { type: 'todo', icon: '☑', label: '待办事项', desc: '任务清单' },
+  { type: 'quote', icon: '❝', label: '引用', desc: '引用文本' },
+  { type: 'divider', icon: '─', label: '分割线', desc: '水平分隔' },
 ];
 
 const ICON_OPTIONS = [
@@ -49,6 +54,49 @@ const createBlock = (type: NoteBlockType = 'text'): NoteBlock => ({
   checked: false,
 });
 
+// ─── Markdown shortcut patterns ───────────────────────────────────────────────
+
+const MARKDOWN_SHORTCUTS: Array<{ pattern: RegExp; type: NoteBlockType }> = [
+  { pattern: /^# $/, type: 'heading1' },
+  { pattern: /^## $/, type: 'heading2' },
+  { pattern: /^### $/, type: 'heading3' },
+  { pattern: /^[-*] $/, type: 'bulleted_list' },
+  { pattern: /^\d+\. $/, type: 'numbered_list' },
+  { pattern: /^[a-zA-Z]\. $/, type: 'numbered_list' },
+  { pattern: /^> $/, type: 'quote' },
+  { pattern: /^\[\] $/, type: 'todo' },
+  { pattern: /^\[ \] $/, type: 'todo' },
+  { pattern: /^--- $/, type: 'divider' },
+  { pattern: /^---$/, type: 'divider' },
+];
+
+// ─── Build tree from flat list ────────────────────────────────────────────────
+
+function buildTree(notes: NoteSummary[]): TreeNode[] {
+  const map = new Map<number, TreeNode>();
+  const roots: TreeNode[] = [];
+
+  for (const n of notes) {
+    map.set(n.id, { ...n, children: [] });
+  }
+  for (const n of notes) {
+    const node = map.get(n.id)!;
+    if (n.parent_id && map.has(n.parent_id)) {
+      map.get(n.parent_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  const sortChildren = (nodes: TreeNode[]) => {
+    nodes.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    for (const n of nodes) sortChildren(n.children);
+  };
+  sortChildren(roots);
+
+  return roots;
+}
+
 // ─── Block Textarea ───────────────────────────────────────────────────────────
 
 interface BlockProps {
@@ -63,11 +111,12 @@ interface BlockProps {
   onArrowDown: (id: string) => void;
   onTypeMenuOpen: (id: string) => void;
   isFocused: boolean;
+  isTypeMenuOpen: boolean;
   inputRef: (el: HTMLTextAreaElement | null) => void;
 }
 
 const BlockItem: React.FC<BlockProps> = ({
-  block, numberedIndex, onChange, onEnter, onBackspace, onFocus, onArrowUp, onArrowDown, onTypeMenuOpen, isFocused, inputRef,
+  block, numberedIndex, onChange, onEnter, onBackspace, onFocus, onArrowUp, onArrowDown, onTypeMenuOpen, isFocused, isTypeMenuOpen, inputRef,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -76,7 +125,6 @@ const BlockItem: React.FC<BlockProps> = ({
     inputRef(el);
   };
 
-  // Auto-resize textarea
   const autoResize = () => {
     const el = textareaRef.current;
     if (el) {
@@ -90,6 +138,14 @@ const BlockItem: React.FC<BlockProps> = ({
   }, [block.content]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // When type menu is open, let the global handler manage arrow/enter/escape
+    if (isTypeMenuOpen) {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter' || e.key === 'Escape') {
+        e.preventDefault();
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const pos = e.currentTarget.selectionStart ?? block.content.length;
@@ -110,12 +166,27 @@ const BlockItem: React.FC<BlockProps> = ({
         onArrowDown(block.id);
       }
     } else if (e.key === '/') {
-      // Slash command
       if (block.content === '') {
         e.preventDefault();
         onTypeMenuOpen(block.id);
       }
     }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+
+    // Check markdown shortcuts
+    for (const shortcut of MARKDOWN_SHORTCUTS) {
+      if (shortcut.pattern.test(val)) {
+        onChange(block.id, { content: '', type: shortcut.type });
+        autoResize();
+        return;
+      }
+    }
+
+    onChange(block.id, { content: val });
+    autoResize();
   };
 
   const BLOCK_TYPE_CLASS: Partial<Record<NoteBlockType, string>> = {
@@ -149,10 +220,7 @@ const BlockItem: React.FC<BlockProps> = ({
       value={block.content}
       placeholder={placeholder}
       rows={1}
-      onChange={(e) => {
-        onChange(block.id, { content: e.target.value });
-        autoResize();
-      }}
+      onChange={handleChange}
       onKeyDown={handleKeyDown}
       onFocus={() => onFocus(block.id)}
     />
@@ -222,6 +290,125 @@ const BlockItem: React.FC<BlockProps> = ({
   );
 };
 
+// ─── Sidebar Tree Item ────────────────────────────────────────────────────────
+
+interface TreeItemProps {
+  node: TreeNode;
+  depth: number;
+  activeId: number | null;
+  expandedIds: Set<number>;
+  onToggle: (id: number) => void;
+  onClick: (id: number) => void;
+  onContextMenu: (e: React.MouseEvent, noteId: number) => void;
+}
+
+const TreeItem: React.FC<TreeItemProps> = ({ node, depth, activeId, expandedIds, onToggle, onClick, onContextMenu }) => {
+  const hasChildren = node.children.length > 0;
+  const isExpanded = expandedIds.has(node.id);
+
+  return (
+    <>
+      <div
+        className={`notes-tree-item${activeId === node.id ? ' active' : ''}`}
+        style={{ paddingLeft: 8 + depth * 16 }}
+        onClick={() => onClick(node.id)}
+        onContextMenu={(e) => onContextMenu(e, node.id)}
+      >
+        <span
+          className={`notes-tree-toggle ${hasChildren ? '' : 'invisible'}`}
+          onClick={(e) => { e.stopPropagation(); onToggle(node.id); }}
+        >
+          {isExpanded ? '▾' : '▸'}
+        </span>
+        <span className="notes-tree-icon">{node.icon || '📄'}</span>
+        <span className="notes-tree-title">{node.title || '无标题'}</span>
+      </div>
+      {isExpanded && node.children.map((child) => (
+        <TreeItem
+          key={child.id}
+          node={child}
+          depth={depth + 1}
+          activeId={activeId}
+          expandedIds={expandedIds}
+          onToggle={onToggle}
+          onClick={onClick}
+          onContextMenu={onContextMenu}
+        />
+      ))}
+    </>
+  );
+};
+
+// ─── Floating Toolbar ─────────────────────────────────────────────────────────
+
+interface FloatingToolbarProps {
+  position: { top: number; left: number } | null;
+  selectedText: string;
+  blockId: string | null;
+  onFormat: (prefix: string, suffix: string) => void;
+  onExplain: () => void;
+  explainLoading: boolean;
+  explainResult: string | null;
+  onCloseExplain: () => void;
+  blockUpdatedAt: string | null;
+}
+
+const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
+  position, selectedText, onFormat, onExplain, explainLoading, explainResult, onCloseExplain, blockUpdatedAt,
+}) => {
+  if (!position || !selectedText) return null;
+
+  return (
+    <div className="notes-floating-toolbar" style={{ top: position.top, left: position.left }}>
+      <div className="notes-floating-toolbar-row">
+        <button className="notes-ft-btn" title="加粗" onClick={() => onFormat('**', '**')}>
+          <strong>B</strong>
+        </button>
+        <button className="notes-ft-btn" title="斜体" onClick={() => onFormat('*', '*')}>
+          <em>I</em>
+        </button>
+        <button className="notes-ft-btn" title="删除线" onClick={() => onFormat('~~', '~~')}>
+          <s>S</s>
+        </button>
+        <button className="notes-ft-btn" title="行内代码" onClick={() => onFormat('`', '`')}>
+          {'</>'}
+        </button>
+        <span className="notes-ft-divider" />
+        <button className="notes-ft-btn" title="复制区块链接" onClick={() => {
+          navigator.clipboard.writeText(window.location.href);
+        }}>
+          🔗
+        </button>
+        <button
+          className="notes-ft-btn notes-ft-btn-ai"
+          title="AI 释义"
+          onClick={onExplain}
+          disabled={explainLoading}
+        >
+          {explainLoading ? '⏳' : '✨'} 释义
+        </button>
+        {blockUpdatedAt && (
+          <>
+            <span className="notes-ft-divider" />
+            <span className="notes-ft-info" title="最近编辑时间">
+              🕐 {new Date(blockUpdatedAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </>
+        )}
+      </div>
+      {explainResult && (
+        <div className="notes-ft-explain-panel">
+          <div className="notes-ft-explain-header">
+            <span>✨ AI 释义</span>
+            <button className="notes-ft-explain-close" onClick={onCloseExplain}>✕</button>
+          </div>
+          <div className="notes-ft-explain-content">{explainResult}</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const Notes: React.FC = () => {
@@ -236,12 +423,23 @@ const Notes: React.FC = () => {
   const [typeMenuSelectedIdx, setTypeMenuSelectedIdx] = useState(0);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; noteId: number | null } | null>(null);
+
+  // Floating toolbar state
+  const [floatingToolbar, setFloatingToolbar] = useState<{ top: number; left: number } | null>(null);
+  const [selectedText, setSelectedText] = useState('');
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [explainLoading, setExplainLoading] = useState(false);
+  const [explainResult, setExplainResult] = useState<string | null>(null);
 
   const blockRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeNoteRef = useRef<NoteDetail | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
-  // Keep ref in sync with state
   useEffect(() => {
     activeNoteRef.current = activeNote;
   }, [activeNote]);
@@ -264,7 +462,6 @@ const Notes: React.FC = () => {
   };
 
   const openNote = async (id: number) => {
-    // Save current note first
     flushSave();
     try {
       const data = await notesAPI.getById(id);
@@ -280,22 +477,22 @@ const Notes: React.FC = () => {
     }
   };
 
-  const createNote = async () => {
+  const createNote = async (parentId?: number | null) => {
     flushSave();
     try {
-      const data = await notesAPI.create({ title: '无标题', content: [createBlock()], icon: '📝' });
+      const data = await notesAPI.create({ title: '无标题', content: [createBlock()], icon: '📝', parent_id: parentId ?? null });
       const note = data.note;
       setNotes((prev) => [note, ...prev]);
+      if (parentId) {
+        setExpandedIds((prev) => new Set([...prev, parentId]));
+      }
       setActiveNote(note);
       setSaveStatus('saved');
       setSidebarOpen(false);
-      // Focus title after render
+      setContextMenu(null);
       setTimeout(() => {
         const titleEl = document.querySelector('.notes-title-input') as HTMLTextAreaElement;
-        if (titleEl) {
-          titleEl.focus();
-          titleEl.select();
-        }
+        if (titleEl) { titleEl.focus(); titleEl.select(); }
       }, 50);
     } catch {
       alert('创建笔记失败');
@@ -362,10 +559,7 @@ const Notes: React.FC = () => {
       const before = currentContent.slice(0, caretPos);
       const after = currentContent.slice(caretPos);
 
-      // Update current block with text before caret
       const updatedBlock = { ...currentBlock, content: before };
-
-      // Determine new block type: lists continue their type, others default to text
       const continuedTypes: NoteBlockType[] = ['bulleted_list', 'numbered_list', 'todo'];
       const newType: NoteBlockType = continuedTypes.includes(currentBlock.type) ? currentBlock.type : 'text';
       const newBlock: NoteBlock = { ...createBlock(newType), content: after };
@@ -379,7 +573,6 @@ const Notes: React.FC = () => {
       const next = { ...prev, content };
       scheduleSave(next);
 
-      // Focus new block
       setTimeout(() => {
         const el = blockRefs.current[newBlock.id];
         if (el) { el.focus(); el.setSelectionRange(0, 0); }
@@ -396,7 +589,6 @@ const Notes: React.FC = () => {
       if (idx === -1 || (!isEmpty && idx === 0)) return prev;
 
       if (prev.content.length === 1) {
-        // Keep at least one block
         const content = [createBlock()];
         const next = { ...prev, content };
         scheduleSave(next);
@@ -407,7 +599,6 @@ const Notes: React.FC = () => {
       const next = { ...prev, content };
       scheduleSave(next);
 
-      // Focus previous block
       const prevBlock = prev.content[idx - 1];
       if (prevBlock) {
         setTimeout(() => {
@@ -442,7 +633,7 @@ const Notes: React.FC = () => {
     }
   };
 
-  const changeBlockType = (blockId: string, newType: NoteBlockType) => {
+  const changeBlockType = useCallback((blockId: string, newType: NoteBlockType) => {
     setActiveNote((prev) => {
       if (!prev) return prev;
       const content = prev.content.map((b) =>
@@ -453,27 +644,25 @@ const Notes: React.FC = () => {
       return next;
     });
     setTypeMenuBlockId(null);
-    // Re-focus the block
     setTimeout(() => {
       const el = blockRefs.current[blockId];
       if (el) el.focus();
     }, 10);
-  };
+  }, [scheduleSave]);
 
   const handleDeleteNote = async () => {
     if (!activeNote) return;
-    if (!window.confirm('确定要删除这篇笔记吗？')) return;
+    if (!window.confirm('确定要删除这篇笔记吗？子笔记也会一同删除。')) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     try {
       await notesAPI.delete(activeNote.id);
-      setNotes((prev) => prev.filter((n) => n.id !== activeNote.id));
+      setNotes((prev) => prev.filter((n) => n.id !== activeNote.id && n.parent_id !== activeNote.id));
       setActiveNote(null);
     } catch {
       alert('删除失败');
     }
   };
 
-  // Calculate numbered list indices
   const getNumberedIndex = (blocks: NoteBlock[], targetIdx: number) => {
     let count = 0;
     for (let i = 0; i <= targetIdx; i++) {
@@ -502,7 +691,7 @@ const Notes: React.FC = () => {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [typeMenuBlockId, typeMenuSelectedIdx]);
+  }, [typeMenuBlockId, typeMenuSelectedIdx, changeBlockType]);
 
   // Close menus on outside click
   useEffect(() => {
@@ -510,6 +699,7 @@ const Notes: React.FC = () => {
       const target = e.target as HTMLElement;
       if (!target.closest('.notes-block-type-menu')) setTypeMenuBlockId(null);
       if (!target.closest('.notes-icon-picker') && !target.closest('.notes-note-icon')) setShowIconPicker(false);
+      if (!target.closest('.notes-context-menu')) setContextMenu(null);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -523,6 +713,112 @@ const Notes: React.FC = () => {
     };
   }, []);
 
+  // Selection / floating toolbar
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) {
+        setTimeout(() => {
+          const sel2 = window.getSelection();
+          if (!sel2 || sel2.isCollapsed) {
+            setFloatingToolbar(null);
+            setSelectedText('');
+            setExplainResult(null);
+          }
+        }, 200);
+        return;
+      }
+
+      const text = sel.toString().trim();
+      if (!text) {
+        setFloatingToolbar(null);
+        setSelectedText('');
+        return;
+      }
+
+      const range = sel.getRangeAt(0);
+      const editorEl = editorRef.current;
+      if (!editorEl || !editorEl.contains(range.commonAncestorContainer)) return;
+
+      const rect = range.getBoundingClientRect();
+      const editorRect = editorEl.getBoundingClientRect();
+
+      setFloatingToolbar({
+        top: rect.top - editorRect.top - 48 + editorEl.scrollTop,
+        left: rect.left - editorRect.left + rect.width / 2,
+      });
+      setSelectedText(text);
+
+      // Find which block the selection is in
+      const textarea = (range.commonAncestorContainer as HTMLElement)?.closest?.('textarea')
+        || (range.startContainer as HTMLElement)?.closest?.('textarea');
+      if (textarea) {
+        const blockId = Object.entries(blockRefs.current).find(([, el]) => el === textarea)?.[0];
+        if (blockId) setSelectedBlockId(blockId);
+      }
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, []);
+
+  const handleFormat = (prefix: string, suffix: string) => {
+    if (!selectedBlockId) return;
+    const textarea = blockRefs.current[selectedBlockId];
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const newText = text.slice(0, start) + prefix + text.slice(start, end) + suffix + text.slice(end);
+
+    handleBlockChange(selectedBlockId, { content: newText });
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+    }, 10);
+  };
+
+  const handleExplain = async () => {
+    if (!selectedText) return;
+    setExplainLoading(true);
+    setExplainResult(null);
+    try {
+      const result = await llmAPI.chat([
+        { role: 'system', content: '你是一个知识渊博的助手。请对用户选中的文本进行简明扼要的释义和解释。回答使用中文，控制在200字以内。' },
+        { role: 'user', content: `请释义以下文本：\n\n"${selectedText}"` },
+      ]);
+      setExplainResult(result.content || '无法获取释义');
+    } catch {
+      setExplainResult('请求失败，请稍后再试');
+    } finally {
+      setExplainLoading(false);
+    }
+  };
+
+  // Context menu handlers
+  const handleContextMenu = (e: React.MouseEvent, noteId: number | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, noteId });
+  };
+
+  const handleSidebarContextMenu = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.notes-tree-item')) return;
+    handleContextMenu(e, null);
+  };
+
+  const toggleExpand = (id: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const tree = buildTree(notes);
+
   const titleRows = activeNote ? Math.max(1, Math.ceil(activeNote.title.length / 28)) : 1;
 
   return (
@@ -530,51 +826,84 @@ const Notes: React.FC = () => {
       {/* Sidebar */}
       <aside className={`notes-sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="notes-sidebar-header">
-          <button className="notes-back-btn" onClick={() => navigate('/')}>
-            ← 返回
+          <button className="notes-back-btn" onClick={() => navigate('/')} title="返回首页">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1L4 8l7 7" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
           </button>
-          <span className="notes-sidebar-title">我的笔记</span>
-          <button className="notes-new-btn" title="新建笔记" onClick={createNote}>＋</button>
+          <span className="notes-sidebar-title">笔记</span>
+          <button className="notes-new-btn" title="新建笔记" onClick={() => createNote()}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/></svg>
+          </button>
         </div>
 
-        <div className="notes-list">
+        <div className="notes-list" onContextMenu={handleSidebarContextMenu}>
           {loading ? (
             <div className="notes-list-empty">加载中...</div>
           ) : notes.length === 0 ? (
-            <div className="notes-list-empty">暂无笔记，点击 ＋ 新建</div>
+            <div className="notes-list-empty">
+              <span style={{ fontSize: 28, lineHeight: 1 }}>📝</span>
+              <span>暂无笔记</span>
+              <span style={{ fontSize: 12, opacity: 0.6 }}>右键创建新笔记</span>
+            </div>
           ) : (
-            notes.map((note) => (
-              <div
-                key={note.id}
-                className={`notes-list-item${activeNote?.id === note.id ? ' active' : ''}`}
-                onClick={() => openNote(note.id)}
-              >
-                <span className="notes-list-item-icon">{note.icon || '📄'}</span>
-                <span className="notes-list-item-title">{note.title || '无标题'}</span>
-              </div>
+            tree.map((node) => (
+              <TreeItem
+                key={node.id}
+                node={node}
+                depth={0}
+                activeId={activeNote?.id ?? null}
+                expandedIds={expandedIds}
+                onToggle={toggleExpand}
+                onClick={openNote}
+                onContextMenu={handleContextMenu}
+              />
             ))
           )}
         </div>
       </aside>
 
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="notes-context-menu"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <div className="notes-context-item" onClick={() => createNote(contextMenu.noteId)}>
+            {contextMenu.noteId ? '📄 新建子笔记' : '📄 新建笔记'}
+          </div>
+          {contextMenu.noteId && (
+            <div className="notes-context-item danger" onClick={async () => {
+              if (!window.confirm('确定要删除这篇笔记吗？')) return;
+              try {
+                await notesAPI.delete(contextMenu.noteId!);
+                setNotes((prev) => prev.filter((n) => n.id !== contextMenu.noteId && n.parent_id !== contextMenu.noteId));
+                if (activeNote?.id === contextMenu.noteId) setActiveNote(null);
+              } catch { alert('删除失败'); }
+              setContextMenu(null);
+            }}>
+              🗑️ 删除笔记
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main */}
       <main className="notes-main">
         {!activeNote ? (
           <div className="notes-empty-state">
-            <span className="notes-empty-state-icon">📝</span>
-            <span>从左侧选择笔记，或新建一篇</span>
+            <div className="notes-empty-state-icon">
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                <rect x="12" y="8" width="40" height="48" rx="4" stroke="#d0cfc9" strokeWidth="2"/>
+                <line x1="20" y1="20" x2="44" y2="20" stroke="#d0cfc9" strokeWidth="2" strokeLinecap="round"/>
+                <line x1="20" y1="28" x2="40" y2="28" stroke="#d0cfc9" strokeWidth="2" strokeLinecap="round"/>
+                <line x1="20" y1="36" x2="36" y2="36" stroke="#d0cfc9" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <span className="notes-empty-state-text">从左侧选择笔记，或新建一篇</span>
             <span className="notes-empty-state-hint">
               {notes.length === 0 ? '还没有笔记' : `共 ${notes.length} 篇笔记`}
             </span>
-            <button className="notes-toolbar-btn" style={{ marginTop: 8 }} onClick={createNote}>
+            <button className="notes-empty-create-btn" onClick={() => createNote()}>
               ＋ 新建笔记
-            </button>
-            <button
-              className="notes-toolbar-btn"
-              style={{ marginTop: 4 }}
-              onClick={() => setSidebarOpen(true)}
-            >
-              ☰ 打开侧边栏
             </button>
           </div>
         ) : (
@@ -583,69 +912,87 @@ const Notes: React.FC = () => {
             <div className="notes-toolbar">
               <div className="notes-toolbar-left">
                 <button
-                  className="notes-toolbar-btn"
+                  className="notes-toolbar-btn notes-mobile-menu"
                   onClick={() => setSidebarOpen((v) => !v)}
                   title="切换侧边栏"
                 >
-                  ☰
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect y="2" width="16" height="1.5" rx="0.75"/><rect y="7.25" width="16" height="1.5" rx="0.75"/><rect y="12.5" width="16" height="1.5" rx="0.75"/></svg>
                 </button>
-                <button className="notes-toolbar-btn danger" onClick={handleDeleteNote} title="删除笔记">
-                  🗑️ 删除
-                </button>
+                {activeNote.parent_id && (
+                  <div className="notes-breadcrumb">
+                    {(() => {
+                      const parent = notes.find((n) => n.id === activeNote.parent_id);
+                      if (!parent) return null;
+                      return (
+                        <>
+                          <span className="notes-breadcrumb-item" onClick={() => openNote(parent.id)}>
+                            {parent.icon || '📄'} {parent.title || '无标题'}
+                          </span>
+                          <span className="notes-breadcrumb-sep">/</span>
+                        </>
+                      );
+                    })()}
+                    <span className="notes-breadcrumb-current">{activeNote.icon || '📄'} {activeNote.title || '无标题'}</span>
+                  </div>
+                )}
               </div>
-              <div className="notes-save-indicator">
-                {saveStatus === 'saving' ? '保存中...' : saveStatus === 'unsaved' ? '未保存' : '已保存'}
+              <div className="notes-toolbar-right">
+                <span className="notes-save-indicator">
+                  {saveStatus === 'saving' ? '保存中...' : saveStatus === 'unsaved' ? '未保存' : '✓ 已保存'}
+                </span>
+                <button className="notes-toolbar-btn danger" onClick={handleDeleteNote} title="删除笔记">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M2 3.5h10M5 3.5V2.5a1 1 0 011-1h2a1 1 0 011 1v1M11 3.5l-.5 8a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5L3 3.5"/></svg>
+                </button>
               </div>
             </div>
 
             {/* Editor */}
-            <div className="notes-editor" onClick={() => setTypeMenuBlockId(null)}>
-              {/* Icon */}
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                <span
-                  className="notes-note-icon"
-                  title="点击更改图标"
-                  onClick={(e) => { e.stopPropagation(); setShowIconPicker((v) => !v); }}
-                >
-                  {activeNote.icon || '📄'}
-                </span>
-                {showIconPicker && (
-                  <div className="notes-icon-picker" onClick={(e) => e.stopPropagation()}>
-                    {ICON_OPTIONS.map((icon) => (
-                      <span
-                        key={icon}
-                        className="notes-icon-option"
-                        onClick={() => {
-                          updateNote({ icon });
-                          setShowIconPicker(false);
-                        }}
-                      >
-                        {icon}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Title */}
-              <textarea
-                className="notes-title-input"
-                placeholder="无标题"
-                value={activeNote.title}
-                rows={titleRows}
-                onChange={(e) => handleTitleChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    // Focus first block
-                    const first = activeNote.content[0];
-                    if (first) {
-                      const el = blockRefs.current[first.id];
-                      if (el) el.focus();
+            <div className="notes-editor" ref={editorRef} onClick={() => setTypeMenuBlockId(null)}>
+              {/* Icon + Title row */}
+              <div className="notes-title-row">
+                <div style={{ position: 'relative' }}>
+                  <span
+                    className="notes-note-icon"
+                    title="点击更改图标"
+                    onClick={(e) => { e.stopPropagation(); setShowIconPicker((v) => !v); }}
+                  >
+                    {activeNote.icon || '📄'}
+                  </span>
+                  {showIconPicker && (
+                    <div className="notes-icon-picker" onClick={(e) => e.stopPropagation()}>
+                      {ICON_OPTIONS.map((icon) => (
+                        <span
+                          key={icon}
+                          className="notes-icon-option"
+                          onClick={() => {
+                            updateNote({ icon });
+                            setShowIconPicker(false);
+                          }}
+                        >
+                          {icon}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <textarea
+                  className="notes-title-input"
+                  placeholder="无标题"
+                  value={activeNote.title}
+                  rows={titleRows}
+                  onChange={(e) => handleTitleChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const first = activeNote.content[0];
+                      if (first) {
+                        const el = blockRefs.current[first.id];
+                        if (el) el.focus();
+                      }
                     }
-                  }
-                }}
-              />
+                  }}
+                />
+              </div>
 
               {/* Blocks */}
               <div className="notes-blocks">
@@ -663,6 +1010,7 @@ const Notes: React.FC = () => {
                       onArrowDown={handleArrowDown}
                       onTypeMenuOpen={(id) => { setTypeMenuBlockId(id); setTypeMenuSelectedIdx(0); }}
                       isFocused={focusedBlockId === block.id}
+                      isTypeMenuOpen={typeMenuBlockId === block.id}
                       inputRef={(el) => { blockRefs.current[block.id] = el; }}
                     />
                     {/* Type menu */}
@@ -670,8 +1018,8 @@ const Notes: React.FC = () => {
                       <div
                         className="notes-block-type-menu"
                         onClick={(e) => e.stopPropagation()}
-                        style={{ left: 24 }}
                       >
+                        <div className="notes-type-menu-header">块类型</div>
                         {BLOCK_TYPE_OPTIONS.map((opt, optIdx) => (
                           <div
                             key={opt.type}
@@ -680,7 +1028,10 @@ const Notes: React.FC = () => {
                             onClick={() => changeBlockType(block.id, opt.type)}
                           >
                             <span className="notes-block-type-item-icon">{opt.icon}</span>
-                            <span>{opt.label}</span>
+                            <div className="notes-block-type-item-text">
+                              <span className="notes-block-type-item-label">{opt.label}</span>
+                              <span className="notes-block-type-item-desc">{opt.desc}</span>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -688,6 +1039,19 @@ const Notes: React.FC = () => {
                   </div>
                 ))}
               </div>
+
+              {/* Floating toolbar */}
+              <FloatingToolbar
+                position={floatingToolbar}
+                selectedText={selectedText}
+                blockId={selectedBlockId}
+                onFormat={handleFormat}
+                onExplain={handleExplain}
+                explainLoading={explainLoading}
+                explainResult={explainResult}
+                onCloseExplain={() => setExplainResult(null)}
+                blockUpdatedAt={activeNote.updated_at}
+              />
             </div>
           </>
         )}

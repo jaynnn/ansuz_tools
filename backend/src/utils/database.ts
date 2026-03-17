@@ -281,6 +281,27 @@ const migrateGoalTaskTrainingsTable = async () => {
   }
 };
 
+const migrateNotesTable = async () => {
+  try {
+    const tableInfo: any = await dbGet(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='notes'"
+    );
+    if (!tableInfo) return;
+
+    const columns: any[] = await dbAll("PRAGMA table_info(notes)");
+    const columnNames = columns.map((col: any) => col.name);
+
+    if (!columnNames.includes('parent_id')) {
+      logInfo('notes_migration_start', { reason: 'add_parent_id_column' });
+      await dbRun("ALTER TABLE notes ADD COLUMN parent_id INTEGER REFERENCES notes(id) ON DELETE CASCADE");
+      logInfo('notes_migration_success', { reason: 'added_parent_id_column' });
+    }
+  } catch (error) {
+    logError('notes_migration_error', error as Error);
+    throw error;
+  }
+};
+
 export const initDatabase = async () => {
   try {
     logInfo('database_init_start', { dbPath });
@@ -664,12 +685,14 @@ export const initDatabase = async () => {
       CREATE TABLE IF NOT EXISTS notes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
+        parent_id INTEGER,
         title TEXT NOT NULL DEFAULT '无标题',
         content TEXT NOT NULL DEFAULT '[]',
         icon TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_id) REFERENCES notes(id) ON DELETE CASCADE
       )
     `);
 
@@ -682,6 +705,7 @@ export const initDatabase = async () => {
     await migrateGoalTaskTrainingsTable();
     await migrateBotLogsTable();
     await migrateStockHoldingsTable();
+    await migrateNotesTable();
 
     console.log('Database initialized successfully');
     logInfo('database_init_success', { dbPath });
