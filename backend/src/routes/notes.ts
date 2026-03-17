@@ -142,9 +142,16 @@ router.delete('/:id', authMiddleware, rateLimit, async (req: AuthRequest, res: R
     );
     if (!note) return res.status(404).json({ error: 'Note not found' });
 
-    // Delete children first (cascade), then the note itself
-    await dbRun('DELETE FROM notes WHERE parent_id = ? AND user_id = ?', [req.params.id, req.userId]);
-    await dbRun('DELETE FROM notes WHERE id = ?', [req.params.id]);
+    // Recursively delete all descendants, then the note itself
+    const deleteDescendants = async (parentId: string) => {
+      const children = await dbAll('SELECT id FROM notes WHERE parent_id = ? AND user_id = ?', [parentId, req.userId]);
+      for (const child of children) {
+        await deleteDescendants(child.id);
+      }
+      await dbRun('DELETE FROM notes WHERE id = ?', [parentId]);
+    };
+    await deleteDescendants(req.params.id);
+
     logInfo('note_deleted', { userId: req.userId, id: req.params.id });
     res.json({ message: 'Note deleted' });
   } catch (error) {

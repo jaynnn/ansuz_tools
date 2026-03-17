@@ -27,7 +27,7 @@ interface TreeNode extends NoteSummary {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BLOCK_TYPE_OPTIONS: Array<{ type: NoteBlockType; icon: string; label: string; desc: string }> = [
-  { type: 'text', icon: '\u{1d413}', label: '正文', desc: '普通文本块' },
+  { type: 'text', icon: '¶', label: '正文', desc: '普通文本块' },
   { type: 'heading1', icon: 'H₁', label: '一级标题', desc: '大号标题' },
   { type: 'heading2', icon: 'H₂', label: '二级标题', desc: '中号标题' },
   { type: 'heading3', icon: 'H₃', label: '三级标题', desc: '小号标题' },
@@ -656,8 +656,10 @@ const Notes: React.FC = () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     try {
       await notesAPI.delete(activeNote.id);
-      setNotes((prev) => prev.filter((n) => n.id !== activeNote.id && n.parent_id !== activeNote.id));
       setActiveNote(null);
+      // Re-fetch to get accurate list after cascade delete
+      const data = await notesAPI.getAll();
+      setNotes(data.notes);
     } catch {
       alert('删除失败');
     }
@@ -750,8 +752,11 @@ const Notes: React.FC = () => {
       setSelectedText(text);
 
       // Find which block the selection is in
-      const textarea = (range.commonAncestorContainer as HTMLElement)?.closest?.('textarea')
-        || (range.startContainer as HTMLElement)?.closest?.('textarea');
+      const ancestor = range.commonAncestorContainer;
+      const ancestorEl = ancestor.nodeType === Node.ELEMENT_NODE
+        ? (ancestor as HTMLElement)
+        : ancestor.parentElement;
+      const textarea = ancestorEl?.closest?.('textarea');
       if (textarea) {
         const blockId = Object.entries(blockRefs.current).find(([, el]) => el === textarea)?.[0];
         if (blockId) setSelectedBlockId(blockId);
@@ -875,8 +880,10 @@ const Notes: React.FC = () => {
               if (!window.confirm('确定要删除这篇笔记吗？')) return;
               try {
                 await notesAPI.delete(contextMenu.noteId!);
-                setNotes((prev) => prev.filter((n) => n.id !== contextMenu.noteId && n.parent_id !== contextMenu.noteId));
                 if (activeNote?.id === contextMenu.noteId) setActiveNote(null);
+                // Re-fetch to get accurate list after cascade delete
+                const data = await notesAPI.getAll();
+                setNotes(data.notes);
               } catch { alert('删除失败'); }
               setContextMenu(null);
             }}>
