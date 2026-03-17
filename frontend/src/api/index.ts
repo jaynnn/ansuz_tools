@@ -611,28 +611,58 @@ export const stockMarketAPI = {
 
 // Notes APIs
 export const notesAPI = {
-  getAll: async (): Promise<{ notes: Array<{ id: number; user_id: number; title: string; icon: string | null; created_at: string; updated_at: string }> }> => {
+  getAll: async (): Promise<{ notes: Array<{ id: number; user_id: number; parent_id: number | null; title: string; icon: string | null; share_id: string | null; is_published: number; created_at: string; updated_at: string }> }> => {
     const response = await api.get('/notes');
     return response.data;
   },
 
-  getById: async (id: number): Promise<{ note: { id: number; user_id: number; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+  getById: async (id: number): Promise<{ note: { id: number; user_id: number; parent_id: number | null; title: string; content: NoteBlock[]; icon: string | null; share_id: string | null; is_published: number; created_at: string; updated_at: string } }> => {
     const response = await api.get(`/notes/${id}`);
     return response.data;
   },
 
-  create: async (data: { title?: string; content?: NoteBlock[]; icon?: string }): Promise<{ note: { id: number; user_id: number; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+  create: async (data: { title?: string; content?: NoteBlock[]; icon?: string; parent_id?: number | null }): Promise<{ note: { id: number; user_id: number; parent_id: number | null; title: string; content: NoteBlock[]; icon: string | null; share_id: string | null; is_published: number; created_at: string; updated_at: string } }> => {
     const response = await api.post('/notes', data);
     return response.data;
   },
 
-  update: async (id: number, data: { title?: string; content?: NoteBlock[]; icon?: string }): Promise<{ note: { id: number; user_id: number; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+  update: async (id: number, data: { title?: string; content?: NoteBlock[]; icon?: string }): Promise<{ note: { id: number; user_id: number; parent_id: number | null; title: string; content: NoteBlock[]; icon: string | null; share_id: string | null; is_published: number; created_at: string; updated_at: string } }> => {
     const response = await api.put(`/notes/${id}`, data);
     return response.data;
   },
 
   delete: async (id: number): Promise<{ message: string }> => {
     const response = await api.delete(`/notes/${id}`);
+    return response.data;
+  },
+
+  publish: async (id: number): Promise<{ is_published: number; share_id: string }> => {
+    const response = await api.post(`/notes/${id}/publish`);
+    return response.data;
+  },
+
+  uploadImage: async (file: File): Promise<{ url: string }> => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await api.post('/notes/upload-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  // Public API (no auth)
+  getPublicNote: async (shareId: string): Promise<{ note: { id: number; user_id: number; parent_id: number | null; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+    const response = await api.get(`/notes/public/${shareId}`);
+    return response.data;
+  },
+
+  getPublicTree: async (shareId: string): Promise<{ root: { id: number; parent_id: number | null; title: string; icon: string | null; share_id: string }; descendants: Array<{ id: number; parent_id: number | null; title: string; icon: string | null }> }> => {
+    const response = await api.get(`/notes/public/${shareId}/tree`);
+    return response.data;
+  },
+
+  getPublicTreeNote: async (shareId: string, noteId: number): Promise<{ note: { id: number; user_id: number; parent_id: number | null; title: string; content: NoteBlock[]; icon: string | null; created_at: string; updated_at: string } }> => {
+    const response = await api.get(`/notes/public/${shareId}/note/${noteId}`);
     return response.data;
   },
 };

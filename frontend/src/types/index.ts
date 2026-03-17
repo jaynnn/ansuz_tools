@@ -164,11 +164,16 @@ export type NoteBlockType =
   | 'numbered_list'
   | 'quote'
   | 'divider'
-  | 'todo';
+  | 'todo'
+  | 'image'
+  | 'columns';
 
 export interface NoteBlock {
   id: string;
   type: NoteBlockType;
   content: string;
   checked?: boolean;
+  imageUrl?: string;
+  caption?: string;
+  columns?: NoteBlock[][];
 }

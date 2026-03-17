@@ -1,0 +1,484 @@
+/* ─── Published Note Layout ────────────────────────────────────────────────── */
+
+.pub-page {
+  display: flex;
+  min-height: 100vh;
+  background: #ffffff;
+  color: #37352f;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+/* ─── Loading / Error ──────────────────────────────────────────────────────── */
+
+.pub-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 12px;
+  color: #9b9a97;
+  font-size: 15px;
+}
+
+.pub-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #e9e9e7;
+  border-top-color: #37352f;
+  border-radius: 50%;
+  animation: pub-spin 0.8s linear infinite;
+}
+
+@keyframes pub-spin {
+  to { transform: rotate(360deg); }
+}
+
+.pub-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: #37352f;
+  gap: 8px;
+  text-align: center;
+  padding: 24px;
+}
+
+.pub-error-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.pub-error h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.pub-error p {
+  font-size: 15px;
+  color: #787774;
+  margin: 0;
+}
+
+/* ─── Sidebar ──────────────────────────────────────────────────────────────── */
+
+.pub-sidebar {
+  width: 260px;
+  min-width: 220px;
+  background: #fbfbfa;
+  border-right: 1px solid #f0f0ef;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.pub-sidebar-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid #f0f0ef;
+}
+
+.pub-sidebar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #37352f;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pub-sidebar-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+/* ─── Tree Items ───────────────────────────────────────────────────────────── */
+
+.pub-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #37352f;
+  transition: background 0.1s;
+  user-select: none;
+  margin: 1px 0;
+  min-height: 30px;
+}
+
+.pub-tree-item:hover {
+  background: rgba(55,53,47,0.06);
+}
+
+.pub-tree-item.active {
+  background: rgba(55,53,47,0.08);
+  font-weight: 500;
+}
+
+.pub-tree-toggle {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #9b9a97;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.pub-tree-toggle:hover {
+  background: rgba(55,53,47,0.08);
+}
+
+.pub-tree-toggle.invisible {
+  visibility: hidden;
+}
+
+.pub-tree-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.pub-tree-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* ─── Main Content ─────────────────────────────────────────────────────────── */
+
+.pub-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.pub-main.full-width {
+  max-width: 100%;
+}
+
+/* ─── Header Bar ───────────────────────────────────────────────────────────── */
+
+.pub-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #f0f0ef;
+  background: #ffffff;
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.pub-menu-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #9b9a97;
+  padding: 4px;
+  border-radius: 4px;
+  display: none;
+}
+
+.pub-menu-btn:hover {
+  background: rgba(55,53,47,0.08);
+  color: #37352f;
+}
+
+.pub-header-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.pub-header-title {
+  font-size: 13px;
+  color: #787774;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+/* ─── Article ──────────────────────────────────────────────────────────────── */
+
+.pub-article {
+  flex: 1;
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+
+.pub-article-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.pub-article-icon {
+  font-size: 48px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pub-article-title {
+  font-size: 40px;
+  font-weight: 700;
+  color: #37352f;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.pub-article-meta {
+  font-size: 13px;
+  color: #9b9a97;
+  margin-bottom: 32px;
+  display: flex;
+  gap: 4px;
+}
+
+.pub-article-body {
+  line-height: 1.7;
+}
+
+/* ─── Block Renderers ──────────────────────────────────────────────────────── */
+
+.pub-block-text {
+  font-size: 16px;
+  line-height: 1.7;
+  color: #37352f;
+  margin: 2px 0;
+  min-height: 1.7em;
+}
+
+.pub-block-h1 {
+  font-size: 30px;
+  font-weight: 700;
+  margin: 32px 0 8px;
+  line-height: 1.3;
+  color: #37352f;
+}
+
+.pub-block-h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 24px 0 6px;
+  line-height: 1.3;
+  color: #37352f;
+}
+
+.pub-block-h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 20px 0 4px;
+  line-height: 1.3;
+  color: #37352f;
+}
+
+.pub-block-bullet {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.pub-block-bullet-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  background: #37352f;
+  border-radius: 50%;
+  margin-top: 10px;
+}
+
+.pub-block-numbered {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.pub-block-number-label {
+  flex-shrink: 0;
+  min-width: 20px;
+  font-size: 16px;
+  color: #37352f;
+}
+
+.pub-block-quote {
+  border-left: 3px solid #37352f;
+  margin: 8px 0;
+  padding: 2px 16px;
+  font-style: italic;
+  color: rgba(55,53,47,0.8);
+}
+
+.pub-block-divider {
+  border: none;
+  border-top: 1px solid #e9e9e7;
+  margin: 16px 0;
+}
+
+.pub-block-todo {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.pub-block-todo-check {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 4px;
+  accent-color: #2383e2;
+  pointer-events: none;
+}
+
+.pub-block-todo-done {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+/* ─── Image block ──────────────────────────────────────────────────────────── */
+
+.pub-block-image-figure {
+  margin: 16px 0;
+  text-align: center;
+}
+
+.pub-block-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.pub-block-image-caption {
+  font-size: 13px;
+  color: #9b9a97;
+  margin-top: 6px;
+  font-style: italic;
+}
+
+/* ─── Columns block ────────────────────────────────────────────────────────── */
+
+.pub-block-columns {
+  display: flex;
+  gap: 16px;
+  margin: 12px 0;
+}
+
+.pub-block-column {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  background: #fbfbfa;
+  border-radius: 8px;
+  border: 1px solid #f0f0ef;
+}
+
+.pub-block-column-text {
+  font-size: 16px;
+  line-height: 1.7;
+  color: #37352f;
+  padding: 2px 0;
+  min-height: 1.7em;
+}
+
+/* ─── Inline Code ──────────────────────────────────────────────────────────── */
+
+.pub-inline-code {
+  font-family: "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace;
+  font-size: 0.9em;
+  background: rgba(135,131,120,0.15);
+  border-radius: 3px;
+  padding: 0.2em 0.4em;
+  color: #eb5757;
+}
+
+/* ─── Footer ───────────────────────────────────────────────────────────────── */
+
+.pub-footer {
+  padding: 24px;
+  text-align: center;
+  font-size: 12px;
+  color: #c4c4c4;
+  border-top: 1px solid #f0f0ef;
+  flex-shrink: 0;
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────────────────────── */
+
+.pub-sidebar-tree::-webkit-scrollbar,
+.pub-main::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pub-sidebar-tree::-webkit-scrollbar-track,
+.pub-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pub-sidebar-tree::-webkit-scrollbar-thumb,
+.pub-main::-webkit-scrollbar-thumb {
+  background: #e9e9e7;
+  border-radius: 3px;
+}
+
+/* ─── Responsive ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .pub-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 300;
+    width: 260px;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.12);
+  }
+
+  .pub-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .pub-menu-btn {
+    display: flex;
+  }
+
+  .pub-article {
+    padding: 32px 16px 60px;
+  }
+
+  .pub-article-title {
+    font-size: 28px;
+  }
+
+  .pub-article-icon {
+    font-size: 36px;
+  }
+
+  .pub-block-columns {
+    flex-direction: column;
+  }
+}
