@@ -22,23 +22,22 @@ const TEXT_EXTS = new Set([
   'py', 'java', 'c', 'cpp', 'h', 'hpp', 'go', 'rs', 'rb', 'php', 'sql',
   'swift', 'kt', 'scala', 'r', 'lua', 'pl', 'toml', 'env', 'gitignore',
 ]);
-// Only .xlsx is supported; legacy .xls (BIFF binary) is not a ZIP archive and
-// cannot be loaded by ExcelJS, so it is intentionally excluded here.
-const EXCEL_EXTS = new Set(['xlsx']);
+// .xlsx uses ExcelJS; legacy .xls (BIFF8 binary) is handled via @e965/xlsx.
+const EXCEL_EXTS = new Set(['xlsx', 'xls']);
 
 function categorize(name: string, mime: string): FileCategory {
   const ext = getExtension(name);
-  console.log(`[DocViewer] categorize: name="${name}" ext="${ext}" mime="${mime}"`);
+  if (import.meta.env.DEV) console.log(`[DocViewer] categorize: name="${name}" ext="${ext}" mime="${mime}"`);
   let result: FileCategory;
   if (IMAGE_EXTS.has(ext) || mime.startsWith('image/')) result = 'image';
   else if (ext === 'pdf' || mime === 'application/pdf') result = 'pdf';
   else if (VIDEO_EXTS.has(ext) || mime.startsWith('video/')) result = 'video';
   else if (AUDIO_EXTS.has(ext) || mime.startsWith('audio/')) result = 'audio';
   else if (ext === 'docx' || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') result = 'docx';
-  else if (EXCEL_EXTS.has(ext) || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') result = 'excel';
+  else if (EXCEL_EXTS.has(ext) || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mime === 'application/vnd.ms-excel') result = 'excel';
   else if (TEXT_EXTS.has(ext) || mime.startsWith('text/')) result = 'text';
   else result = 'unknown';
-  console.log(`[DocViewer] categorize result: "${result}"${result === 'unknown' ? ` (ext="${ext}" mime="${mime}" not matched by any supported category)` : ''}`);
+  if (import.meta.env.DEV) console.log(`[DocViewer] categorize result: "${result}"${result === 'unknown' ? ` (ext="${ext}" mime="${mime}" not matched by any supported category)` : ''}`);
   return result;
 }
 
@@ -149,7 +148,7 @@ const DocViewer: React.FC = () => {
 
   /* ─── Process the selected file ───────────────────────────────────────── */
   const processFile = useCallback(async (file: File) => {
-    console.log(`[DocViewer] processFile: name="${file.name}" size=${file.size} type="${file.type}"`);
+    if (import.meta.env.DEV) console.log(`[DocViewer] processFile: name="${file.name}" size=${file.size} type="${file.type}"`);
     resetState();
     setLoading(true);
     setFileName(file.name);
@@ -157,7 +156,7 @@ const DocViewer: React.FC = () => {
 
     const cat = categorize(file.name, file.type);
     setCategory(cat);
-    console.log(`[DocViewer] starting preview, category="${cat}"`);
+    if (import.meta.env.DEV) console.log(`[DocViewer] starting preview, category="${cat}"`);
 
     try {
       switch (cat) {
@@ -201,28 +200,49 @@ const DocViewer: React.FC = () => {
         }
 
         case 'excel': {
-          const ExcelJS = await import('exceljs');
-          const workbook = new ExcelJS.Workbook();
-          const buf = await file.arrayBuffer();
-          await workbook.xlsx.load(buf);
-
+          const ext = getExtension(file.name);
           const sheets: SheetData[] = [];
-          workbook.eachSheet((worksheet) => {
-            const rows: string[][] = [];
-            worksheet.eachRow({ includeEmpty: false }, (row) => {
-              const cells: string[] = [];
-              row.eachCell({ includeEmpty: true }, (cell) => {
-                cells.push(cell.text ?? String(cell.value ?? ''));
-              });
-              rows.push(cells);
-            });
-            // Normalise column count
-            const maxCols = rows.reduce((m, r) => Math.max(m, r.length), 0);
-            for (const row of rows) {
-              while (row.length < maxCols) row.push('');
+
+          if (ext === 'xls') {
+            // Legacy BIFF8 binary format: use @e965/xlsx (safe SheetJS fork)
+            const XLSX = await import('@e965/xlsx');
+            const buf = await file.arrayBuffer();
+            const workbook = XLSX.read(new Uint8Array(buf), { type: 'array' });
+            for (const sheetName of workbook.SheetNames) {
+              const ws = workbook.Sheets[sheetName];
+              const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' });
+              const rows: string[][] = raw.map((r) =>
+                (r as unknown[]).map((c) => (c === null || c === undefined ? '' : String(c)))
+              );
+              const maxCols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+              for (const row of rows) {
+                while (row.length < maxCols) row.push('');
+              }
+              sheets.push({ name: sheetName, rows });
             }
-            sheets.push({ name: worksheet.name, rows });
-          });
+          } else {
+            // Modern OOXML format (.xlsx): use ExcelJS
+            const ExcelJS = await import('exceljs');
+            const workbook = new ExcelJS.Workbook();
+            const buf = await file.arrayBuffer();
+            await workbook.xlsx.load(buf);
+            workbook.eachSheet((worksheet) => {
+              const rows: string[][] = [];
+              worksheet.eachRow({ includeEmpty: false }, (row) => {
+                const cells: string[] = [];
+                row.eachCell({ includeEmpty: true }, (cell) => {
+                  cells.push(cell.text ?? String(cell.value ?? ''));
+                });
+                rows.push(cells);
+              });
+              const maxCols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+              for (const row of rows) {
+                while (row.length < maxCols) row.push('');
+              }
+              sheets.push({ name: worksheet.name, rows });
+            });
+          }
+
           setExcelSheets(sheets);
           break;
         }
@@ -317,9 +337,7 @@ const DocViewer: React.FC = () => {
       default: {
         const ext = getExtension(fileName);
         let hint = '暂不支持预览该文件格式';
-        if (ext === 'xls') {
-          hint = '.xls 为旧版 Excel 二进制格式，暂不支持预览，请将文件另存为 .xlsx 后重新上传';
-        } else if (ext === 'doc') {
+        if (ext === 'doc') {
           hint = '.doc 为旧版 Word 二进制格式，暂不支持预览，请将文件另存为 .docx 后重新上传';
         }
         const handleDownload = () => {
@@ -378,7 +396,7 @@ const DocViewer: React.FC = () => {
             <span className="dv-drop-icon">📂</span>
             <span className="dv-drop-title">拖拽文件到此处</span>
             <span className="dv-drop-hint">
-              或点击选择文件 · 支持 PDF、Word (.docx)、Excel (.xlsx)、图片、视频、音频、文本等格式（不支持 .doc/.xls 旧版格式）
+              或点击选择文件 · 支持 PDF、Word (.docx)、Excel (.xlsx/.xls)、图片、视频、音频、文本等格式（不支持 .doc 旧版格式）
             </span>
             <input
               ref={fileInputRef}
