@@ -260,6 +260,24 @@
 }
 .dv-unsupported-hint {
   font-size: 0.9rem;
+  text-align: center;
+  max-width: 480px;
+}
+
+.dv-download-btn {
+  margin-top: 0.25rem;
+  padding: 0.45rem 1.2rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  background: var(--card-bg, #fff);
+  color: var(--primary-color, #4a90d9);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+.dv-download-btn:hover {
+  background: var(--hover-bg, #f0f0f0);
+  border-color: var(--primary-color, #4a90d9);
 }
 
 /* --- Loading state --- */

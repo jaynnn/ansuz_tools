@@ -28,14 +28,18 @@ const EXCEL_EXTS = new Set(['xlsx']);
 
 function categorize(name: string, mime: string): FileCategory {
   const ext = getExtension(name);
-  if (IMAGE_EXTS.has(ext) || mime.startsWith('image/')) return 'image';
-  if (ext === 'pdf' || mime === 'application/pdf') return 'pdf';
-  if (VIDEO_EXTS.has(ext) || mime.startsWith('video/')) return 'video';
-  if (AUDIO_EXTS.has(ext) || mime.startsWith('audio/')) return 'audio';
-  if (ext === 'docx' || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
-  if (EXCEL_EXTS.has(ext) || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'excel';
-  if (TEXT_EXTS.has(ext) || mime.startsWith('text/')) return 'text';
-  return 'unknown';
+  console.log(`[DocViewer] categorize: name="${name}" ext="${ext}" mime="${mime}"`);
+  let result: FileCategory;
+  if (IMAGE_EXTS.has(ext) || mime.startsWith('image/')) result = 'image';
+  else if (ext === 'pdf' || mime === 'application/pdf') result = 'pdf';
+  else if (VIDEO_EXTS.has(ext) || mime.startsWith('video/')) result = 'video';
+  else if (AUDIO_EXTS.has(ext) || mime.startsWith('audio/')) result = 'audio';
+  else if (ext === 'docx' || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') result = 'docx';
+  else if (EXCEL_EXTS.has(ext) || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') result = 'excel';
+  else if (TEXT_EXTS.has(ext) || mime.startsWith('text/')) result = 'text';
+  else result = 'unknown';
+  console.log(`[DocViewer] categorize result: "${result}"${result === 'unknown' ? ` (ext="${ext}" mime="${mime}" not matched by any supported category)` : ''}`);
+  return result;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -117,6 +121,7 @@ const DocViewer: React.FC = () => {
 
   const docxContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const currentFileRef = useRef<File | null>(null);
   const dragCounter = useRef(0);
 
   useEffect(() => {
@@ -139,16 +144,20 @@ const DocViewer: React.FC = () => {
     setTextContent(null);
     setExcelSheets(null);
     setLoading(false);
+    currentFileRef.current = null;
   }, [objectUrl]);
 
   /* ─── Process the selected file ───────────────────────────────────────── */
   const processFile = useCallback(async (file: File) => {
+    console.log(`[DocViewer] processFile: name="${file.name}" size=${file.size} type="${file.type}"`);
     resetState();
     setLoading(true);
     setFileName(file.name);
+    currentFileRef.current = file;
 
     const cat = categorize(file.name, file.type);
     setCategory(cat);
+    console.log(`[DocViewer] starting preview, category="${cat}"`);
 
     try {
       switch (cat) {
@@ -220,10 +229,11 @@ const DocViewer: React.FC = () => {
 
         default:
           // unknown – just show file info
+          console.warn(`[DocViewer] unsupported format: ext="${getExtension(file.name)}" mime="${file.type}" – showing fallback UI`);
           break;
       }
     } catch (err) {
-      console.error('Failed to preview file:', err);
+      console.error('[DocViewer] Failed to preview file:', err);
       setCategory('unknown');
     } finally {
       setLoading(false);
@@ -304,14 +314,39 @@ const DocViewer: React.FC = () => {
       case 'excel':
         return excelSheets ? <ExcelPreview sheets={excelSheets} /> : null;
 
-      default:
+      default: {
+        const ext = getExtension(fileName);
+        let hint = '暂不支持预览该文件格式';
+        if (ext === 'xls') {
+          hint = '.xls 为旧版 Excel 二进制格式，暂不支持预览，请将文件另存为 .xlsx 后重新上传';
+        } else if (ext === 'doc') {
+          hint = '.doc 为旧版 Word 二进制格式，暂不支持预览，请将文件另存为 .docx 后重新上传';
+        }
+        const handleDownload = () => {
+          const file = currentFileRef.current;
+          if (!file) return;
+          const url = URL.createObjectURL(file);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 100);
+        };
         return (
           <div className="dv-unsupported">
             <span className="dv-unsupported-icon">📄</span>
             <span className="dv-unsupported-name">{fileName}</span>
-            <span className="dv-unsupported-hint">暂不支持预览该文件格式</span>
+            <span className="dv-unsupported-hint">{hint}</span>
+            {currentFileRef.current && (
+              <button className="dv-download-btn" onClick={handleDownload}>
+                下载文件
+              </button>
+            )}
           </div>
         );
+      }
     }
   };
 
@@ -343,7 +378,7 @@ const DocViewer: React.FC = () => {
             <span className="dv-drop-icon">📂</span>
             <span className="dv-drop-title">拖拽文件到此处</span>
             <span className="dv-drop-hint">
-              或点击选择文件 · 支持 PDF、Word (.docx)、Excel (.xlsx)、图片、视频、音频、文本等格式
+              或点击选择文件 · 支持 PDF、Word (.docx)、Excel (.xlsx)、图片、视频、音频、文本等格式（不支持 .doc/.xls 旧版格式）
             </span>
             <input
               ref={fileInputRef}
