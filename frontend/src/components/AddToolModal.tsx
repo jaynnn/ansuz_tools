@@ -83,6 +83,12 @@ const PREDEFINED_TOOLS = [
     url: '/whiteboard',
     tags: ['绘图', '白板', '效率', '设计'],
   },
+  {
+    name: '文档查看器',
+    description: '在线查看各种格式的文档文件，支持PDF、Word、Excel、图片、视频、音频、文本等，只需拖拽文件即可预览',
+    url: '/doc-viewer',
+    tags: ['文档', '查看', '效率', '办公'],
+  },
 ];
 
 const AddToolModal: React.FC<AddToolModalProps> = ({ onClose, onAdd, existingTools = [], highlightToolName }) => {
