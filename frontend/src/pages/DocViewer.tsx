@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/DocViewer.css';
 
@@ -24,6 +24,10 @@ const TEXT_EXTS = new Set([
 ]);
 // .xlsx uses ExcelJS; legacy .xls (BIFF8 binary) is handled via @e965/xlsx.
 const EXCEL_EXTS = new Set(['xlsx', 'xls']);
+
+const ZOOM_STEP = 0.25;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 5;
 
 function categorize(name: string, mime: string): FileCategory {
   const ext = getExtension(name);
@@ -53,10 +57,134 @@ interface SheetData {
    Sub-components
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ─── Text preview with search ───────────────────────────────────────────── */
+const TextPreview: React.FC<{ content: string }> = ({ content }) => {
+  const [searchText, setSearchText] = useState('');
+
+  const matchCount = useMemo(() => {
+    const q = searchText.trim();
+    if (!q) return 0;
+    const lower = q.toLowerCase();
+    const contentLower = content.toLowerCase();
+    let count = 0;
+    let idx = 0;
+    while ((idx = contentLower.indexOf(lower, idx)) !== -1) {
+      count++;
+      idx += lower.length;
+    }
+    return count;
+  }, [content, searchText]);
+
+  const highlightedContent = useMemo((): React.ReactNode[] | null => {
+    const q = searchText.trim();
+    if (!q) return null;
+    const lower = q.toLowerCase();
+    const lowerContent = content.toLowerCase();
+    const result: React.ReactNode[] = [];
+    let lastIdx = 0;
+    let key = 0;
+    let idx = 0;
+    while ((idx = lowerContent.indexOf(lower, lastIdx)) !== -1) {
+      if (idx > lastIdx) result.push(content.slice(lastIdx, idx));
+      result.push(<mark key={key++}>{content.slice(idx, idx + q.length)}</mark>);
+      lastIdx = idx + q.length;
+    }
+    if (lastIdx < content.length) result.push(content.slice(lastIdx));
+    return result;
+  }, [content, searchText]);
+
+  return (
+    <div className="dv-text-preview">
+      <div className="dv-text-toolbar">
+        <input
+          className="dv-text-search"
+          type="text"
+          placeholder="🔍 搜索…"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+        {searchText.trim() && (
+          <span className={`dv-text-match-count${matchCount === 0 ? ' no-match' : ''}`}>
+            {matchCount > 0 ? `${matchCount} 处匹配` : '无匹配'}
+          </span>
+        )}
+      </div>
+      <pre>{highlightedContent !== null ? highlightedContent : content}</pre>
+    </div>
+  );
+};
+
+/* ─── Excel preview with filtering / sorting ─────────────────────────────── */
 const ExcelPreview: React.FC<{ sheets: SheetData[] }> = ({ sheets }) => {
   const [activeIdx, setActiveIdx] = useState(0);
+  const [searchText, setSearchText] = useState('');
+  const [colFilters, setColFilters] = useState<string[]>([]);
+  const [sortConfig, setSortConfig] = useState<{ col: number; dir: 'asc' | 'desc' } | null>(null);
+
   const sheet = sheets[activeIdx];
+
+  const headers = sheet?.rows[0] ?? [];
+
+  const handleTabClick = (i: number) => {
+    setActiveIdx(i);
+    setSearchText('');
+    setColFilters([]);
+    setSortConfig(null);
+  };
+
+  const filtered = useMemo(() => {
+    if (!sheet) return [];
+    const rows = sheet.rows.slice(1);
+    return rows.filter((row) => {
+      if (searchText.trim()) {
+        const lower = searchText.toLowerCase();
+        if (!row.some((cell) => cell.toLowerCase().includes(lower))) return false;
+      }
+      for (let i = 0; i < colFilters.length; i++) {
+        const f = colFilters[i];
+        if (f && !(row[i] ?? '').toLowerCase().includes(f.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [sheet, searchText, colFilters]);
+
+  const sorted = useMemo(() => {
+    if (!sortConfig) return filtered;
+    return [...filtered].sort((a, b) => {
+      const av = a[sortConfig.col] ?? '';
+      const bv = b[sortConfig.col] ?? '';
+      const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
+      return sortConfig.dir === 'asc' ? cmp : -cmp;
+    });
+  }, [filtered, sortConfig]);
+
+  const toggleSort = (col: number) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.col !== col) return { col, dir: 'asc' };
+      if (prev.dir === 'asc') return { col, dir: 'desc' };
+      return null;
+    });
+  };
+
+  const updateColFilter = (ci: number, val: string) => {
+    setColFilters((prev) => {
+      const next = [...prev];
+      next[ci] = val;
+      return next;
+    });
+  };
+
+  const handleClearFilters = () => {
+    setSearchText('');
+    setColFilters([]);
+    setSortConfig(null);
+  };
+
   if (!sheet) return null;
+
+  const hasFilters = !!searchText.trim() || colFilters.some((f) => f);
+  const totalRows = sheet.rows.length > 0 ? sheet.rows.length - 1 : 0;
+  const shownRows = sorted.length;
 
   return (
     <div className="dv-excel-preview">
@@ -66,32 +194,90 @@ const ExcelPreview: React.FC<{ sheets: SheetData[] }> = ({ sheets }) => {
             <button
               key={i}
               className={`dv-excel-tab${i === activeIdx ? ' active' : ''}`}
-              onClick={() => setActiveIdx(i)}
+              onClick={() => handleTabClick(i)}
             >
               {s.name}
             </button>
           ))}
         </div>
       )}
+
+      <div className="dv-excel-toolbar">
+        <input
+          className="dv-excel-search"
+          type="text"
+          placeholder="🔍 搜索全表…"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+        {hasFilters && (
+          <button
+            className="dv-excel-clear-filters"
+            onClick={handleClearFilters}
+          >
+            清除筛选
+          </button>
+        )}
+        <span className="dv-excel-row-count">
+          {hasFilters ? `${shownRows} / ${totalRows} 行` : `共 ${totalRows} 行`}
+        </span>
+      </div>
+
       <div className="dv-excel-table-wrapper">
         <table className="dv-excel-table">
           {sheet.rows.length > 0 && (
             <>
               <thead>
                 <tr>
-                  {sheet.rows[0].map((cell, ci) => (
-                    <th key={ci}>{cell}</th>
+                  <th className="dv-excel-rownum">#</th>
+                  {headers.map((cell, ci) => (
+                    <th
+                      key={ci}
+                      className="dv-excel-sortable-th"
+                      onClick={() => toggleSort(ci)}
+                      title="点击排序"
+                    >
+                      <span className="dv-excel-col-name">{cell}</span>
+                      <span className="dv-excel-sort-icon">
+                        {sortConfig?.col === ci
+                          ? sortConfig.dir === 'asc' ? '↑' : '↓'
+                          : '⇅'}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+                <tr className="dv-excel-filter-row">
+                  <th className="dv-excel-rownum"></th>
+                  {headers.map((_, ci) => (
+                    <th key={ci}>
+                      <input
+                        className="dv-excel-col-filter"
+                        type="text"
+                        placeholder="筛选…"
+                        value={colFilters[ci] ?? ''}
+                        onChange={(e) => updateColFilter(ci, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sheet.rows.slice(1).map((row, ri) => (
+                {sorted.map((row, ri) => (
                   <tr key={ri}>
+                    <td className="dv-excel-rownum">{ri + 1}</td>
                     {row.map((cell, ci) => (
                       <td key={ci}>{cell}</td>
                     ))}
                   </tr>
                 ))}
+                {sorted.length === 0 && (
+                  <tr>
+                    <td colSpan={headers.length + 1} className="dv-excel-no-results">
+                      无匹配结果
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </>
           )}
@@ -118,8 +304,13 @@ const DocViewer: React.FC = () => {
   const [textContent, setTextContent] = useState<string | null>(null);
   const [excelSheets, setExcelSheets] = useState<SheetData[] | null>(null);
 
+  // Image zoom state
+  const [imageScale, setImageScale] = useState(1);
+  const [imgRenderedSize, setImgRenderedSize] = useState<{ w: number; h: number } | null>(null);
+
   const docxContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const currentFileRef = useRef<File | null>(null);
   const dragCounter = useRef(0);
 
@@ -142,6 +333,8 @@ const DocViewer: React.FC = () => {
     setObjectUrl(null);
     setTextContent(null);
     setExcelSheets(null);
+    setImageScale(1);
+    setImgRenderedSize(null);
     setLoading(false);
     currentFileRef.current = null;
   }, [objectUrl]);
@@ -299,6 +492,12 @@ const DocViewer: React.FC = () => {
     e.target.value = '';
   }, [processFile]);
 
+  const handleImageLoad = useCallback(() => {
+    if (imgRef.current) {
+      setImgRenderedSize({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight });
+    }
+  }, []);
+
   /* ─── Render preview ──────────────────────────────────────────────────── */
   const renderPreview = () => {
     if (loading) return <div className="dv-loading">正在解析文件…</div>;
@@ -306,7 +505,55 @@ const DocViewer: React.FC = () => {
 
     switch (category) {
       case 'image':
-        return objectUrl ? <img className="dv-image-preview" src={objectUrl} alt={fileName} /> : null;
+        return objectUrl ? (
+          <div className="dv-image-zoom-wrapper">
+            <div className="dv-image-zoom-toolbar">
+              <button
+                className="dv-zoom-btn"
+                onClick={() => setImageScale((s) => Math.max(ZOOM_MIN, +(s - ZOOM_STEP).toFixed(2)))}
+              >
+                −
+              </button>
+              <span className="dv-zoom-label">{Math.round(imageScale * 100)}%</span>
+              <button
+                className="dv-zoom-btn"
+                onClick={() => setImageScale((s) => Math.min(ZOOM_MAX, +(s + ZOOM_STEP).toFixed(2)))}
+              >
+                +
+              </button>
+              <button className="dv-zoom-btn" onClick={() => setImageScale(1)}>重置</button>
+            </div>
+            <div className={`dv-image-scroll-area${imageScale !== 1 ? ' zoomed' : ''}`}>
+              <div
+                style={
+                  imageScale !== 1 && imgRenderedSize
+                    ? {
+                        width: imgRenderedSize.w * imageScale,
+                        height: imgRenderedSize.h * imageScale,
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        flexShrink: 0,
+                      }
+                    : {}
+                }
+              >
+                <img
+                  ref={imgRef}
+                  className="dv-image-preview"
+                  src={objectUrl}
+                  alt={fileName}
+                  onLoad={handleImageLoad}
+                  style={
+                    imageScale !== 1 && imgRenderedSize
+                      ? { width: '100%', height: '100%', maxWidth: 'none', maxHeight: 'none', objectFit: 'contain', padding: 0 }
+                      : {}
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        ) : null;
 
       case 'pdf':
         return objectUrl ? <iframe className="dv-pdf-preview" src={objectUrl} title={fileName} /> : null;
@@ -322,11 +569,7 @@ const DocViewer: React.FC = () => {
         ) : null;
 
       case 'text':
-        return textContent !== null ? (
-          <div className="dv-text-preview">
-            <pre>{textContent}</pre>
-          </div>
-        ) : null;
+        return textContent !== null ? <TextPreview content={textContent} /> : null;
 
       case 'docx':
         return <div className="dv-docx-preview" ref={docxContainerRef} />;
