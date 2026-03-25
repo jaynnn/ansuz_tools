@@ -1,0 +1,289 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   DocViewer – Online Document Viewer Styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.dv-page {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-color, #f5f5f5);
+  color: var(--text-color, #333);
+}
+
+/* ─── Header ──────────────────────────────────────────────────────────── */
+.dv-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  flex-shrink: 0;
+}
+
+.dv-back-btn {
+  background: none;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-color, #333);
+}
+.dv-back-btn:hover {
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.dv-header h1 {
+  font-size: 1.1rem;
+  margin: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dv-clear-btn {
+  background: none;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-color, #666);
+}
+.dv-clear-btn:hover {
+  background: var(--hover-bg, #f0f0f0);
+  color: #e74c3c;
+}
+
+/* ─── Drop zone ───────────────────────────────────────────────────────── */
+.dv-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  position: relative;
+}
+
+.dv-dropzone {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.dv-dropzone.dv-dragging {
+  background: rgba(74, 144, 217, 0.06);
+}
+
+.dv-drop-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.45;
+}
+
+.dv-drop-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--text-color, #333);
+}
+
+.dv-drop-hint {
+  font-size: 0.9rem;
+  color: var(--text-secondary, #888);
+}
+
+.dv-hidden-input {
+  display: none;
+}
+
+/* ─── Preview area ────────────────────────────────────────────────────── */
+.dv-preview {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* --- Image preview --- */
+.dv-image-preview {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  padding: 1rem;
+}
+
+/* --- PDF preview --- */
+.dv-pdf-preview {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* --- Video / Audio --- */
+.dv-video-preview,
+.dv-audio-preview {
+  max-width: 100%;
+  max-height: 100%;
+  outline: none;
+}
+.dv-audio-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* --- Text preview --- */
+.dv-text-preview {
+  width: 100%;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  overflow: auto;
+  flex: 1;
+}
+.dv-text-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+/* --- DOCX preview container --- */
+.dv-docx-preview {
+  width: 100%;
+  padding: 1rem;
+  box-sizing: border-box;
+  overflow: auto;
+  flex: 1;
+  background: #fff;
+}
+.dv-docx-preview section.docx-wrapper {
+  background: #fff !important;
+}
+
+/* --- Excel preview --- */
+.dv-excel-preview {
+  width: 100%;
+  padding: 1rem;
+  box-sizing: border-box;
+  overflow: auto;
+  flex: 1;
+}
+
+.dv-excel-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 0.75rem;
+  border-bottom: 2px solid var(--border-color, #e0e0e0);
+}
+
+.dv-excel-tab {
+  padding: 0.4rem 1rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #888);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.dv-excel-tab:hover {
+  color: var(--text-color, #333);
+}
+.dv-excel-tab.active {
+  color: var(--primary-color, #4a90d9);
+  border-bottom-color: var(--primary-color, #4a90d9);
+  font-weight: 600;
+}
+
+.dv-excel-table-wrapper {
+  overflow: auto;
+  max-height: calc(100vh - 160px);
+}
+
+.dv-excel-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 100%;
+}
+.dv-excel-table th,
+.dv-excel-table td {
+  border: 1px solid var(--border-color, #ddd);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  white-space: nowrap;
+}
+.dv-excel-table th {
+  background: var(--hover-bg, #f5f5f5);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.dv-excel-table tr:hover td {
+  background: rgba(74, 144, 217, 0.04);
+}
+
+/* --- Unsupported file fallback --- */
+.dv-unsupported {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.75rem;
+  color: var(--text-secondary, #888);
+}
+.dv-unsupported-icon {
+  font-size: 3.5rem;
+  opacity: 0.5;
+}
+.dv-unsupported-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-color, #333);
+}
+.dv-unsupported-hint {
+  font-size: 0.9rem;
+}
+
+/* --- Loading state --- */
+.dv-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 1rem;
+  color: var(--text-secondary, #888);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .dv-header {
+    padding: 0.5rem 0.75rem;
+  }
+  .dv-header h1 {
+    font-size: 0.95rem;
+  }
+  .dv-drop-icon {
+    font-size: 3rem;
+  }
+  .dv-drop-title {
+    font-size: 1.05rem;
+  }
+}
