@@ -22,7 +22,9 @@ const TEXT_EXTS = new Set([
   'py', 'java', 'c', 'cpp', 'h', 'hpp', 'go', 'rs', 'rb', 'php', 'sql',
   'swift', 'kt', 'scala', 'r', 'lua', 'pl', 'toml', 'env', 'gitignore',
 ]);
-const EXCEL_EXTS = new Set(['xlsx', 'xls']);
+// Only .xlsx is supported; legacy .xls (BIFF binary) is not a ZIP archive and
+// cannot be loaded by ExcelJS, so it is intentionally excluded here.
+const EXCEL_EXTS = new Set(['xlsx']);
 
 function categorize(name: string, mime: string): FileCategory {
   const ext = getExtension(name);
@@ -31,7 +33,7 @@ function categorize(name: string, mime: string): FileCategory {
   if (VIDEO_EXTS.has(ext) || mime.startsWith('video/')) return 'video';
   if (AUDIO_EXTS.has(ext) || mime.startsWith('audio/')) return 'audio';
   if (ext === 'docx' || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
-  if (EXCEL_EXTS.has(ext) || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mime === 'application/vnd.ms-excel') return 'excel';
+  if (EXCEL_EXTS.has(ext) || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'excel';
   if (TEXT_EXTS.has(ext) || mime.startsWith('text/')) return 'text';
   return 'unknown';
 }
@@ -341,7 +343,7 @@ const DocViewer: React.FC = () => {
             <span className="dv-drop-icon">📂</span>
             <span className="dv-drop-title">拖拽文件到此处</span>
             <span className="dv-drop-hint">
-              或点击选择文件 · 支持 PDF、Word、Excel、图片、视频、音频、文本等格式
+              或点击选择文件 · 支持 PDF、Word (.docx)、Excel (.xlsx)、图片、视频、音频、文本等格式
             </span>
             <input
               ref={fileInputRef}
